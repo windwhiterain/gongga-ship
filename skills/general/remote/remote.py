@@ -1096,7 +1096,15 @@ def sftp_batch(target, lines, timeout):
         raise RemoteError("the transfer did not finish in %.0fs" % timeout)
     if completed.returncode != 0:
         detail = completed.stderr.decode("utf-8", "replace").strip() or completed.stdout.decode("utf-8", "replace").strip()
-        raise RemoteError("sftp failed: %s" % (detail or "exit %d" % completed.returncode))
+        hint = ""
+        if any("/tmp/" in line for line in lines):
+            hint = (
+                " -- a path under /tmp belongs to the shell's view, not the sftp "
+                "server's: on a Windows target there is no /tmp there at all. Use a "
+                "name without a directory (it lands in the remote home) or an "
+                "absolute C:/... path."
+            )
+        raise RemoteError("sftp failed: %s%s" % (detail or "exit %d" % completed.returncode, hint))
     return completed
 
 
@@ -1182,6 +1190,19 @@ def detach(target, shell, script, timeout=60.0):
     return {"pid": pid, "log": log, "ms": result["ms"]}
 
 
+def doctor_transfer_name():
+    """The probe file's name, with no directory in it.
+
+    A path is resolved by whoever receives it, and ssh's shell and the sftp
+    server are two different receivers: on a Windows target Git Bash has a
+    `/tmp` that the sftp server has never heard of, so a check that asked the
+    shell where its temp is and handed that to sftp fails without either side
+    lying. A bare name resolves in the remote home for both, which is the only
+    directory this check may assume.
+    """
+    return "remote-doctor-%s.txt" % uuid.uuid4().hex[:6]
+
+
 # --- doctor --------------------------------------------------------------------
 
 
@@ -1238,16 +1259,8 @@ def doctor(name, target):
 
     # Transfer: a name with a space is the case that silently mis-parses.
     local = os.path.join(tempfile.gettempdir(), "remote doctor %s.txt" % uuid.uuid4().hex[:6])
-    remote_path = None
+    remote_path = doctor_transfer_name()
     try:
-        if shell == POSIX:
-            probe_dir = run_oneshot(target, shell, wrap('printf %s "${TMPDIR:-/tmp}"', shell), 25, 4096)
-            base_dir = probe_dir["stdout"].decode("utf-8", "replace").strip() or "/tmp"
-            remote_path = "%s/remote-doctor-%s.txt" % (base_dir.rstrip("/"), uuid.uuid4().hex[:6])
-        else:
-            probe_dir = run_oneshot(target, shell, wrap("[IO.Path]::GetTempPath()", shell), 25, 4096)
-            base_dir = probe_dir["stdout"].decode("utf-8", "replace").strip()
-            remote_path = os.path.join(base_dir.rstrip("\\/") if base_dir else ".", "remote-doctor-%s.txt" % uuid.uuid4().hex[:6])
         with open(local, "w", encoding="utf-8") as handle:
             handle.write("远程 12345\n")
         info = put_file(target, shell, local, remote_path, timeout=60, verify=True)
@@ -1263,6 +1276,16 @@ def doctor(name, target):
         try:
             os.unlink(local)
         except OSError:
+            pass
+        # A probe that leaves a file behind in somebody's home is a probe that
+        # has to be run twice to notice. Best effort: a failed cleanup is not a
+        # failed link.
+        removal = 'rm -f "%s"' % remote_path if shell == POSIX else (
+            'Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath "%s"' % remote_path
+        )
+        try:
+            run_oneshot(target, shell, wrap(removal, shell), 25, 4096)
+        except (RemoteError, OSError):
             pass
 
     possible, why = session_possible(target)

@@ -123,6 +123,13 @@ remote get box /var/log/app.log ./app.log
 **不要用 `cat file | ssh host 'cat > file'`**：这条路在 108KB 附近会截断（早期实测），
 而且截断后退出码仍然是 0。sftp + 大小核对是唯一不靠猜的方式。
 
+**`/tmp` 是 shell 的，不是 sftp 的。** 路径由收到它的那一方解析，而 ssh 的 shell 和
+sftp 服务端是两方：Windows 目标上 Git Bash 有个 `/tmp`，那台机器的 sftp 服务端从来没听说过
+这个名字，于是 `remote put box ./x /tmp/x` 报 `dest open "/tmp/x": No such file or directory`
+（`remote doctor` 的 transfer 检查以前正是这样红的）。写**不带目录的名字**——它落在远端家目录，
+两边都认；要放别处就写绝对的 `C:/Users/...`。这里刻意不把路径悄悄改写掉：猜路径是另一类谎，
+而失败会带着这句话告诉你两种视图是分开的。
+
 脚本太大怎么办？一次性路径受命令行长度限制（Windows 是 32767 字符，base64 后约 ×4/3）。
 超了会明确报错并给出出路：先 `put` 上去，再 `run box 'sh /tmp/x.sh'`。
 
@@ -237,6 +244,7 @@ EOF
 - `--timeout` 超时后远端**可能还在跑**。这种情况会明说 `outcome unknown`，并且**绝不重放**
   ——重放可能让命令执行两次。
 - 传文件走 sftp 的系统实现，所以 `sftp` 必须在 PATH 上（`doctor` 会检查）。
+- 目标路径由 **sftp 服务端**解析，不是登录 shell：Windows 目标上没有 `/tmp`，裸名字落在远端家目录。
 - 会话的东西全在 `~/.remote/`（targets、sessions、logs），删掉就是全新状态。
 
 ## 自己验证它

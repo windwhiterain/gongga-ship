@@ -273,6 +273,23 @@ try:
 finally:
     m.sftp_base, m.run_oneshot = real_sftp_base, real_run_oneshot
 
+print("\ndoctor's probe name, and the hint when sftp cannot see the shell's /tmp")
+probe = m.doctor_transfer_name()
+check("the probe name carries no directory", "/" not in probe and "\\" not in probe, probe)
+check("two probes do not collide", m.doctor_transfer_name() != probe)
+m.sftp_base = lambda target: [sys.executable, FAKE_SFTP]
+try:
+    m.sftp_batch(None, ["put /nope/x /tmp/y.txt"], 20)
+    check("a failed transfer is an error", False, "nothing raised")
+except m.RemoteError as error:
+    check("a /tmp failure explains the two views", "remote home" in str(error), str(error)[:80])
+try:
+    m.sftp_batch(None, ["put /nope/x somewhere.txt"], 20)
+    check("a bare-path failure is an error", False, "nothing raised")
+except m.RemoteError as error:
+    check("a bare path gets no unsolicited lecture", "remote home" not in str(error), str(error)[:80])
+m.sftp_base = real_sftp_base
+
 print("\ncommand-line budget")
 over = "x" * 40000
 raises(
