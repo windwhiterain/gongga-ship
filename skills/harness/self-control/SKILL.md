@@ -135,8 +135,9 @@ EOF
 
 ### 记忆写在文件里，不写在上下文里
 
-- 仓库里 `AGENTS.md` **不是自动加载的**（读码确认：服务端只发 `llm.toml` 的 `instructions`）。
-  新会话要自己去看。所以重要的约定要放在**你每次都会读的地方**，或者放进 `instructions`。
+- 服务端**不读任何 `AGENTS.md`**（2026-10-28 起：`constitution` 注入被删掉，`~/.agents/agents.md`
+  和项目目录里的 `AGENTS.md` 都不再进提示词）。所以重要的约定要么放进 `instructions`，要么
+  写成 skill 让 `index_skill` 列出来——否则新会话根本不会看见它。
 - WIP 按仓库约定写 `.agents/notes/<date>-<slug>.md`。
 - 长输出溢出的全文在 `~/.gongga/outputs/`，文件名是 `<session>-<shell>-<task>-<callid>`
   ——所以 `bash` 的 `task` 参数是给"未来的自己"和读 dump 的人的索引，不是装饰。
@@ -352,8 +353,8 @@ EOF
 这就是全部成本。别再 `grep` 目录：那等于让每个会话重新实现一遍这个工具。
 
 系统提示（`instructions`）已经不是 Rust 里的静态字符串了：它是模板，来自 ship
-仓库，每次请求重读，所以它认得 skill 现在住在哪两个根，也会把项目的 `AGENTS.md`
-注入进来（注入只进 `instructions`，不写历史）。
+仓库，在写 prompt 行的时候重读一次并把渲染结果存进那一行，所以它认得 skill 现在
+住在哪两个根。它不再拼任何东西：没有哪个磁盘上的文件会被并进 `instructions`。
 
 两个桶，两个根：
 
@@ -361,8 +362,9 @@ EOF
   命令一律写成 `$GONGGA_HOME/skills/<name>/...`——`$GONGGA_HOME`、`$GONGGA_CLI`、
   `$GONGGA_SERVER` 本来就在每个 shell 的环境里。本文件、`heir`、`evolve`、
   `image` 都在这个桶。
-- **通用桶** → `~/.agents/skills/<name>/`。跟着机器走，和 `llm.toml`、
-  `~/.agents/agents.md` 做邻居。命令写成 `~/.agents/skills/<name>/...`。
+- **通用桶** → `~/.agents/skills/<name>/`。跟着机器走，和 `llm.toml` 做邻居：机器自己的
+  常驻规矩也放这儿当一个 skill——`instructions` 里没有任何东西是从磁盘自动读进来的。
+  命令写成 `~/.agents/skills/<name>/...`。
   `computer_use`、`latency`、`proxy`、`remote`、`web-search` 在这个桶。
 
 仓库里的 `.agents/skills/` **不再是 skill 的来源**，一个项目的 skill 也不该被
@@ -381,4 +383,4 @@ commit：启动时把内容装进上面两个根，用 git 三方合并把上游
 
 历史：懒发现是 2026-10-24 加的（那时 skill 文件存在但没人会看见，包括本文件第一版）；
 2026-10-28 提示词进模板、`AGENTS.md` 开始注入；同日 skill 移出项目目录、
-发现改成 `index_skill`。
+发现改成 `index_skill`；还是同日，注入被撤销——常驻规矩活了一天就当上了 skill。
