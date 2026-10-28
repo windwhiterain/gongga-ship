@@ -93,13 +93,17 @@ window = 64
 # silently deleting a sentence. The names each template gets are listed above
 # it.
 #
-# These are re-read before every model request, so an edit lands on the next
-# step of a running turn. What a template can never do is rewrite history: the
-# rows of a session already under way are replayed as stored. Changing what a
-# session remembers is the agent's own act, from a shell -- folding rows out
-# with `collapse`, or handing the transcript to a mentor and clearing itself
-# with `heir` (the `heir` skill). Nothing here reaches into a running request
-# and edits what was already said.
+# These are re-read when a prompt row is written -- the turn's first step, or
+# the step after a handover note moved -- and the text rendered then is stored
+# in that row and sent from it, so an edit lands at a boundary rather than at
+# every step. Prose sits in front of the whole transcript in the provider's
+# cached prefix: re-rendering per step re-bills the history behind it once per
+# edit, and storing the render says what the model was actually told.
+#
+# What a template can never do is rewrite history: the rows of a session
+# already under way are replayed as stored. Changing what a session remembers
+# is the agent's own act, from a shell -- folding rows out with `collapse`, or
+# handing the transcript to a mentor and clearing itself with `heir`.
 [prompts]
 
 # The system instructions, sent as `instructions` on every request. Static text:
@@ -125,9 +129,10 @@ Skills are prose that teaches a procedure this server does not encode as a tool.
 
 # Where an agent's own project rules come from. Each file found is wrapped with
 # this and appended to `instructions` above: the machine's
-# `~/.agents/agents.md` first, then the session's `AGENTS.md`. Read again on
-# every request, and injected rather than stored -- the transcript keeps only
-# what the user and the model actually said.
+# `~/.agents/agents.md` first, then the session's `AGENTS.md`. Read when a
+# prompt row is written and stored inside that row, so the database says what
+# the model was told; the transcript itself keeps only what the user and the
+# model actually said.
 # Placeholders: {{path}}, {{content}}
 constitution = '''
 The rules this project wrote for its agents, read from {{path}} just now. They bind this session the way the user's own instructions do:
