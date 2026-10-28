@@ -121,4 +121,6 @@ INSERT + 校验 SELECT + DELETE。做成服务端工具意味着改一行拷贝�
 而"清空"这件事一直没人肯做，是因为删了就回不来。现在回得来的地方就是一条普通会话：不用新命令、不用
 文件同步协议，`get_messages` 和 `send_message` 本来就在。
 
+改 `transcript.py` 之后跑 `python3 test_heir.py`：它在临时目录里造一份最小 schema 的数据库，
+不需要服务端、不花额度，专测那条破坏性路径——副本对不上就必须整体回滚。
 服务端那边的理由见 `docs/notes/server-compact.md`（只在服务端仓库里有）。
