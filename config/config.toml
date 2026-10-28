@@ -127,18 +127,6 @@ Do not write a handoff note before a swap. The resume replays the whole transcri
 Skills are prose that teaches a procedure this server does not encode as a tool. Ask `index_skill` for the table -- name, description, path, bucket -- and read a body only when its description matches the task in front of you. Two roots: the harness bucket is installed at `$GONGGA_HOME/skills/<name>`, the general bucket at `~/.agents/skills/<name>`, and the tool already gives the path you can run. Do not grep the directories and do not read them all: the table is the cheap step, the body is the expensive one. A skill may ship a script next to it; run that instead of retyping the commands it already encodes. Nothing here lives in the repository you are working in -- a project's own `.agents/skills` is not a skill source for this server.
 '''
 
-# Where an agent's own project rules come from. Each file found is wrapped with
-# this and appended to `instructions` above: the machine's
-# `~/.agents/agents.md` first, then the session's `AGENTS.md`. Read when a
-# prompt row is written and stored inside that row, so the database says what
-# the model was told; the transcript itself keeps only what the user and the
-# model actually said.
-# Placeholders: {{path}}, {{content}}
-constitution = '''
-The rules this project wrote for its agents, read from {{path}} just now. They bind this session the way the user's own instructions do:
-
-{{content}}'''
-
 # What introduces a folded handover note when a session replays one.
 # Placeholders: {{summary}}
 summary_preamble = '''
