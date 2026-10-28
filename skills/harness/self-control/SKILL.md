@@ -124,7 +124,7 @@ EOF
 
 | 事件 | transcript | 摘要 | 你的"当前意图" |
 |---|---|---|---|
-| 压缩（compaction） | 行**永不改写**，只是 `summarised_upto` 之前不再进请求 | 折成一条 summary | 可能丢 |
+| 压缩（compaction） | 服务端**从不改写**行；只有 agent 自己会 | `collapse` 折成一条 summary（行仍在库里）；`heir` 把整份 transcript 交进 mentor 会话后**删空自己**（删前逐行校验副本） | 可能丢 |
 | 回合结束 | 保留 | — | 丢（除非写下来了） |
 | `cancel` + 重启 | 保留 | 保留 | **丢**（resume 无提示，见 §2） |
 | `del_session` | 全删 | 删 | 全没 |
@@ -359,7 +359,7 @@ EOF
 
 - **harness 桶** → `<home>/skills/<name>/`。跟着 home 走，随服务端实例存在。
   命令一律写成 `$GONGGA_HOME/skills/<name>/...`——`$GONGGA_HOME`、`$GONGGA_CLI`、
-  `$GONGGA_SERVER` 本来就在每个 shell 的环境里。本文件、`compact`、`evolve`、
+  `$GONGGA_SERVER` 本来就在每个 shell 的环境里。本文件、`heir`、`evolve`、
   `image` 都在这个桶。
 - **通用桶** → `~/.agents/skills/<name>/`。跟着机器走，和 `llm.toml`、
   `~/.agents/agents.md` 做邻居。命令写成 `~/.agents/skills/<name>/...`。

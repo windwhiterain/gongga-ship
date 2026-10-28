@@ -69,7 +69,9 @@ max_output_chars = 8000
 # No step limit: a turn runs until the work is done.
 # This server does not compact the transcript. When a request carries
 # more than this many input tokens, it injects one message telling the
-# agent so, and the agent folds with the script the `compact` skill ships.
+# agent so, and the agent acts with the script the `heir` skill ships:
+# either fold the older part into a note, or hand the whole transcript
+# to a mentor session and empty itself.
 # 0 disables the
 # notice. Only used when the model's context window is not in the
 # roster; otherwise the threshold is a share of the window.
@@ -92,10 +94,12 @@ window = 64
 # it.
 #
 # These are re-read before every model request, so an edit lands on the next
-# step of a running turn. What is never rewritten is history: the rows of a
-# session already under way are replayed as stored, and folding one is a thing
-# the agent asks for (the `compact` skill), not something a config change does
-# behind it.
+# step of a running turn. What a template can never do is rewrite history: the
+# rows of a session already under way are replayed as stored. Changing what a
+# session remembers is the agent's own act, from a shell -- folding rows out
+# with `collapse`, or handing the transcript to a mentor and clearing itself
+# with `heir` (the `heir` skill). Nothing here reaches into a running request
+# and edits what was already said.
 [prompts]
 
 # The system instructions, sent as `instructions` on every request. Static text:
@@ -147,16 +151,22 @@ Context notice for `{{session}}`: the last request carried {{tokens}} input toke
 
 Right now {{folded}}.
 
-To fold the older part, from a shell:
+Either way, write the handover note first -- it is all the later you will have. Start by reading what is actually being sent:
 
-$GONGGA_HOME/skills/compact/transcript.py read --session {{session}}
+$GONGGA_HOME/skills/heir/transcript read --session {{session}}
 
-that shows the messages actually being sent. Then collapse with a handover note that keeps what the work still needs:
+Then choose by how much you still need the rows themselves.
 
-$GONGGA_HOME/skills/compact/transcript.py collapse --session {{session}} --upto <seq> \
+Fold the older part, keeping every row in the database and readable again later:
+
+$GONGGA_HOME/skills/heir/transcript collapse --session {{session}} --upto <seq> \
     --summary '<what was asked, what was tried, what worked and failed, the current state, the constraints that must survive>'
 
-Folding removes nothing from the database: the messages stay readable, they just stop being sent. If the work is nearly done, or the context is fine as it is, do nothing. The `$GONGGA_HOME/skills/compact/SKILL.md` skill has the full procedure.'''
+Or hand the whole transcript to a mentor session and empty this one -- the copy is verified row by row before anything is deleted, and what you wake up to is the note plus a line saying where your past went:
+
+$GONGGA_HOME/skills/heir/transcript heir --session {{session}} --mentor <name> --summary '<the same note>'
+
+An emptied session is clean, not broken: read the mentor with `get_messages`, ask it with `send_message`. If the work is nearly done, or the context is fine as it is, do nothing. `$GONGGA_HOME/skills/heir/SKILL.md` has the full procedure.'''
 
 # The two states `{{folded}}` can carry inside `context_notice`.
 # Placeholders: none
@@ -177,7 +187,7 @@ No result was recorded: the turn was interrupted before this call returned. Its 
 size_hint = '''
 {{message}}
 
-The transcript no longer fits this model. Fold it, then send again: `$GONGGA_HOME/skills/compact/transcript.py collapse --session <name> --upto <seq>` (see `$GONGGA_HOME/skills/compact/SKILL.md`).'''
+The transcript no longer fits this model. Fold it, then send again: `$GONGGA_HOME/skills/heir/transcript collapse --session <name> --upto <seq>` -- or hand the whole thing to a mentor and start clean: `... heir --session <name> --mentor <name> --summary '<note>'`. See `$GONGGA_HOME/skills/heir/SKILL.md`.'''
 
 # Why an image cannot be sent to this model, in the roster's own words.
 # Placeholders: {{model}}, {{modalities}}

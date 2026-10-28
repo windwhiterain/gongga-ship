@@ -85,7 +85,7 @@ resume 是把**完整 transcript** 原样重放（消息、reasoning、每个工
 | 故障 | 笔记有用吗 |
 |---|---|
 | pending 行没留下 | **没用**——根本没人被唤醒，没人会读 |
-| 上下文折叠过 | 没用——该用 `compact` skill 的 `read --after 0` 读回来 |
+| 上下文折叠过 | 没用——该用 `heir` skill 的 `read --after 0` 读回来（`collapse` 才留得住行；`heir` 交走之后原文只在 mentor 会话里） |
 
 resume 之后要做的是**重新测量外部状态**，因为那部分 transcript 里没有、而且已经变了：
 

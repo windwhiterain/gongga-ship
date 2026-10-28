@@ -24,7 +24,7 @@ safe to be a merge target at all.
 
 ## Two buckets, and why they are not one
 
-A harness skill speaks about *this server*: `compact` folds rows out of gongga's
+A harness skill speaks about *this server*: `heir` folds rows out of gongga's
 database, `evolve` replaces the process it is running on, `image` uses the
 harness's own attachment channel, `self-control` governs the turn. Those belong to
 a home, because a home is the thing they act on -- and because two harnesses of
