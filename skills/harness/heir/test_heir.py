@@ -159,13 +159,18 @@ def test_heir_moves_every_row_then_empties():
             (k, json.dumps(v, ensure_ascii=False)) for k, v in source
         ], "every row must arrive byte for byte"
 
+        # Nothing was injected when the session woke up: its last row was an
+        # answered exchange, so the whole transcript is the past and the session
+        # is simply empty.
         mine = h.rows(sid)
-        assert len(mine) == 1 and mine[0]["seq"] == 1, [dict(r) for r in mine]
-        guide = json.loads(mine[0]["content"])["text"]
-        assert "mentor-main" in guide and "get_messages" in guide and "send_message" in guide
+        assert mine == [], [dict(r) for r in mine]
 
+        # An emptied session numbers its next row from 1, so the note may claim to
+        # cover nothing -- or that row would be folded away before it was ever sent.
         s = h.c.execute("select handover, handover_upto, context_tokens from sessions where id=?", (sid,)).fetchone()
         assert s["handover"] == note and s["handover_upto"] == 0 and s["context_tokens"] == 0, dict(s)
+        h.add(sid, "text", {"role": "user", "text": "醒来第一句"})
+        assert [json.loads(r["content"])["text"] for r in h.rows(sid)] == ["醒来第一句"], "seq restarts at 1"
         m = h.c.execute("select model, cwd from sessions where id=?", (mid,)).fetchone()
         assert (m["model"], m["cwd"]) == ("p/m1", "C:/work"), dict(m)
 
@@ -176,13 +181,58 @@ def test_heir_moves_every_row_then_empties():
         p = run(h, "heir", "--session", "main", "--mentor", "mentor-main", "--note", "第二份")
         assert p.returncode == 0, p.stderr
         second = json.loads(p.stdout)
-        assert second["rows_copied"] == 2 and second["mentor_created"] is False, second
+        # Two rows this time: what the emptied session woke up to, and what came
+        # after it. No call was in flight, so the archive takes both and the
+        # session starts from seq 1 again.
+        assert second["rows_copied"] == 2 and second["kept_call"] is None, second
+        assert second["mentor_created"] is False, second
         assert len(h.rows(mid)) == before + 1 + 2, (before, len(h.rows(mid)))
         again = h.c.execute("select content from messages where session_id=? and seq=900", (mid,)).fetchone()
         assert "mentor 自己的旧行" in again["content"], "appending must not rewrite what is there"
         assert keep == 900
         h.close()
 
+
+
+
+def test_heir_keeps_the_call_in_flight():
+    """The command that runs the handover is still open, so its pair survives."""
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        h = Home(tmp)
+        sid = h.session("main")
+        h.add(sid, "text", {"role": "user", "text": "清空你自己"})
+        h.add(sid, "tool_call", {"call_id": "c-live", "name": "bash", "arguments": "{\"command\":\"transcript heir\"}"})
+
+        p = run(h, "heir", "--session", "main", "--mentor", "archive", "--note", "要做 X；Y 失败因为 Z")
+        assert p.returncode == 0, p.stderr
+        report = json.loads(p.stdout)
+        assert report["kept_call"] == "c-live", report
+        assert report["rows_copied"] == 2 and report["deleted"] == 1, report
+        assert report["through_seq"] == 1 and report["mentor_rows"] == 4, report
+        assert "archive" in report["you"] and "get_messages" in report["you"], report
+
+        # The session keeps exactly the call whose result the server has yet to write.
+        mine = h.rows(sid)
+        assert [r["kind"] for r in mine] == ["tool_call"], [dict(r) for r in mine]
+        assert mine[0]["seq"] == 2, dict(mine)
+        s = h.c.execute("select handover_upto from sessions where id=?", (sid,)).fetchone()
+        assert s["handover_upto"] == 1, dict(s)
+
+        # The archive holds the whole exchange, and the copied call is answered
+        # there: a mentor reads its own transcript back as a valid request.
+        mid = h.c.execute("select id from sessions where name='archive'").fetchone()["id"]
+        mentor = h.rows(mid)
+        assert [r["kind"] for r in mentor] == ["text", "text", "tool_call", "tool_result"], [dict(r) for r in mentor]
+        closing = json.loads(mentor[-1]["content"])
+        assert closing["call_id"] == "c-live", closing
+        assert "mentor of `main`" in closing["output"], closing
+
+        # The result the server appends when the command returns closes the pair.
+        h.add(sid, "tool_result", {"call_id": "c-live", "output": p.stdout, "images": []})
+        left = h.rows(sid)
+        assert [r["kind"] for r in left] == ["tool_call", "tool_result"], [dict(r) for r in left]
+        assert left[1]["seq"] > s["handover_upto"], "the kept pair must still be sent"
+        h.close()
 
 def test_a_bad_copy_rolls_everything_back():
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:

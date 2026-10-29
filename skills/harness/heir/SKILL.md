@@ -1,6 +1,6 @@
 ---
 name: heir
-description: 把上下文交接出去——写一份交接文档，把自己的 transcript 整份拷进一个 mentor 会话，然后清空自己，醒来时读到引导 prompt，卡住了先读 mentor、要判断再问它。当你收到「Context notice」、或者旧内容已经没有增量价值、或者你想要一个"过去全在档案里、眼前彻底干净"的会话时读它。用 $GONGGA_HOME/skills/heir/transcript（read / collapse / heir）。collapse 不删数据；heir 删，删之前先校验 mentor 收到了逐行副本。
+description: 把上下文交接出去——写一份交接文档，把自己的 transcript 整份拷进一个 mentor 会话，然后删空自己——只留在飞的那个 tool call，指引就在它的结果里，卡住了先读 mentor、要判断再问它。当你收到「Context notice」、或者旧内容已经没有增量价值、或者你想要一个"过去全在档案里、眼前彻底干净"的会话时读它。用 $GONGGA_HOME/skills/heir/transcript（read / collapse / heir）。collapse 不删数据；heir 删，删之前先校验 mentor 收到了逐行副本。
 ---
 
 # 把上下文交接出去
@@ -13,9 +13,9 @@ description: 把上下文交接出去——写一份交接文档，把自己的 
 
 | | `collapse` | `heir` |
 |---|---|---|
-| 做的事 | 把 `--upto` 之前换成一份笔记 | 全份拷进 mentor → 校验 → **删空自己** → 注入引导 |
+| 做的事 | 把 `--upto` 之前换成一份笔记 | 全份拷进 mentor → 校验 → **删空自己**（留在飞的那个 call） |
 | 行还在库里吗 | 在，`read --after 0` 读得回来 | 不在，唯一的完整副本在 mentor 会话里 |
-| 下一次请求发什么 | 笔记 + `--upto` 之后的原文 | 笔记 + 引导那一条，就这些 |
+| 下一次请求发什么 | 笔记 + `--upto` 之后的原文 | 笔记 + 你这条 call 和它的结果，就这些 |
 | 什么时候选它 | 你还在附近，可能得回头看原文 | 那一段真的结束了，你想让眼前彻底干净 |
 
 ## 三步
@@ -45,11 +45,11 @@ $T heir --session <你的会话名> --mentor mentor-<你的会话名> \
 | `--after` | 默认从 `handover_upto` 之后，即当前正在发送的那段；`0` 从最早开始（捞折叠掉的） |
 | `--limit` | 默认 40 条消息 |
 | `--preview` | 每条只给前 120 字符，用来看形状 |
-| `heir --guide` | 替换注入的那条引导消息（默认那条带上 mentor 名字和两条现成命令） |
+| `heir` 之后 | 指引就在**你这条命令的结果**里（带 mentor 名字和两条命令）；mentor 那边多出一条 tool_result，告它自己成了 mentor |
 
 ### 先读，再问
 
-清空之后 `heir` 会往你的会话里插进一条引导消息，里面带着 mentor 的名字和两条命令：
+清空之后不会多插任何一行：指引就在你刚发出的那条命令的结果里，带着 mentor 的名字和两条命令（会话留下的是你这个 call 和它的结果——结果没有 call，provider 会整份请求拒收）：
 
 ```
 读档案： gongga get_messages --session mentor-main --range 1:

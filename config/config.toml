@@ -141,6 +141,8 @@ Earlier in this session, folded into this handover note by the agent itself:
 context_notice = '''
 Context notice for `{{session}}`: the last request carried {{tokens}} input tokens, and this session's threshold is {{budget}}. This server does not fold for you -- the shape of the context is your decision.
 
+First say which session you are. If another session's transcript was copied into this one -- its last tool result tells you so -- you are a **mentor**: answer only what it asks, and fold or hand over nothing here, because this context is a record somebody else is reading. Otherwise the choice below is yours.
+
 Right now {{folded}}.
 
 Either way, write the handover note first -- it is all the later you will have. Start by reading what is actually being sent:
