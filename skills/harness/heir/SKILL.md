@@ -123,3 +123,17 @@ INSERT + 校验 SELECT + DELETE。做成服务端工具意味着改一行拷贝�
 改 `transcript.py` 之后跑 `python3 test_heir.py`：它在临时目录里造一份最小 schema 的数据库，
 不需要服务端、不花额度，专测那条破坏性路径——副本对不上就必须整体回滚。
 服务端那边的理由见 `docs/notes/server-handover.md`（只在服务端仓库里有）。
+## 这次交接留了什么记录
+
+`heir` 成功之后会往 `events` 表写一条 `kind = 'handover'`：机制、mentor、行数、搬到的 seq、
+在飞的那个 call、笔记字数、当时的 `context_tokens` 和 `context_limit`。所以"这个会话压过几次"
+是 `select count(*) from events where session_id = ? and kind = 'handover'`，不用再从
+`mentor-*` 会话名和两个列反推。
+
+两条规矩：
+
+- **和动作同一个事务**：没发生的交接不能留下一条说它发生了的记录。
+- **只是记录，不是事实来源**：没有任何代码读这条行来决定发什么（发什么由 `sessions` 和
+  `messages` 决定）。所以写错了是报表错，不是会话错；写不进去也只在 stderr 说一声，不让
+  一次已经成功的交接因此回滚。
+

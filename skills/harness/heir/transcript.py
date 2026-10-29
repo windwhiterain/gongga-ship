@@ -199,7 +199,8 @@ def cmd_heir(args):
     conn = connect()
     sid = session_id(conn, args.session)
     source = conn.execute(
-        "select model, cwd, llm from sessions where id = ?", (sid,)
+        "select model, cwd, llm, context_tokens, context_limit from sessions where id = ?",
+        (sid,),
     ).fetchone()
     rows = conn.execute(
         "select seq, kind, content, created_at from messages where session_id = ? order by seq",
@@ -213,6 +214,7 @@ def cmd_heir(args):
     # result without its call is a request no provider accepts -- and everything
     # before it is the past, which goes to the mentor.
     kept = rows[-1] if rows[-1]["kind"] == "tool_call" else None
+    kept_call_id = json.loads(kept["content"])["call_id"] if kept is not None else None
     moved = rows[:-1] if kept is not None else rows
     through = moved[-1]["seq"] if moved else 0
     marker = (
@@ -288,6 +290,53 @@ def cmd_heir(args):
                 where id = ?""",
             (args.note, now, sid),
         )
+        # What this handover did, in the table the server keeps its own events in,
+        # so "how many times did this session compact" is a count of rows rather
+        # than an inference from two columns and a mentor's name. Same
+        # transaction as the action, so a failed handover cannot leave a row
+        # claiming it happened; read by nothing that decides what is sent, so a
+        # wrong row is a wrong report, not a wrong turn.
+        try:
+            conn.execute(
+                """create table if not exists events (
+                    id         INTEGER PRIMARY KEY,
+                    session_id INTEGER,
+                    seq        INTEGER NOT NULL,
+                    kind       TEXT NOT NULL,
+                    payload    TEXT NOT NULL,
+                    created_at INTEGER NOT NULL
+                )"""
+            )
+            conn.execute(
+                """insert into events (session_id, seq, kind, payload, created_at)
+                    values (?, (select coalesce(max(seq), 0) + 1 from events), 'handover', ?, ?)""",
+                (
+                sid,
+                    json.dumps(
+                        {
+                            "mechanism": "heir",
+                            "mentor": args.mentor,
+                            "mentor_created": created,
+                            "rows": len(rows),
+                            "rows_moved": len(moved),
+                            "through_seq": through,
+                            "kept_call": kept_call_id,
+                            "note_chars": len(args.note),
+                            "context_tokens": source["context_tokens"],
+                            "context_limit": source["context_limit"],
+                        }
+                    ),
+                    now,
+                ),
+            )
+        except sqlite3.Error as e:
+            # The handover is the work; the row is the record of it. A home too
+            # old to have the table, or a write that fails, must not undo the
+            # copy -- and it must not be silent either.
+            print(
+                f"warning: the handover happened but was not recorded ({e})",
+                file=sys.stderr,
+            )
 
     print(
         json.dumps(
