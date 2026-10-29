@@ -341,7 +341,7 @@ EOF
 | 忙时 `send_message` 在下一个 step 边界投递 | 本会话实测 |
 | `cancel` 保留 pending、`interrupt_session` 删 pending、`del_session` 连带停 detached | 读 `crates/server/src/commands.rs` |
 | resume 不带任何 instruction | 读 `agent.rs::turn_inner`（`user_text: None` 不写行） |
-| 压缩 70% / transcript 不改写 / `handover_upto` | 读 `agent.rs`、`store.rs` |
+| 压缩 70% / transcript 不改写 / `handover_through` | 读 `agent.rs`、`store.rs` |
 | evolve 的四条纪律与 swap 守卫 | 读 `$GONGGA_HOME/skills/evolve/evolve.sh` + `status` 实跑 |
 | `evolve.sh swap` 的完整换手 | **实跑 9 次**，其中 02:24 那次**丢了回合**（pending 行被 `resume_pending` 的收尾无条件删除），修好后 3 次全部 resume 成功 |
 | swap 后验证行为而非 pid | 本会话实测：新二进制里"消息打断等待"只有真跑一条长命令才验得出，`server.lock` 变了不证明任何事 |

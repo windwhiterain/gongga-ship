@@ -153,8 +153,11 @@ Then choose by how much you still need the rows themselves.
 
 Fold the older part, keeping every row in the database and readable again later:
 
-$GONGGA_HOME/skills/heir/transcript collapse --session {{session}} --upto <seq> \
-    --note '<what was asked, what was tried, what worked and failed, the current state, the constraints that must survive>'
+$GONGGA_HOME/skills/heir/transcript collapse --session {{session}} --through <seq> \
+    --note '<what was asked, what was tried, what worked and failed, the current state, the constraints that survive>'
+
+A cut at or behind the note's own edge folds nothing, so the script refuses it; when a cut
+would split a call from its result, it names the newest one that does not.
 
 Or hand the whole transcript to a mentor session and empty this one -- the copy is verified row by row before anything is deleted, and what you wake up to is the note plus a line saying where your past went:
 
@@ -162,14 +165,18 @@ $GONGGA_HOME/skills/heir/transcript heir --session {{session}} --mentor <name> -
 
 An emptied session is clean, not broken: read the mentor with `get_messages`, ask it with `send_message`. If the work is nearly done, or the context is fine as it is, do nothing. `$GONGGA_HOME/skills/heir/SKILL.md` has the full procedure.'''
 
-# The two states `{{folded}}` can carry inside `context_notice`.
-# Placeholders: none
+# The two states `{{folded}}` can carry inside `context_notice`. Both name the
+# newest row: it is the only number that says how much is left to fold, and without
+# it a cut that cannot advance is indistinguishable from one that was never tried.
+# Placeholders: {{latest}}
 folded_none = '''
-nothing has been folded yet'''
+nothing has been folded yet, and the newest row is {{latest}}'''
 
-# Placeholder: {{upto}}
+# Placeholders: {{through}}, {{latest}}
 folded_through = '''
-everything through seq {{upto}} is already folded into the note'''
+everything through seq {{through}} is already folded into the note, and the newest row
+is {{latest}}: fold above {{through}} without cutting a call from its result, or hand
+the whole transcript to a mentor'''
 
 # What the agent is told about a tool call that never returned: verify, do not
 # assume. Static.
@@ -181,7 +188,7 @@ No result was recorded: the turn was interrupted before this call returned. Its 
 size_hint = '''
 {{message}}
 
-The transcript no longer fits this model. Fold it, then send again: `$GONGGA_HOME/skills/heir/transcript collapse --session <name> --upto <seq>` -- or hand the whole thing to a mentor and start clean: `... heir --session <name> --mentor <name> --note '<note>'`. See `$GONGGA_HOME/skills/heir/SKILL.md`.'''
+The transcript no longer fits this model. Fold it, then send again: `$GONGGA_HOME/skills/heir/transcript collapse --session <name> --through <seq>` -- or hand the whole thing to a mentor and start clean: `... heir --session <name> --mentor <name> --note '<note>'`. See `$GONGGA_HOME/skills/heir/SKILL.md`.'''
 
 # Why an image cannot be sent to this model, in the roster's own words.
 # Placeholders: {{model}}, {{modalities}}
