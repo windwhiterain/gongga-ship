@@ -42,6 +42,24 @@ Skills are found by the `index_skill` tool, which lists name, description, path
 and bucket from both roots. Do not grep the directories: that re-implements the
 tool in every session.
 
+## Migrators
+
+`migrate/<from>-to-<to>.py` holds one version step each: `0-to-1.py` takes a
+version 0 home to version 1, and nothing else. A home two versions behind runs
+the two steps it is missing, in order.
+
+They are the one thing here that is *not* installed by the install pass. A
+server that finds a home behind its own version asks for one by path -- the pin
+first, then the newest commit in this repository that carries it, then a local
+checkout the pin names -- fetches it into `<home>/migrate/`, and runs it. So
+this directory is append-only: `0-to-1.py` has to survive long after version 1
+stopped being the newest, because that is exactly the file a home left behind
+asks for by name.
+
+A migrator takes `--home` and `--db`, changes the database, and exits zero. It
+has to be safe to run twice, because a step that failed is run again on the next
+start.
+
 ## Paths inside a skill
 
 A skill body must never assume it lives in a repository. Write the install path:
