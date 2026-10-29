@@ -33,10 +33,10 @@ create table sessions (
     cwd text not null,
     created_at integer not null,
     updated_at integer not null,
-    summary text,
-    summarised_upto integer not null default 0,
+    handover text,
+    handover_upto integer not null default 0,
     llm text,
-    compact_threshold integer,
+    context_limit integer,
     thinking_effort integer,
     context_tokens integer not null default 0
 );
@@ -114,18 +114,18 @@ def test_guards():
         sid = h.session("main")
         h.add(sid, "text", {"role": "user", "text": "hi"})
 
-        p = run(h, "heir", "--session", "main", "--mentor", "m", "--summary", "   ")
+        p = run(h, "heir", "--session", "main", "--mentor", "m", "--note", "   ")
         assert p.returncode != 0 and "empty handover" in p.stderr, p.stderr
         assert len(h.rows(sid)) == 1, "a refused heir must not delete"
 
-        p = run(h, "heir", "--session", "main", "--mentor", "main", "--summary", "note")
+        p = run(h, "heir", "--session", "main", "--mentor", "main", "--note", "note")
         assert p.returncode != 0 and "another session" in p.stderr, p.stderr
 
-        p = run(h, "heir", "--session", "unknown", "--mentor", "m", "--summary", "note")
+        p = run(h, "heir", "--session", "unknown", "--mentor", "m", "--note", "note")
         assert p.returncode != 0 and "no session named" in p.stderr, p.stderr
 
         empty = h.session("empty")
-        p = run(h, "heir", "--session", "empty", "--mentor", "m", "--summary", "note")
+        p = run(h, "heir", "--session", "empty", "--mentor", "m", "--note", "note")
         assert p.returncode != 0 and "no transcript" in p.stderr, p.stderr
         h.close()
 
@@ -142,11 +142,11 @@ def test_heir_moves_every_row_then_empties():
         )
         for kind, payload in source:
             h.add(sid, kind, payload)
-        h.c.execute("update sessions set summary='旧笔记', summarised_upto=3 where id=?", (sid,))
+        h.c.execute("update sessions set handover='旧笔记', handover_upto=3 where id=?", (sid,))
         h.c.commit()
 
         note = "用户要 A；B 失败因为 C；现在在 D"
-        p = run(h, "heir", "--session", "main", "--mentor", "mentor-main", "--summary", note)
+        p = run(h, "heir", "--session", "main", "--mentor", "mentor-main", "--note", note)
         assert p.returncode == 0, p.stderr
         report = json.loads(p.stdout)
         assert report["mentor_created"] is True and report["rows_copied"] == 4, report
@@ -164,8 +164,8 @@ def test_heir_moves_every_row_then_empties():
         guide = json.loads(mine[0]["content"])["text"]
         assert "mentor-main" in guide and "get_messages" in guide and "send_message" in guide
 
-        s = h.c.execute("select summary, summarised_upto, context_tokens from sessions where id=?", (sid,)).fetchone()
-        assert s["summary"] == note and s["summarised_upto"] == 0 and s["context_tokens"] == 0, dict(s)
+        s = h.c.execute("select handover, handover_upto, context_tokens from sessions where id=?", (sid,)).fetchone()
+        assert s["handover"] == note and s["handover_upto"] == 0 and s["context_tokens"] == 0, dict(s)
         m = h.c.execute("select model, cwd from sessions where id=?", (mid,)).fetchone()
         assert (m["model"], m["cwd"]) == ("p/m1", "C:/work"), dict(m)
 
@@ -173,7 +173,7 @@ def test_heir_moves_every_row_then_empties():
         keep = h.add(mid, "text", {"role": "user", "text": "mentor 自己的旧行"}, seq=900)
         h.add(sid, "text", {"role": "user", "text": "第二轮"})
         before = len(h.rows(mid))
-        p = run(h, "heir", "--session", "main", "--mentor", "mentor-main", "--summary", "第二份")
+        p = run(h, "heir", "--session", "main", "--mentor", "mentor-main", "--note", "第二份")
         assert p.returncode == 0, p.stderr
         second = json.loads(p.stdout)
         assert second["rows_copied"] == 2 and second["mentor_created"] is False, second
@@ -190,7 +190,7 @@ def test_a_bad_copy_rolls_everything_back():
         sid = h.session("main")
         h.add(sid, "text", {"role": "user", "text": "如果被篡改就别删"})
         h.add(sid, "text", {"role": "assistant", "text": "这行不该消失"})
-        run(h, "heir", "--session", "main", "--mentor", "m1", "--summary", "第一轮")
+        run(h, "heir", "--session", "main", "--mentor", "m1", "--note", "第一轮")
         mid = h.c.execute("select id from sessions where name='m1'").fetchone()["id"]
         sid = h.c.execute("select id from sessions where name='main'").fetchone()["id"]
         h.add(sid, "text", {"role": "user", "text": "第二轮"})
@@ -206,12 +206,12 @@ def test_a_bad_copy_rolls_everything_back():
         h.c.commit()
         mentor_before = len(h.rows(mid))
         mine_before = len(h.rows(sid))
-        p = run(h, "heir", "--session", "main", "--mentor", "m1", "--summary", "第三份")
+        p = run(h, "heir", "--session", "main", "--mentor", "m1", "--note", "第三份")
         assert p.returncode != 0 and "the copy differs" in p.stderr, p.stderr
         assert len(h.rows(sid)) == mine_before, "the learner kept every row"
         assert len(h.rows(mid)) == mentor_before, "the mentor gained nothing"
-        s = h.c.execute("select summary from sessions where id=?", (sid,)).fetchone()
-        assert s["summary"] == "第一轮", s["summary"]
+        s = h.c.execute("select handover from sessions where id=?", (sid,)).fetchone()
+        assert s["handover"] == "第一轮", s["handover"]
         h.close()
 
 
@@ -226,18 +226,18 @@ def test_read_and_collapse_still_work():
 
         out = json.loads(run(h, "read", "--session", "main").stdout)
         assert out["live_messages"] == 2 and out["shown_messages"] == 2, out
-        assert out["summary"] is None and out["summary_upto"] == 0
+        assert out["handover"] is None and out["handover_upto"] == 0
 
         # A cut through seq 2 would leave seq 3 -- a tool result -- without its call,
         # and the refusal has to name a boundary that works instead.
-        p = run(h, "collapse", "--session", "main", "--upto", "2", "--summary", "笔记")
+        p = run(h, "collapse", "--session", "main", "--upto", "2", "--note", "笔记")
         assert p.returncode != 0 and "tool result" in p.stderr, p.stderr
         assert "through 1" in p.stderr, p.stderr
 
-        p = run(h, "collapse", "--session", "main", "--upto", "1", "--summary", "笔记")
+        p = run(h, "collapse", "--session", "main", "--upto", "1", "--note", "笔记")
         assert p.returncode == 0, p.stderr
         out = json.loads(run(h, "read", "--session", "main").stdout)
-        assert out["summary"] == "笔记" and out["live_messages"] == 1, out
+        assert out["handover"] == "笔记" and out["live_messages"] == 1, out
         h.close()
 
 

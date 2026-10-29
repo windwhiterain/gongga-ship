@@ -78,7 +78,7 @@ sed 's/\x1b\[[0-9;]*m//g' ~/.gongga/detached/<最新>.log | grep -E "replaying a
 ## 不要写交接笔记
 
 resume 是把**完整 transcript** 原样重放（消息、reasoning、每个工具调用和结果），外加
-`summary`（如果折叠过）。"我打算干什么"已经在里面了，写一份笔记不会多提供任何信息。
+`handover`（如果折叠过）。"我打算干什么"已经在里面了，写一份笔记不会多提供任何信息。
 
 而且它在两种真故障下毫无用处：
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The same reason as `compact/transcript`: `python3` on Windows can be the Store
+# The same reason as `heir/transcript`: `python3` on Windows can be the Store
 # stub, which exits 49 and prints an advert.
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

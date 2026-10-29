@@ -67,7 +67,7 @@ max_output_chars = 8000
 
 [agent]
 # No step limit: a turn runs until the work is done.
-# This server does not compact the transcript. When a request carries
+# This server does not fold the transcript for you. When a request carries
 # more than this many input tokens, it injects one message telling the
 # agent so, and the agent acts with the script the `heir` skill ships:
 # either fold the older part into a note, or hand the whole transcript
@@ -127,11 +127,11 @@ Skills are prose that teaches a procedure this server does not encode as a tool.
 '''
 
 # What introduces a folded handover note when a session replays one.
-# Placeholders: {{summary}}
-summary_preamble = '''
+# Placeholders: {{handover}}
+handover_preamble = '''
 Earlier in this session, folded into this handover note by the agent itself:
 
-{{summary}}'''
+{{handover}}'''
 
 # The message that hands the folding decision to the agent when a request gets
 # big. It names the numbers it is talking about and the two tools that act on
@@ -139,7 +139,7 @@ Earlier in this session, folded into this handover note by the agent itself:
 # guess what is possible.
 # Placeholders: {{session}}, {{tokens}}, {{budget}}, {{folded}}
 context_notice = '''
-Context notice for `{{session}}`: the last request carried {{tokens}} input tokens, and this session's threshold is {{budget}}. This server does not compact for you -- the shape of the context is your decision.
+Context notice for `{{session}}`: the last request carried {{tokens}} input tokens, and this session's threshold is {{budget}}. This server does not fold for you -- the shape of the context is your decision.
 
 Right now {{folded}}.
 
@@ -152,11 +152,11 @@ Then choose by how much you still need the rows themselves.
 Fold the older part, keeping every row in the database and readable again later:
 
 $GONGGA_HOME/skills/heir/transcript collapse --session {{session}} --upto <seq> \
-    --summary '<what was asked, what was tried, what worked and failed, the current state, the constraints that must survive>'
+    --note '<what was asked, what was tried, what worked and failed, the current state, the constraints that must survive>'
 
 Or hand the whole transcript to a mentor session and empty this one -- the copy is verified row by row before anything is deleted, and what you wake up to is the note plus a line saying where your past went:
 
-$GONGGA_HOME/skills/heir/transcript heir --session {{session}} --mentor <name> --summary '<the same note>'
+$GONGGA_HOME/skills/heir/transcript heir --session {{session}} --mentor <name> --note '<the same note>'
 
 An emptied session is clean, not broken: read the mentor with `get_messages`, ask it with `send_message`. If the work is nearly done, or the context is fine as it is, do nothing. `$GONGGA_HOME/skills/heir/SKILL.md` has the full procedure.'''
 
@@ -167,7 +167,7 @@ nothing has been folded yet'''
 
 # Placeholder: {{upto}}
 folded_through = '''
-everything through seq {{upto}} is already folded into the summary'''
+everything through seq {{upto}} is already folded into the note'''
 
 # What the agent is told about a tool call that never returned: verify, do not
 # assume. Static.
@@ -179,7 +179,7 @@ No result was recorded: the turn was interrupted before this call returned. Its 
 size_hint = '''
 {{message}}
 
-The transcript no longer fits this model. Fold it, then send again: `$GONGGA_HOME/skills/heir/transcript collapse --session <name> --upto <seq>` -- or hand the whole thing to a mentor and start clean: `... heir --session <name> --mentor <name> --summary '<note>'`. See `$GONGGA_HOME/skills/heir/SKILL.md`.'''
+The transcript no longer fits this model. Fold it, then send again: `$GONGGA_HOME/skills/heir/transcript collapse --session <name> --upto <seq>` -- or hand the whole thing to a mentor and start clean: `... heir --session <name> --mentor <name> --note '<note>'`. See `$GONGGA_HOME/skills/heir/SKILL.md`.'''
 
 # Why an image cannot be sent to this model, in the roster's own words.
 # Placeholders: {{model}}, {{modalities}}

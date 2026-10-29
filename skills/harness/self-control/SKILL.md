@@ -124,13 +124,13 @@ EOF
 
 | 事件 | transcript | 摘要 | 你的"当前意图" |
 |---|---|---|---|
-| 压缩（compaction） | 服务端**从不改写**行；只有 agent 自己会 | `collapse` 折成一条 summary（行仍在库里）；`heir` 把整份 transcript 交进 mentor 会话后**删空自己**（删前逐行校验副本） | 可能丢 |
+| 折叠 | 服务端**从不改写**行；只有 agent 自己会 | `collapse` 折成一条 handover 笔记（行仍在库里）；`heir` 把整份 transcript 交进 mentor 会话后**删空自己**（删前逐行校验副本） | 可能丢 |
 | 回合结束 | 保留 | — | 丢（除非写下来了） |
 | `cancel` + 重启 | 保留 | 保留 | **丢**（resume 无提示，见 §2） |
 | `del_session` | 全删 | 删 | 全没 |
 
 压缩阈值默认是上下文窗口的 **70%**（本会话模型 `deepseek-flash` 窗口 1,000,000），
-`set_session --compact_threshold 30%` 可调，`0` 关闭；设百分比要求模型在 roster 里有
+`set_session --context_limit 30%` 可调，`0` 关闭；设百分比要求模型在 roster 里有
 `context`，否则命令当场报错而不是悄悄忽略。
 
 ### 记忆写在文件里，不写在上下文里
@@ -174,7 +174,7 @@ gongga send_message --session test1 --message "SELF-NOTE: ..."
 
 规矩：
 
-- 它是**用户消息**，会一直留在 transcript 里，还会被压缩进 summary。不要当 printf 用。
+- 它是**用户消息**，会一直留在 transcript 里，还会被折进笔记。不要当 printf 用。
 - 只能用在这一处合法位置：`function_call` 和它的 `function_call_output` 之间插 user 消息
   会被 provider 整单拒绝，所以注入点在 step 边界。
 - 消息自己也是 pending 行，`cancel` 前后都能活下来 —— 这是跨重启留意图最省事的办法。
@@ -284,7 +284,7 @@ GONGGA_LLM_CATALOG=$PWD/.dev/v/llm.toml GONGGA_KEY=sk-fake \
 python - <<'EOF'
 import sqlite3, os
 c = sqlite3.connect(f"file:{os.path.expanduser('~/.gongga/gongga.db')}?mode=ro", uri=True)
-print(c.execute("select name,status,llm,compact_threshold,context_tokens from sessions").fetchall())
+print(c.execute("select name,status,llm,context_limit,context_tokens from sessions").fetchall())
 print(c.execute("select name,status,count(*) from tool_calls group by name,status").fetchall())
 print(c.execute("select ID,session,kind from pending_tasks").fetchall())
 EOF
@@ -310,7 +310,7 @@ EOF
   「did you mean `command`?」。
 - **在 bash 里 `kill <pid>` 停 detached。** MSYS pid 不等于 Windows pid，`taskkill` 认不出来；
   用 `del_bash`。
-- **用 `send_message` 记日志。** 它会永久留在 transcript 里并进入 summary，而且**会打断
+- **用 `send_message` 记日志。** 它会永久留在 transcript 里并进入笔记，而且**会打断
   你正在等的命令**（见 §5）。
 - **信 `.agents/notes` 或本文档里的"某条测试会失败"而不自己跑一遍。** 已经踩过一次：
   有记录说私有 target 目录会让 `cli_path` 测试失败，实测是通过的。
@@ -341,7 +341,7 @@ EOF
 | 忙时 `send_message` 在下一个 step 边界投递 | 本会话实测 |
 | `cancel` 保留 pending、`interrupt_session` 删 pending、`del_session` 连带停 detached | 读 `crates/server/src/commands.rs` |
 | resume 不带任何 instruction | 读 `agent.rs::turn_inner`（`user_text: None` 不写行） |
-| 压缩 70% / transcript 不改写 / `summarised_upto` | 读 `agent.rs`、`store.rs` |
+| 压缩 70% / transcript 不改写 / `handover_upto` | 读 `agent.rs`、`store.rs` |
 | evolve 的四条纪律与 swap 守卫 | 读 `$GONGGA_HOME/skills/evolve/evolve.sh` + `status` 实跑 |
 | `evolve.sh swap` 的完整换手 | **实跑 9 次**，其中 02:24 那次**丢了回合**（pending 行被 `resume_pending` 的收尾无条件删除），修好后 3 次全部 resume 成功 |
 | swap 后验证行为而非 pid | 本会话实测：新二进制里"消息打断等待"只有真跑一条长命令才验得出，`server.lock` 变了不证明任何事 |

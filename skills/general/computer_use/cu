@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Entry point for the desktop driver.
 #
-# The implementation is Python only. The other skills in this repo (image, compact)
+# The implementation is Python only. The other skills in this repo (image, heir)
 # already require Python, so a second implementation in PowerShell would be a copy
 # of the same logic with no new reach -- and two copies of one fact drift, which is
 # how the UIA tree walker here broke once already.

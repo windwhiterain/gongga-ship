@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Read, fold, and hand over a gongga session's transcript, straight from the database.
 
-Compaction is a decision about work only the agent has seen, so the server does
+Folding is a decision about work only the agent has seen, so the server does
 not take it: it measures the context and says so (`Context notice`), and this
 script is how the agent acts on it.
 
     transcript.py read     [--session S] [--after SEQ] [--limit N] [--preview]
-    transcript.py collapse --session S --upto SEQ --summary TEXT
-    transcript.py heir     --session S --mentor M --summary TEXT [--guide TEXT]
+    transcript.py collapse --session S --upto SEQ --note TEXT
+    transcript.py heir     --session S --mentor M --note TEXT [--guide TEXT]
 
 `collapse` is the conservative step: rows stay in the database and only stop
 being sent. `heir` is the one that actually empties a session -- it copies the
@@ -72,14 +72,14 @@ def body(row):
         value = json.loads(row["content"])
     except ValueError:
         return ""
-    return value.get("text") or value.get("summary") or ""
+    return value.get("text") or value.get("handover") or ""
 
 
 def cmd_read(args):
     conn = connect()
     sid = session_id(conn, args.session)
-    summary, upto = conn.execute(
-        "select summary, summarised_upto from sessions where id = ?", (sid,)
+    note, upto = conn.execute(
+        "select handover, handover_upto from sessions where id = ?", (sid,)
     ).fetchone()
     after = upto if args.after is None else args.after
 
@@ -126,8 +126,8 @@ def cmd_read(args):
         json.dumps(
             {
                 "session": args.session,
-                "summary": summary,
-                "summary_upto": upto,
+                "handover": note,
+                "handover_upto": upto,
                 "last_seq": last,
                 "folded_messages": folded,
                 "live_messages": live,
@@ -141,19 +141,19 @@ def cmd_read(args):
 
 
 def cmd_collapse(args):
-    if not args.summary.strip():
+    if not args.note.strip():
         die(
-            "refusing to fold with an empty summary: that removes this stretch from every "
+            "refusing to fold with an empty note: that removes this stretch from every "
             "later request while the transcript still looks complete"
         )
     conn = connect()
     sid = session_id(conn, args.session)
     _, previous_upto = conn.execute(
-        "select summary, summarised_upto from sessions where id = ?", (sid,)
+        "select handover, handover_upto from sessions where id = ?", (sid,)
     ).fetchone()
     if args.upto < previous_upto:
         die(
-            f"--upto {args.upto} is behind the current summary (which covers through "
+            f"--upto {args.upto} is behind the current note (which covers through "
             f"{previous_upto}); folding backwards would put already-folded rows back into "
             "every request"
         )
@@ -192,8 +192,8 @@ def cmd_collapse(args):
 
     with conn:
         conn.execute(
-            "update sessions set summary = ?, summarised_upto = ? where id = ?",
-            (args.summary, args.upto, sid),
+            "update sessions set handover = ?, handover_upto = ? where id = ?",
+            (args.note, args.upto, sid),
         )
         # The provider's last measurement described the prefix just folded, so it
         # says nothing about the next request. Leaving it alone makes the server
@@ -202,7 +202,7 @@ def cmd_collapse(args):
 
     print(
         f"folded {folded} row(s) through seq {args.upto} into a "
-        f"{len(args.summary)} character summary; {live} row(s) still sent"
+        f"{len(args.note)} character note; {live} row(s) still sent"
     )
 
 
@@ -218,7 +218,7 @@ def default_guide(session, mentor):
         "Read before you ask: what you did and what you decided is in those rows, and "
         "no model can tell you better than the record itself. Ask the mentor when the "
         "question is a judgement -- was this the right call, what did the failed attempt "
-        "mean -- because it has the whole exchange and you have the summary of it.\n"
+        "mean -- because it has the whole exchange and you have the note of it.\n"
         "Nothing about the task changed. Continue from the handover note's next step."
     )
 
@@ -243,7 +243,7 @@ def ensure_mentor(conn, name, source):
 
 
 def cmd_heir(args):
-    if not args.summary.strip():
+    if not args.note.strip():
         die(
             "refusing to empty a session with an empty handover note: the copy in the "
             "mentor is the archive, but this note is what you will actually be sending"
@@ -308,13 +308,13 @@ def cmd_heir(args):
 
         conn.execute("delete from messages where session_id = ?", (sid,))
         # Seq counts up from the rows that exist, so an emptied session starts again at
-        # 1 and the summary must cover none of it -- otherwise the first new row would
+        # 1 and the note must cover none of it -- otherwise the first new row would
         # look already folded and never reach the model.
         conn.execute(
             """update sessions
-                  set summary = ?, summarised_upto = 0, context_tokens = 0, updated_at = ?
+                  set handover = ?, handover_upto = 0, context_tokens = 0, updated_at = ?
                 where id = ?""",
-            (args.summary, now, sid),
+            (args.note, now, sid),
         )
         conn.execute(
             """insert into messages (session_id, seq, kind, content, created_at)
@@ -332,7 +332,7 @@ def cmd_heir(args):
                 "through_seq": through,
                 "mentor_rows": len(copied) + 1,
                 "deleted": len(rows),
-                "handover_chars": len(args.summary),
+                "handover_chars": len(args.note),
             },
             ensure_ascii=False,
             indent=2,
@@ -346,15 +346,15 @@ def main():
 
     read = sub.add_parser("read", help="show the messages that are actually sent")
     read.add_argument("--session", required=True)
-    read.add_argument("--after", type=int, help="defaults to the end of the summary; 0 reaches folded history")
+    read.add_argument("--after", type=int, help="defaults to the end of the note; 0 reaches folded history")
     read.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     read.add_argument("--preview", action="store_true", help="one line per message")
     read.set_defaults(func=cmd_read)
 
-    collapse = sub.add_parser("collapse", help="fold everything through --upto into --summary")
+    collapse = sub.add_parser("collapse", help="fold everything through --upto into --note")
     collapse.add_argument("--session", required=True)
     collapse.add_argument("--upto", type=int, required=True)
-    collapse.add_argument("--summary", required=True)
+    collapse.add_argument("--note", required=True)
     collapse.set_defaults(func=cmd_collapse)
 
     heir = sub.add_parser(
@@ -363,7 +363,7 @@ def main():
     )
     heir.add_argument("--session", required=True)
     heir.add_argument("--mentor", required=True, help="any session name; created if it does not exist")
-    heir.add_argument("--summary", required=True, help="the handover note this session wakes up to")
+    heir.add_argument("--note", required=True, help="the handover note this session wakes up to")
     heir.add_argument("--guide", help="replaces the injected note; default names --mentor and the two commands")
     heir.set_defaults(func=cmd_heir)
 
