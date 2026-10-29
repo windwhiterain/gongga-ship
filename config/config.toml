@@ -67,11 +67,10 @@ max_output_chars = 8000
 
 [agent]
 # No step limit: a turn runs until the work is done.
-# This server does not fold the transcript for you. When a request carries
+# This server does not shorten the transcript for you. When a request carries
 # more than this many input tokens, it injects one message telling the
 # agent so, and the agent acts with the script the `heir` skill ships:
-# either fold the older part into a note, or hand the whole transcript
-# to a mentor session and empty itself.
+# hand the whole transcript to a mentor session and empty itself.
 # 0 disables the
 # notice. Only used when the model's context window is not in the
 # roster; otherwise the threshold is a share of the window.
@@ -102,8 +101,8 @@ window = 64
 #
 # What a template can never do is rewrite history: the rows of a session
 # already under way are replayed as stored. Changing what a session remembers
-# is the agent's own act, from a shell -- folding rows out with `collapse`, or
-# handing the transcript to a mentor and clearing itself with `heir`.
+# is the agent's own act, from a shell -- handing the transcript to a mentor
+# and clearing itself with `heir`.
 [prompts]
 
 # The system instructions, sent as `instructions` on every request. Static text:
@@ -126,57 +125,32 @@ Replacing the server you are running on belongs to the `evolve` skill, `$GONGGA_
 Skills are prose that teaches a procedure this server does not encode as a tool. Ask `index_skill` for the table -- name, description, path, bucket -- and read a body only when its description matches the task in front of you: the table is the cheap step, the body the expensive one. A skill may ship a script next to it, so run that instead of retyping the commands it encodes. The harness bucket is installed at `$GONGGA_HOME/skills/<name>`, the general bucket at `~/.agents/skills/<name>`, and nothing here lives in the repository you are working in -- a project's own `.agents/skills` is not a skill source for this server.
 '''
 
-# What introduces a folded handover note when a session replays one.
+# What introduces a handover note when a session replays one.
 # Placeholders: {{handover}}
 handover_preamble = '''
-Earlier in this session, folded into this handover note by the agent itself:
+Earlier in this session, written into this handover note by the agent itself:
 
 {{handover}}'''
 
-# The message that hands the folding decision to the agent when a request gets
-# big. It names the numbers it is talking about and the two tools that act on
+# The message that hands the context decision to the agent when a request gets
+# big. It names the numbers it is talking about and the one thing that acts on
 # them: a notice that says only "you are near the limit" leaves the reader to
 # guess what is possible.
-# Placeholders: {{session}}, {{tokens}}, {{budget}}, {{folded}}
+# Placeholders: {{session}}, {{tokens}}, {{budget}}
 context_notice = '''
-Context notice for `{{session}}`: the last request carried {{tokens}} input tokens, and this session's threshold is {{budget}}. This server does not fold for you -- the shape of the context is your decision.
+Context notice for `{{session}}`: the last request carried {{tokens}} input tokens, and this session's threshold is {{budget}}. This server does not shorten your context for you -- the shape of it is your decision.
 
-First say which session you are. If another session's transcript was copied into this one -- its last tool result tells you so -- you are a **mentor**: answer only what it asks, and fold or hand over nothing here, because this context is a record somebody else is reading. Otherwise the choice below is yours.
+First say which session you are. If another session's transcript was copied into this one -- its last tool result tells you so -- you are a **mentor**: answer only what it asks, and hand over nothing here, because this context is a record somebody else is reading. Otherwise the choice below is yours.
 
-Right now {{folded}}.
-
-Either way, write the handover note first -- it is all the later you will have. Start by reading what is actually being sent:
+Write the handover note first -- it is all the later you will have. Start by reading what is actually being sent:
 
 $GONGGA_HOME/skills/heir/transcript read --session {{session}}
 
-Then choose by how much you still need the rows themselves.
+Then hand the whole transcript to a mentor session and empty this one -- the copy is verified row by row before anything is deleted, and what you wake up to is the note plus a line saying where your past went:
 
-Fold the older part, keeping every row in the database and readable again later:
-
-$GONGGA_HOME/skills/heir/transcript collapse --session {{session}} --through <seq> \
-    --note '<what was asked, what was tried, what worked and failed, the current state, the constraints that survive>'
-
-A cut at or behind the note's own edge folds nothing, so the script refuses it; when a cut
-would split a call from its result, it names the newest one that does not.
-
-Or hand the whole transcript to a mentor session and empty this one -- the copy is verified row by row before anything is deleted, and what you wake up to is the note plus a line saying where your past went:
-
-$GONGGA_HOME/skills/heir/transcript heir --session {{session}} --mentor <name> --note '<the same note>'
+$GONGGA_HOME/skills/heir/transcript heir --session {{session}} --mentor <name> --note '<what was asked, what was tried, what worked and failed, the current state, the constraints that survive>'
 
 An emptied session is clean, not broken: read the mentor with `get_messages`, ask it with `send_message`. If the work is nearly done, or the context is fine as it is, do nothing. `$GONGGA_HOME/skills/heir/SKILL.md` has the full procedure.'''
-
-# The two states `{{folded}}` can carry inside `context_notice`. Both name the
-# newest row: it is the only number that says how much is left to fold, and without
-# it a cut that cannot advance is indistinguishable from one that was never tried.
-# Placeholders: {{latest}}
-folded_none = '''
-nothing has been folded yet, and the newest row is {{latest}}'''
-
-# Placeholders: {{through}}, {{latest}}
-folded_through = '''
-everything through seq {{through}} is already folded into the note, and the newest row
-is {{latest}}: fold above {{through}} without cutting a call from its result, or hand
-the whole transcript to a mentor'''
 
 # What the agent is told about a tool call that never returned: verify, do not
 # assume. Static.
@@ -188,7 +162,7 @@ No result was recorded: the turn was interrupted before this call returned. Its 
 size_hint = '''
 {{message}}
 
-The transcript no longer fits this model. Fold it, then send again: `$GONGGA_HOME/skills/heir/transcript collapse --session <name> --through <seq>` -- or hand the whole thing to a mentor and start clean: `... heir --session <name> --mentor <name> --note '<note>'`. See `$GONGGA_HOME/skills/heir/SKILL.md`.'''
+The transcript no longer fits this model. Hand the whole thing to a mentor and start clean: `$GONGGA_HOME/skills/heir/transcript heir --session <name> --mentor <name> --note '<note>'`. See `$GONGGA_HOME/skills/heir/SKILL.md`.'''
 
 # Why an image cannot be sent to this model, in the roster's own words.
 # Placeholders: {{model}}, {{modalities}}

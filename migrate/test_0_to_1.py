@@ -66,7 +66,7 @@ CREATE TABLE sessions (
 );
 """
 
-# Older still: no fold, no tuning, no measured context.
+# Older still: no note, no tuning, no measured context.
 BEFORE_VERSION_0 = """
 CREATE TABLE sessions (
     id         INTEGER PRIMARY KEY,
@@ -121,15 +121,18 @@ class Home(unittest.TestCase):
 
 
 class TestVersion0(Home):
-    def test_the_fold_boundary_keeps_its_number(self):
+    def test_the_note_survives_and_the_boundary_does_not(self):
         code, out = run(self.home, self.db)
         self.assertEqual(code, 0, out)
         conn = sqlite3.connect(str(self.db))
         try:
-            row = conn.execute("SELECT handover, handover_through FROM sessions").fetchone()
+            row = conn.execute("SELECT handover FROM sessions").fetchone()
         finally:
             conn.close()
-        self.assertEqual(row, ("the note", 42), "the fold is not asked for again")
+        # The note is what a session wakes up to; the seq it used to stop at is
+        # not carried, because version 1 sends every row it has.
+        self.assertEqual(row, ("the note",), out)
+        self.assertNotIn("handover_through", columns(self.db, "sessions"))
 
     def test_the_old_column_is_gone(self):
         run(self.home, self.db)
@@ -150,7 +153,6 @@ class TestVersion0(Home):
             columns(self.db, "sessions")
             & {
                 "handover",
-                "handover_through",
                 "llm",
                 "context_limit",
                 "context_tokens",
@@ -158,7 +160,6 @@ class TestVersion0(Home):
             },
             {
                 "handover",
-                "handover_through",
                 "llm",
                 "context_limit",
                 "context_tokens",
@@ -173,10 +174,10 @@ class TestVersion0(Home):
         self.assertIn("already version 1", out, "a step that failed once is run again")
         conn = sqlite3.connect(str(self.db))
         try:
-            row = conn.execute("SELECT handover_through FROM sessions").fetchone()
+            row = conn.execute("SELECT handover FROM sessions").fetchone()
         finally:
             conn.close()
-        self.assertEqual(row[0], 42)
+        self.assertEqual(row[0], "the note")
 
 
 class TestShapes(unittest.TestCase):
@@ -192,7 +193,7 @@ class TestShapes(unittest.TestCase):
         conn.close()
         return Path(dir.name), db
 
-    def test_a_fold_older_than_the_note_is_carried_into_it(self):
+    def test_a_note_older_than_the_column_is_carried_into_it(self):
         home, db = self.db_with(ANCIENT)
         conn = sqlite3.connect(str(db))
         conn.execute(
@@ -207,14 +208,13 @@ class TestShapes(unittest.TestCase):
         self.assertEqual(code, 0, out)
         conn = sqlite3.connect(str(db))
         try:
-            row = conn.execute(
-                "SELECT handover, handover_through, context_limit FROM sessions"
-            ).fetchone()
+            row = conn.execute("SELECT handover, context_limit FROM sessions").fetchone()
         finally:
             conn.close()
-        # The note and where it takes over are data, not decoration: losing them
-        # sends the whole transcript again.
-        self.assertEqual(row, ("the old note", 42, 30), out)
+        # The note is data, not decoration: losing it sends the whole transcript
+        # again. The seq it stopped at is dropped with its column.
+        self.assertEqual(row, ("the old note", 30), out)
+        self.assertNotIn("summarised_upto", columns(db, "sessions"))
         self.assertNotIn("summarised_upto", columns(db, "sessions"))
         self.assertNotIn("compact_threshold", columns(db, "sessions"))
 
@@ -222,7 +222,7 @@ class TestShapes(unittest.TestCase):
         home, db = self.db_with(BEFORE_VERSION_0)
         code, out = run(home, db)
         self.assertEqual(code, 0, out)
-        self.assertIn("handover_through", columns(db, "sessions"))
+        self.assertIn("handover", columns(db, "sessions"))
         self.assertIn("thinking_effort", columns(db, "sessions"))
 
     def test_a_database_with_no_schema_at_all_is_left_alone(self):

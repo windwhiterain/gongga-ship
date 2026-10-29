@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-"""Read, fold, and hand over a gongga session's transcript, straight from the database.
+"""Read and hand over a gongga session's transcript, straight from the database.
 
-Folding is a decision about work only the agent has seen, so the server does
-not take it: it measures the context and says so (`Context notice`), and this
-script is how the agent acts on it.
+Handing a transcript away is a decision about work only the agent has seen, so
+the server does not take it: it measures the context and says so (`Context
+notice`), and this script is how the agent acts on it.
 
     transcript.py read     [--session S] [--after SEQ] [--limit N] [--preview]
-    transcript.py collapse --session S --through SEQ --note TEXT
     transcript.py heir     --session S --mentor M --note TEXT
 
-`collapse` is the conservative step: rows stay in the database and only stop
-being sent. `heir` is the one that actually empties a session -- it copies the
-whole transcript into another session (the mentor), verifies the copy, deletes
-the original rows, and injects a note telling the agent where its past went and
-how to reach it.
+`heir` empties a session: it copies the whole transcript into another session
+(the mentor), verifies the copy, deletes the original rows, and answers the
+call in flight with a note telling the agent where its past went and how to
+reach it. No row is hidden behind a boundary: the rows are either here or in
+the mentor, never both.
 
 Reading returns what a conversation is made of -- the model's own messages and
 anything injected into the session. Tool calls, tool results and reasoning are
@@ -78,10 +77,10 @@ def body(row):
 def cmd_read(args):
     conn = connect()
     sid = session_id(conn, args.session)
-    note, through = conn.execute(
-        "select handover, handover_through from sessions where id = ?", (sid,)
-    ).fetchone()
-    after = through if args.after is None else args.after
+    note = conn.execute(
+        "select handover from sessions where id = ?", (sid,)
+    ).fetchone()[0]
+    after = 0 if args.after is None else args.after
 
     rows = conn.execute(
         """select seq, kind, content from messages
@@ -110,13 +109,9 @@ def cmd_read(args):
             {"seq": row["seq"], "role": role, "chars": len(text), "text": shown}
         )
 
-    folded = conn.execute(
-        "select count(*) from messages where session_id = ? and kind = 'text' and seq <= ?",
-        (sid, through),
-    ).fetchone()[0]
     live = conn.execute(
         "select count(*) from messages where session_id = ? and kind = 'text' and seq > ?",
-        (sid, through),
+        (sid, after),
     ).fetchone()[0]
     last = conn.execute(
         "select coalesce(max(seq), 0) from messages where session_id = ?", (sid,)
@@ -127,9 +122,7 @@ def cmd_read(args):
             {
                 "session": args.session,
                 "handover": note,
-                "handover_through": through,
                 "last_seq": last,
-                "folded_messages": folded,
                 "live_messages": live,
                 "shown_messages": len(messages),
                 "messages": messages,
@@ -137,109 +130,6 @@ def cmd_read(args):
             ensure_ascii=False,
             indent=2,
         )
-    )
-
-
-def first_carried(tail, cut):
-    """The first row a request would actually carry after `cut`, as `(seq, kind)`.
-
-    `notice` and `system` rows are skipped because the read path never sends them,
-    so neither can be the start that decides whether a cut is legal.
-    """
-    for seq, kind in tail:
-        if seq <= cut or kind in ("notice", "system"):
-            continue
-        return seq, kind
-    return None
-
-
-def newest_valid_cut(tail, requested, already):
-    """The largest cut at or below `requested`, above `already`, that starts cleanly.
-
-    This is the advice that matters: the newest legal cut is usually a call or a
-    message a little below what was asked for, not the last text row before the
-    boundary the note already covers.
-    """
-    if not tail:
-        return None
-    for candidate in range(min(requested, tail[-1][0]), already, -1):
-        opening = first_carried(tail, candidate)
-        if opening is None or opening[1] != "tool_result":
-            return candidate
-    return None
-
-
-def cmd_collapse(args):
-    if not args.note.strip():
-        die(
-            "refusing to fold with an empty note: that removes this stretch from every "
-            "later request while the transcript still looks complete"
-        )
-    conn = connect()
-    sid = session_id(conn, args.session)
-    _, previous_through = conn.execute(
-        "select handover, handover_through from sessions where id = ?", (sid,)
-    ).fetchone()
-    last = conn.execute(
-        "select coalesce(max(seq), 0) from messages where session_id = ?", (sid,)
-    ).fetchone()[0]
-    # `<=`, not `<`. A cut the note already covers folds nothing, and without this the
-    # command still rewrites the note, zeroes the measured size and prints success --
-    # which is how a session can fold six times, be told six times that it worked, and
-    # stay over its budget the whole while.
-    if args.through <= previous_through:
-        die(
-            f"--through {args.through} folds nothing: the note already covers through seq "
-            f"{previous_through}, and the newest row is {last}. Fold above {previous_through}, "
-            "or hand the whole transcript over with `heir`."
-        )
-    if args.through > last:
-        die(f"--through {args.through} is past the last row ({last}); nothing folded")
-
-    # The API rejects a function_call_output whose function_call is absent, so the
-    # first row a request would carry after the cut has to be able to start one.
-    tail = [(row["seq"], row["kind"]) for row in conn.execute(
-        "select seq, kind from messages where session_id = ? and seq > ? order by seq",
-        (sid, previous_through),
-    ).fetchall()]
-    opening = first_carried(tail, args.through)
-    if opening is not None and opening[1] == "tool_result":
-        suggested = newest_valid_cut(tail, args.through, previous_through)
-        blocked = (
-            f"--through {args.through} would leave a tool result (seq {opening[0]}) without the "
-            "call that produced it, and the provider rejects that."
-        )
-        if suggested is None:
-            die(
-                f"{blocked} Nothing above the current note (through {previous_through}, newest row "
-                f"{last}) can be cut without splitting a pair: fold nothing, or hand the whole "
-                "transcript over with `heir`."
-            )
-        die(
-            f"{blocked} Fold through {suggested} instead -- the newest cut at or below it that "
-            f"starts a request cleanly, above the note's current {previous_through}."
-        )
-
-    folded = conn.execute(
-        "select count(*) from messages where session_id = ? and seq <= ?", (sid, args.through)
-    ).fetchone()[0]
-    live = conn.execute(
-        "select count(*) from messages where session_id = ? and seq > ?", (sid, args.through)
-    ).fetchone()[0]
-
-    with conn:
-        conn.execute(
-            "update sessions set handover = ?, handover_through = ? where id = ?",
-            (args.note, args.through, sid),
-        )
-        # The provider's last measurement described the prefix just folded, so it
-        # says nothing about the next request. Leaving it alone makes the server
-        # think the context is still full and remind on every single step.
-        conn.execute("update sessions set context_tokens = 0 where id = ?", (sid,))
-
-    print(
-        f"folded {folded} row(s) through seq {args.through} into a "
-        f"{len(args.note)} character note; {live} row(s) still sent"
     )
 
 
@@ -389,16 +279,14 @@ def cmd_heir(args):
             conn.execute("delete from messages where session_id = ?", (sid,))
         else:
             conn.execute("delete from messages where session_id = ? and seq < ?", (sid, kept["seq"]))
-        # With the pair kept, the note covers exactly what was folded away and the
-        # surviving seqs are above it. With nothing kept, `seq` counts up from the
-        # rows that exist -- so it restarts at 1, and a note claiming it covers
-        # through the old last seq would fold every row this session ever sends.
-        # context_tokens is the count of a prefix that is gone either way.
+        # context_tokens counted a transcript that no longer exists: leaving it
+        # would have the server measure this session as still full and remind on
+        # every single step.
         conn.execute(
             """update sessions
-                  set handover = ?, handover_through = ?, context_tokens = 0, updated_at = ?
+                  set handover = ?, context_tokens = 0, updated_at = ?
                 where id = ?""",
-            (args.note, through if kept is not None else 0, now, sid),
+            (args.note, now, sid),
         )
 
     print(
@@ -427,16 +315,10 @@ def main():
 
     read = sub.add_parser("read", help="show the messages that are actually sent")
     read.add_argument("--session", required=True)
-    read.add_argument("--after", type=int, help="defaults to the end of the note; 0 reaches folded history")
+    read.add_argument("--after", type=int, help="defaults to the beginning of the transcript")
     read.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     read.add_argument("--preview", action="store_true", help="one line per message")
     read.set_defaults(func=cmd_read)
-
-    collapse = sub.add_parser("collapse", help="fold everything through --through into --note")
-    collapse.add_argument("--session", required=True)
-    collapse.add_argument("--through", type=int, required=True)
-    collapse.add_argument("--note", required=True)
-    collapse.set_defaults(func=cmd_collapse)
 
     heir = sub.add_parser(
         "heir",

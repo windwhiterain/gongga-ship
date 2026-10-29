@@ -18,25 +18,23 @@ import sqlite3
 import sys
 from pathlib import Path
 
-# What version 0 called what version 1 reads, oldest spelling first. A fold is
-# two pieces of data -- the note, and the seq it takes over -- and losing either
-# one sends the whole transcript again and asks for work already done. A
-# threshold is a percentage of the model's window in both spellings.
+# What version 0 called what version 1 reads, oldest spelling first. The note
+# survives: it is what a session wakes up to. The seq the note took over does
+# not -- version 1 has no fold, so `handover_upto` and `summarised_upto` are
+# dropped rather than carried. A threshold is a percentage of the model's
+# window in both spellings.
 RENAMES = (
-    ("handover_upto", "handover_through"),
-    ("summarised_upto", "handover_through"),
     ("summary", "handover"),
     ("compact_threshold", "context_limit"),
 )
+
+# What a version 0 `sessions` may still have that version 1 has no column for.
+DROPPED = ("handover_upto", "summarised_upto", "handover_through")
 
 # What a version-1 `sessions` has, and the statement that adds it. A column a
 # database never had is one no `CREATE TABLE IF NOT EXISTS` will add later.
 SESSION_COLUMNS = (
     ("handover", "ALTER TABLE sessions ADD COLUMN handover TEXT"),
-    (
-        "handover_through",
-        "ALTER TABLE sessions ADD COLUMN handover_through INTEGER NOT NULL DEFAULT 0",
-    ),
     ("llm", "ALTER TABLE sessions ADD COLUMN llm TEXT"),
     ("context_limit", "ALTER TABLE sessions ADD COLUMN context_limit INTEGER"),
     (
@@ -66,10 +64,10 @@ def add_missing(conn, table, column, ddl, done):
 
 
 def take_what_the_old_columns_hold(conn, done):
-    """Move a fold and a threshold from the names version 0 used to version 1's.
+    """Move a note and a threshold from the names version 0 used to version 1's.
 
-    Only blanks are filled: a session version 1 has already folded is not moved
-    back to a boundary an old column still remembers.
+    Only blanks are filled: a note version 1 already has is not overwritten by
+    a spelling that predates it.
     """
     have = columns(conn, "sessions")
     for old, new in RENAMES:
@@ -90,6 +88,27 @@ def take_what_the_old_columns_hold(conn, done):
             continue
         if moved:
             done.append(f"{old} -> {new} ({moved} session(s))")
+
+
+def drop_the_fold_boundary(conn, done):
+    """Drop the seq a fold used to stop at: version 1 sends every row it has.
+
+    The note stays, because it is what a session wakes up to. What goes is the
+    boundary, and with it the last reason a row could be in the database and
+    still not be sent.
+    """
+    have = columns(conn, "sessions")
+    for old in DROPPED:
+        if old not in have:
+            continue
+        try:
+            conn.execute(f"ALTER TABLE sessions DROP COLUMN {old}")
+        except sqlite3.OperationalError as e:
+            # An old python's sqlite cannot drop a column; a leftover one
+            # misleads nobody who reads version 1's code.
+            print(f"0-to-1: left {old} in place ({e})", file=sys.stderr)
+            continue
+        done.append(f"dropped sessions.{old}")
 
 
 def name_detached_jobs(conn, done):
@@ -127,6 +146,7 @@ def main():
         for column, ddl in SESSION_COLUMNS:
             add_missing(conn, "sessions", column, ddl, done)
         take_what_the_old_columns_hold(conn, done)
+        drop_the_fold_boundary(conn, done)
         name_detached_jobs(conn, done)
         conn.commit()
     finally:

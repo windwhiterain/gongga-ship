@@ -124,7 +124,7 @@ EOF
 
 | 事件 | transcript | 摘要 | 你的"当前意图" |
 |---|---|---|---|
-| 折叠 | 服务端**从不改写**行；只有 agent 自己会 | `collapse` 折成一条 handover 笔记（行仍在库里）；`heir` 把整份 transcript 交进 mentor 会话后**删空自己**（删前逐行校验副本） | 可能丢 |
+| 交接 | 服务端**从不改写**行；只有 agent 自己会 | `heir` 把整份 transcript 交进 mentor 会话后**删空自己**（删前逐行校验副本），只留一条 handover 笔记 | 可能丢 |
 | 回合结束 | 保留 | — | 丢（除非写下来了） |
 | `cancel` + 重启 | 保留 | 保留 | **丢**（resume 无提示，见 §2） |
 | `del_session` | 全删 | 删 | 全没 |
@@ -341,7 +341,7 @@ EOF
 | 忙时 `send_message` 在下一个 step 边界投递 | 本会话实测 |
 | `cancel` 保留 pending、`interrupt_session` 删 pending、`del_session` 连带停 detached | 读 `crates/server/src/commands.rs` |
 | resume 不带任何 instruction | 读 `agent.rs::turn_inner`（`user_text: None` 不写行） |
-| 压缩 70% / transcript 不改写 / `handover_through` | 读 `agent.rs`、`store.rs` |
+| 阈值 70% / transcript 不改写 / 只由 `heir` 交走 | 读 `agent.rs`、`store.rs` |
 | evolve 的四条纪律与 swap 守卫 | 读 `$GONGGA_HOME/skills/evolve/evolve.sh` + `status` 实跑 |
 | `evolve.sh swap` 的完整换手 | **实跑 9 次**，其中 02:24 那次**丢了回合**（pending 行被 `resume_pending` 的收尾无条件删除），修好后 3 次全部 resume 成功 |
 | swap 后验证行为而非 pid | 本会话实测：新二进制里"消息打断等待"只有真跑一条长命令才验得出，`server.lock` 变了不证明任何事 |

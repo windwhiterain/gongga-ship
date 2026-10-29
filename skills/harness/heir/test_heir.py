@@ -34,7 +34,6 @@ create table sessions (
     created_at integer not null,
     updated_at integer not null,
     handover text,
-    handover_through integer not null default 0,
     llm text,
     context_limit integer,
     thinking_effort integer,
@@ -142,7 +141,7 @@ def test_heir_moves_every_row_then_empties():
         )
         for kind, payload in source:
             h.add(sid, kind, payload)
-        h.c.execute("update sessions set handover='旧笔记', handover_through=3 where id=?", (sid,))
+        h.c.execute("update sessions set handover='旧笔记' where id=?", (sid,))
         h.c.commit()
 
         note = "用户要 A；B 失败因为 C；现在在 D"
@@ -167,8 +166,8 @@ def test_heir_moves_every_row_then_empties():
 
         # An emptied session numbers its next row from 1, so the note may claim to
         # cover nothing -- or that row would be folded away before it was ever sent.
-        s = h.c.execute("select handover, handover_through, context_tokens from sessions where id=?", (sid,)).fetchone()
-        assert s["handover"] == note and s["handover_through"] == 0 and s["context_tokens"] == 0, dict(s)
+        s = h.c.execute("select handover, context_tokens from sessions where id=?", (sid,)).fetchone()
+        assert s["handover"] == note and s["context_tokens"] == 0, dict(s)
         h.add(sid, "text", {"role": "user", "text": "醒来第一句"})
         assert [json.loads(r["content"])["text"] for r in h.rows(sid)] == ["醒来第一句"], "seq restarts at 1"
         m = h.c.execute("select model, cwd from sessions where id=?", (mid,)).fetchone()
@@ -215,8 +214,8 @@ def test_heir_keeps_the_call_in_flight():
         mine = h.rows(sid)
         assert [r["kind"] for r in mine] == ["tool_call"], [dict(r) for r in mine]
         assert mine[0]["seq"] == 2, dict(mine)
-        s = h.c.execute("select handover_through from sessions where id=?", (sid,)).fetchone()
-        assert s["handover_through"] == 1, dict(s)
+        s = h.c.execute("select handover from sessions where id=?", (sid,)).fetchone()
+        assert s["handover"] == "要做 X；Y 失败因为 Z", dict(s)
 
         # The archive holds the whole exchange, and the copied call is answered
         # there: a mentor reads its own transcript back as a valid request.
@@ -231,7 +230,7 @@ def test_heir_keeps_the_call_in_flight():
         h.add(sid, "tool_result", {"call_id": "c-live", "output": p.stdout, "images": []})
         left = h.rows(sid)
         assert [r["kind"] for r in left] == ["tool_call", "tool_result"], [dict(r) for r in left]
-        assert left[1]["seq"] > s["handover_through"], "the kept pair must still be sent"
+        assert [r["seq"] for r in left] == [2, 3], [dict(r) for r in left]
         h.close()
 
 def test_a_bad_copy_rolls_everything_back():
@@ -265,7 +264,8 @@ def test_a_bad_copy_rolls_everything_back():
         h.close()
 
 
-def test_read_and_collapse_still_work():
+def test_read_shows_every_row_that_is_actually_sent():
+    """Nothing is hidden behind a note: what is sent is what is in the table."""
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         h = Home(tmp)
         sid = h.session("main")
@@ -276,74 +276,14 @@ def test_read_and_collapse_still_work():
 
         out = json.loads(run(h, "read", "--session", "main").stdout)
         assert out["live_messages"] == 2 and out["shown_messages"] == 2, out
-        assert out["handover"] is None and out["handover_through"] == 0
+        assert out["handover"] is None
+        assert out["last_seq"] == 4, out
 
-        # A cut through seq 2 would leave seq 3 -- a tool result -- without its call,
-        # and the refusal has to name a boundary that works instead.
-        p = run(h, "collapse", "--session", "main", "--through", "2", "--note", "笔记")
-        assert p.returncode != 0 and "tool result" in p.stderr, p.stderr
-        assert "through 1" in p.stderr, p.stderr
-
-        p = run(h, "collapse", "--session", "main", "--through", "1", "--note", "笔记")
-        assert p.returncode == 0, p.stderr
+        # A note changes nothing about the rows: only `heir` can remove one.
+        h.c.execute("update sessions set handover='笔记' where id=?", (sid,))
+        h.c.commit()
         out = json.loads(run(h, "read", "--session", "main").stdout)
-        assert out["handover"] == "笔记" and out["live_messages"] == 1, out
-        h.close()
-
-
-def test_collapse_advances_instead_of_repeating_the_boundary():
-    """A session folded to a boundary, then asked to go further, must move or be told not to.
-
-    The field case: a note covering through seq 3, then only tool calls and their
-    results above it. Asked to fold through 6 -- which would split the pair at 6/7
-    -- the old advice named the last `text` row below the orphan, seq 3, which is
-    where the note already stops: the command folded the same boundary again,
-    reported success, and the session stayed over budget.
-    """
-    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
-        h = Home(tmp)
-        sid = h.session("main")
-        h.add(sid, "text", {"role": "user", "text": "开头"})
-        h.add(sid, "text", {"role": "assistant", "text": "决定"})
-        h.add(sid, "text", {"role": "user", "text": "到这里为止"})
-        h.c.execute("update sessions set handover='旧笔记', handover_through=3 where id=?", (sid,))
-        h.c.commit()
-        h.c.execute("update sessions set context_tokens=212112 where id=?", (sid,))
-        h.c.commit()
-        for seq, kind, payload in [
-            (4, "tool_call", {"call_id": "c4", "name": "bash", "arguments": "{}"}),
-            (5, "tool_result", {"call_id": "c4", "output": "ok", "images": []}),
-            (6, "tool_call", {"call_id": "c6", "name": "bash", "arguments": "{}"}),
-            (7, "tool_result", {"call_id": "c6", "output": "ok", "images": []}),
-        ]:
-            h.c.execute(
-                "insert into messages (session_id, seq, kind, content, created_at) values (?,?,?,?,"
-                " 1)", (sid, seq, kind, json.dumps(payload, ensure_ascii=False)),
-            )
-        h.c.commit()
-
-        # Splitting the pair at 6/7 is refused, and the cut it names is above the
-        # note: seq 5, because the row after 5 is a call and can start a request.
-        p = run(h, "collapse", "--session", "main", "--through", "6", "--note", "新笔记")
-        assert p.returncode != 0, p.stdout
-        assert "tool result" in p.stderr, p.stderr
-        assert "Fold through 5" in p.stderr, p.stderr
-
-        # Repeating the boundary the note already covers is refused rather than
-        # accepted: that is the no-op that reported success six times.
-        p = run(h, "collapse", "--session", "main", "--through", "3", "--note", "又一份笔记")
-        assert p.returncode != 0, "folding through the current boundary changed nothing but said it did"
-        assert "folds nothing" in p.stderr, p.stderr
-        assert "newest row is 7" in p.stderr, p.stderr
-        s = h.c.execute("select handover, context_tokens from sessions where id=?", (sid,)).fetchone()
-        assert s["handover"] == "旧笔记" and s["context_tokens"] == 212112, dict(s)
-
-        # And the cut that is genuinely available does advance, note and all.
-        p = run(h, "collapse", "--session", "main", "--through", "5", "--note", "新笔记")
-        assert p.returncode == 0, p.stderr
-        s = h.c.execute("select handover, handover_through, context_tokens from sessions where id=?", (sid,)).fetchone()
-        assert s["handover"] == "新笔记" and s["handover_through"] == 5, dict(s)
-        assert s["context_tokens"] == 0, "the fold resets the measurement it just invalidated"
+        assert out["handover"] == "笔记" and out["live_messages"] == 2, out
         h.close()
 
 
