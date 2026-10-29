@@ -52,8 +52,8 @@ $T heir --session <你的会话名> --mentor mentor-<你的会话名> \
 清空之后 `heir` 会往你的会话里插进一条引导消息，里面带着 mentor 的名字和两条命令：
 
 ```
-读档案： harness {command: "get_messages", arguments: {session: "mentor-main", range: "1:"}}
-问一句： harness {command: "send_message", arguments: {session: "mentor-main", message: "…"}}
+读档案： gongga get_messages --session mentor-main --range 1:
+问一句： gongga send_message --session mentor-main --message "…"
 ```
 
 **先读。** 你做过什么、决定过什么、哪次失败为什么失败——那些都在行里，记录比任何模型的回答都准，

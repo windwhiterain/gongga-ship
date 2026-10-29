@@ -47,7 +47,8 @@ tool in every session.
 A skill body must never assume it lives in a repository. Write the install path:
 
 - harness bucket: `$GONGGA_HOME/skills/<name>/...` -- the harness exports
-  `GONGGA_HOME`, `GONGGA_CLI` and `GONGGA_SERVER` into every shell it runs.
+  `GONGGA_HOME`, `GONGGA_CLI`, `GONGGA_SERVER` and `GONGGA_SESSION` into every shell
+  it runs, and a `PATH` that resolves the `gongga` command installed beside the home.
 - general bucket: `~/.agents/skills/<name>/...`
 
 Both spellings are runnable exactly as written, which is the only rule that keeps

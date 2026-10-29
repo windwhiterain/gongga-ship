@@ -150,25 +150,27 @@ EOF
 会话正忙时 `send_message` 不排队第二个 turn，而是写一条 `kind=inject` 的行，由当前 turn
 在**下一个 step 边界**读进 transcript。这就是"给自己留一句不会丢的话"。
 
-你自己（agent）走的是 **`harness` 工具**，不是 CLI —— 你就住在 server 里，没理由为了
-发一句话再起一个客户端去连自己：
+你自己（agent）在 bash 里直接敲 `gongga` —— 服务端把这条命令装进 `<home>/bin`，并把它
+放进你 shell 的 `PATH` 最前面：
 
 ```
-harness{command: "send_message", arguments: {"session": "test1", "message": "SELF-NOTE: ..."}}
+gongga send_message --session test1 --message "SELF-NOTE: ..."
 ```
 
 回执「message queued for test1; it will be read at the next step」，下一个 step 就以
-一条 user 消息出现。脚本、launcher、别的进程仍然用 `$GONGGA_CLI` —— 它们是独立进程，
-本来就没有你的工具。
+一条 user 消息出现。脚本、launcher、别的进程用 `$GONGGA_CLI` —— 同一个程序的绝对路径，
+所以它们不需要那条 `PATH` 也能说话。
 
 **它现在还能叫醒你**（2026-10-24 起）：前台 `bash` 正等一条长命令时，消息一到，等待就结束、
 命令交给后台继续跑（见 §3）。所以这不是"留言"，是一条**打断**——`sleep 40` 实测 3 秒返回。
 两面的用法：
 
 - 想让长命令早点放手 → 从别处发一条消息，不用干等。
-- 小心：你自己排队发的消息也会打断自己正在等的东西，别在关键写入中途自己插自己。
-  这条只在**别的进程**发消息时成立：你卡在一个 `bash` 调用里时无法调用 `harness`，
-  所以"自己叫醒自己那条 sleep"做不到——要么等它超时转后台，要么让另一个会话/脚本发。
+- 小心：你自己发的消息同样会打断自己正在等的东西，别在关键写入中途插自己。
+  而"叫醒自己正在等的那条前台命令"现在是**做得到**的 —— 把要等的东西放进后台，再发那条消息：
+  `sleep 8 & gongga send_message --session $GONGGA_SESSION --message "醒一下"`。
+  实测：这条 `bash` 0.4 秒返回，日志写着「handed a command to the background: a message is
+  waiting」，八秒后它的输出作为完成通知自己回来。工具时代做不到 —— 一个 turn 一次只能调一个工具。
 
 规矩：
 
@@ -300,9 +302,10 @@ EOF
 - **超时后假设 cwd 没变。** 同名 shell 已经换成新的、回到会话目录。
 - **`cat` 溢出文件。** 它们可能很大；用 `sed -n` / `grep`。
 - **第二次 `check_bash` 期待同样输出。** 读即清空；第二次只会拿到新的部分。
-- **在 bash 里 `$GONGGA_CLI /cancel`。** `/` 只属于交互式输入行；这里 `/cancel` 会被
-  Git Bash 当路径改写成 `C:/.../Git/cancel`。脚本里写裸名字：`$GONGGA_CLI cancel`。
-  （`harness` 工具两种都收 —— 你在文档里读到过那种写法，它不该因此拒绝你。）
+- **在 bash 里 `gongga /cancel`。** `/` 只属于交互式输入行；这里 `/cancel` 会被
+  Git Bash 当路径改写成 `C:/.../Git/cancel`。argv 已经是 token，起这个进程的人已经写下了
+  命令名，没有第二层语法要再解一遍：写裸名字 `gongga cancel`（脚本里 `$GONGGA_CLI cancel` 同理）。
+  带 `/` 或带路径分隔符的第一个 token 会被命令层拿最后一段去目录里查，命中就告诉你正确写法。
 - **`bash` 传 `cmd`。** 参数名是 `command`。多余键被忽略，缺 required 会被拒并提示
   「did you mean `command`?」。
 - **在 bash 里 `kill <pid>` 停 detached。** MSYS pid 不等于 Windows pid，`taskkill` 认不出来；
@@ -360,8 +363,8 @@ EOF
 
 - **harness 桶** → `<home>/skills/<name>/`。跟着 home 走，随服务端实例存在。
   命令一律写成 `$GONGGA_HOME/skills/<name>/...`——`$GONGGA_HOME`、`$GONGGA_CLI`、
-  `$GONGGA_SERVER` 本来就在每个 shell 的环境里。本文件、`heir`、`evolve`、
-  `image` 都在这个桶。
+  `$GONGGA_SERVER`、`$GONGGA_SESSION` 本来就在每个 shell 的环境里，`gongga` 也在这条
+  `PATH` 上。本文件、`heir`、`evolve`、`image` 都在这个桶。
 - **通用桶** → `~/.agents/skills/<name>/`。跟着机器走，和 `llm.toml` 做邻居：机器自己的
   常驻规矩也放这儿当一个 skill——`instructions` 里没有任何东西是从磁盘自动读进来的。
   命令写成 `~/.agents/skills/<name>/...`。
