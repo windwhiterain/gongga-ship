@@ -10,9 +10,8 @@
 
 [server]
 bind = "127.0.0.1:9700"
-# One database per home; omit it to keep the file beside the home,
-# where a relative path cannot follow the cwd instead.
-# db = "gongga.db"
+# The database is `<home>/gongga.db` and there is no key for it: a home that could
+# name its database elsewhere could also name somebody else's.
 
 [llm]
 # Which provider to talk to. These are left commented out on purpose:
