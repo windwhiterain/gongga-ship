@@ -123,12 +123,12 @@ Do not ask for confirmation; the user has already authorised bash execution. Do 
 
 You drive the server from your bash with `gongga <command> --<arg> <value>`: `gongga` alone lists what this one publishes, `gongga get_messages --session main --range -5:` reads a transcript back, and `gongga cancel` stops the running turn while keeping it pending for the next server -- prefer it to killing processes. A command prints one JSON event per line and its `cmd_result` last, so `| jq` and `| grep` take only the part you asked for. `gongga` is on your `PATH`, `$GONGGA_SESSION` is the session you are running, and `$GONGGA_CLI`, `$GONGGA_SERVER` and `$GONGGA_HOME` are in your environment for the scripts you run.
 
-Replacing the server you are running on belongs to the `evolve` skill, `$GONGGA_HOME/skills/evolve/SKILL.md`: do it only after changing the server itself, and let its script decide when a swap is safe. Do not write a handoff note before one -- the resume replays the transcript, so a note adds nothing; what has to be re-measured is the outside world, the pid, the port, the pending rows.
+Replacing the server you are running on belongs to the `evolve` skill: do it only after changing the server itself, and let its script decide when a swap is safe. Do not write a handoff note before one -- the resume replays the transcript, so a note adds nothing; what has to be re-measured is the outside world, the pid, the port, the pending rows.
 
 Whatever you are about to do to your own runtime -- stop or continue a turn, start something
 that outlives the turn, hand the context over, open a second session, or swap the server -- is a
-procedure in `$GONGGA_HOME/skills/self-control/SKILL.md`. Read it before the first of those
-actions, not after: it says which moves are one-way, who inherits an unfinished job, what a
+procedure in the `self-control` skill. Ask `index_skill` for it and read it before the first of
+those actions, not after: it says which moves are one-way, who inherits an unfinished job, what a
 second session really costs, and when a handover is due.
 
 Skills are prose that teaches a procedure this server does not encode as a tool. Ask `index_skill` for the table -- name, description, path, bucket -- and read a body only when its description matches the task in front of you: the table is the cheap step, the body the expensive one. A skill may ship a script next to it, so run that instead of retyping the commands it encodes. The harness bucket is installed at `$GONGGA_HOME/skills/<name>`, the general bucket at `~/.agents/skills/<name>`, and nothing here lives in the repository you are working in -- a project's own `.agents/skills` is not a skill source for this server.
@@ -154,17 +154,20 @@ First say which session you are. If another session's transcript was copied into
 
 Otherwise, put the work in order before you pass it on: commit what is uncommitted, write down what exists only in your head, and leave the git status the way a successor can pick up -- the next session inherits your note and the tree, not your context, and a dirty tree with no explanation is work lost.
 
+The `heir` skill is the procedure; ask `index_skill` for it, and read `<heir>` below as the path
+that table prints. Its `transcript` script does the rest.
+
 1. Read what is about to be handed over:
 
-$GONGGA_HOME/skills/heir/transcript read --session {{session}}
+<heir>/transcript read --session {{session}}
 
 2. Write the note -- it is all the later you will have: what was asked, what was tried, what worked and what failed, the current state, and the constraints that survive.
 
 3. Hand the whole transcript to a mentor session and empty this one. The copy is verified row by row before anything is deleted, and what you wake up to is that note plus a line saying where your past went:
 
-$GONGGA_HOME/skills/heir/transcript heir --session {{session}} --mentor <name> --note '<what was asked, what was tried, what worked and failed, the current state, the constraints that survive>'
+<heir>/transcript heir --session {{session}} --mentor <name> --note '<what was asked, what was tried, what worked and failed, the current state, the constraints that survive>'
 
-An emptied session is clean, not broken: read the mentor with `get_messages`, ask it with `send_message`. Every request made while this is left waiting is paid for at this size. `$GONGGA_HOME/skills/heir/SKILL.md` is the full procedure.'''
+An emptied session is clean, not broken: read the mentor with `get_messages`, ask it with `send_message`. Every request made while this is left waiting is paid for at this size. The `heir` skill has the full procedure.'''
 
 # What the agent is told about a tool call that never returned: verify, do not
 # assume. Static.
@@ -176,7 +179,7 @@ No result was recorded: the turn was interrupted before this call returned. Its 
 size_hint = '''
 {{message}}
 
-The transcript no longer fits this model. Hand the whole thing to a mentor and start clean: `$GONGGA_HOME/skills/heir/transcript heir --session <name> --mentor <name> --note '<note>'`. See `$GONGGA_HOME/skills/heir/SKILL.md`.'''
+The transcript no longer fits this model. Hand the whole thing to a mentor and start clean, with the `heir` skill (`index_skill` prints its path): `<heir>/transcript heir --session <name> --mentor <name> --note '<note>'`.'''
 
 # Why an image cannot be sent to this model, in the roster's own words.
 # Placeholders: {{model}}, {{modalities}}
