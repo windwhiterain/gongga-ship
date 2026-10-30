@@ -59,9 +59,13 @@ BUILD="$RUN/target"
 mkdir -p "$RUN"
 
 # The CLI has to be reachable from a plain bash call, exactly as the model
-# would call it: the name on PATH first, then the build in this repo.
-CLI="$(command -v gongga || command -v gongga.exe || true)"
-if [ -z "$CLI" ] && [ -x "$ROOT/target/debug/gongga.exe" ]; then
+# would call it: the name on PATH first, then the build in this repo. Both
+# spellings are asked for: `gongga` is what a home installed before the command
+# was renamed, and a handover has to work across that rename.
+CLI="$(command -v gongga-cli || command -v gongga-cli.exe || command -v gongga || command -v gongga.exe || true)"
+if [ -z "$CLI" ] && [ -x "$ROOT/target/debug/gongga-cli.exe" ]; then
+  CLI="$ROOT/target/debug/gongga-cli.exe"
+elif [ -z "$CLI" ] && [ -x "$ROOT/target/debug/gongga.exe" ]; then
   CLI="$ROOT/target/debug/gongga.exe"
 fi
 
@@ -248,7 +252,7 @@ cmd_stage() {
     CARGO_TARGET_DIR="$BUILD" cargo build --workspace
   else
     # Server-only by default: the TUI may be running from
-    # target/debug/gongga.exe and a workspace build would have to relink it.
+    # target/debug/gongga-tui.exe and a workspace build would have to relink it.
     # The protocol is unchanged, so the old client still speaks to the new
     # server.
     CARGO_TARGET_DIR="$BUILD" cargo build -p gongga-server

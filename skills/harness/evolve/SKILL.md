@@ -108,7 +108,7 @@ pid，这是**正常**的，不是换手失败。`status` 用父进程关系识�
 `target\debug\gongga-server.exe`。私有 target 目录让构建不受 target/ 在干什么影响。
 
 **3. `stage` 默认只构建 server。** 协议没变时旧客户端照样能连；`--all` 会连客户端一起换，
-而用户正在用的 TUI 锁着 `gongga.exe`（会 `拒绝访问 (os error 5)`）。
+而用户正在用的 TUI / CLI 锁着 `gongga-tui.exe`、`gongga-cli.exe`（会 `拒绝访问 (os error 5)`）。
 
 **4. 只有最新的 stage 能接管。** `stage` 写 `.dev/evolve-current`；被取代的 launcher 自己
 退出等待循环，`swap` 拒绝非当前 stamp。重复 `stage` 安全，但**别指望用旧 stamp 回滚**

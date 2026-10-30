@@ -153,15 +153,15 @@ EOF
 会话正忙时 `send_message` 不排队第二个 turn，而是写一条 `kind=inject` 的行，由当前 turn
 在**下一个 step 边界**读进 transcript。这就是"给自己留一句不会丢的话"。
 
-你自己（agent）在 bash 里直接敲 `gongga` —— 服务端把这条命令装进 `<home>/bin`，并把它
+你自己（agent）在 bash 里直接敲 `gongga-cli` —— 服务端把这条命令装进 `<home>/bin`，并把它
 放进你 shell 的 `PATH` 最前面：
 
 ```
-gongga send_message --session test1 --message "SELF-NOTE: ..."
+gongga-cli send_message --session test1 --message "SELF-NOTE: ..."
 ```
 
 回执「message queued for test1; it will be read at the next step」，下一个 step 就以
-一条 user 消息出现。脚本、launcher、别的进程也一样写 `gongga`：`PATH` 首位就是它，
+一条 user 消息出现。脚本、launcher、别的进程也一样写 `gongga-cli`：`PATH` 首位就是它，
 那是同一个程序，不需要路径也不需要第二个变量。
 
 **它现在还能叫醒你**（2026-10-24 起）：前台 `bash` 正等一条长命令时，消息一到，等待就结束、
@@ -265,9 +265,9 @@ EOF
 - **超时后假设 cwd 没变。** 同名 shell 已经换成新的、回到会话目录。
 - **`cat` 溢出文件。** 它们可能很大；用 `sed -n` / `grep`。
 - **第二次 `check_bash` 期待同样输出。** 读即清空；第二次只会拿到新的部分。
-- **在 bash 里 `gongga /cancel`。** `/` 只属于交互式输入行；这里 `/cancel` 会被
+- **在 bash 里 `gongga-cli /cancel`。** `/` 只属于交互式输入行；这里 `/cancel` 会被
   Git Bash 当路径改写成 `C:/.../Git/cancel`。argv 已经是 token，起这个进程的人已经写下了
-  命令名，没有第二层语法要再解一遍：写裸名字 `gongga cancel`（脚本里 `["gongga", "cancel"]` 同理）。
+  命令名，没有第二层语法要再解一遍：写裸名字 `gongga-cli cancel`（脚本里 `["gongga-cli", "cancel"]` 同理）。
   带 `/` 或带路径分隔符的第一个 token 会被命令层拿最后一段去目录里查，命中就告诉你正确写法。
 - **`bash` 传 `cmd`。** 参数名是 `command`。多余键被忽略，缺 required 会被拒并提示
   「did you mean `command`?」。
@@ -324,7 +324,7 @@ EOF
 
 - **harness 桶** → `<home>/skills/<name>/`。跟着 home 走，随服务端实例存在。
   命令一律写成 `$GONGGA_HOME/skills/<name>/...`——`$GONGGA_HOME`、`$GONGGA_SERVER`、
-  `$GONGGA_SESSION` 本来就在每个 shell 的环境里，`gongga` 也在这条 `PATH` 上（脚本同理）。本文件、`heir`、`evolve`、`image` 都在这个桶。
+  `$GONGGA_SESSION` 本来就在每个 shell 的环境里，`gongga-cli` 也在这条 `PATH` 上（脚本同理）。本文件、`heir`、`evolve`、`image` 都在这个桶。
 - **通用桶** → `~/.agents/skills/<name>/`。跟着机器走，和 `providers.toml` 做邻居：机器自己的
   常驻规矩也放这儿当一个 skill——`instructions` 里没有任何东西是从磁盘自动读进来的。
   命令写成 `~/.agents/skills/<name>/...`。
