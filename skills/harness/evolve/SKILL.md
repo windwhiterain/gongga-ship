@@ -164,6 +164,44 @@ powershell -NoProfile -Command "(Get-CimInstance Win32_Process -Filter 'ProcessI
 du -ch .dev/evolve-*-server.exe | tail -1
 ```
 
+## 开发环境：别用自己正在跑的那套
+
+要验服务端改动（新端点、新工具、新 roster 字段），**不要用你自己正在跑的 home 和 roster**。
+一套隔离环境只多三步：
+
+```bash
+# 1. 自己的 roster，指向自己的 fake 端点
+cat > .dev/v/llm.toml <<'EOF'
+[[provider]]
+id = "fake"
+  [[provider.endpoint]]
+  api = "openai-responses"
+  base_url = "http://127.0.0.1:8899/v1"
+  ...
+EOF
+
+# 2. 自己的 home + 端口；roster 的入口是 GONGGA_LLM_CATALOG
+GONGGA_LLM_CATALOG=$PWD/.dev/v/llm.toml GONGGA_KEY=sk-fake   ./.dev/target-test1/debug/gongga --home .dev/v/srv serve --port 8900
+
+# 3. 客户端显式指过去，并且不要让它自己拉服务端
+./target/debug/gongga --server 127.0.0.1:8900 --home .dev/v/srv --key sk-fake --client-only   set_session --session s --llm fake/fake
+```
+
+三个坑：
+
+- **`HOME=` 不管用**：roster 走 `GONGGA_LLM_CATALOG`，`dirs::home_dir()` 在 Windows 上
+  不读 `HOME`。设了 `HOME` 以为隔离了，实际还是读你真实的 `~/.agents/llm.toml`。
+- **roster 是 `OnceLock`，进程启动读一次**。改了 roster 要重启服务端才生效。
+- 用 `scripts/fake_llm.py` 当端点，`FAKE_LLM_DUMP=<path>` 会把**真实请求体**逐行写下来——
+  想看"服务端到底发了什么"，这是唯一可信的办法，别靠读代码推测。
+
+日常换二进制用 `scripts/dev.sh`（把 exe 复制出 `target/` 再起，避开 Windows 的文件锁）。
+验完收尾：关掉测试服务端（否则 `target/` 里的 exe 锁着），删掉 `.dev/v/`。
+
+**别信"某条测试会失败"这类断言——先自己跑一遍再转述，包括本文档里的。** 踩过一次：
+有记录说私有 target 目录会让 `cli_path` 测试失败，实测 `CARGO_TARGET_DIR=.dev/target-test1`
+下那条测试是通过的（`cli_path()` 有三层兜底）。
+
 ## 什么时候不需要它
 
 - 只改了 skill 脚本 / 文档 / TUI → 不用换服务端（TUI 要重开客户端而已）。

@@ -1,12 +1,15 @@
 ---
 name: self-control
-description: 控制"自己"的运行——本回合、自己起的进程、自己的上下文、以及跑着自己的那个服务端。当你要停/续/换自己的回合、要起一个活得比自己久的作业、要跨重启或压缩保留意图、要改服务端并用上新的自己、或者发现自己的输出/进程/状态不对劲时，读这个。不涉及写业务代码。
+description: 控制"自己"的运行——本回合、自己起的进程、自己的上下文、自己的会话。当你要停/续自己的回合、要起一个活得比自己久的作业、要跨重启或压缩保留意图、要开第二个会话或子 agent、或者发现自己的输出/进程/状态不对劲时，读这个。只讲怎么用这个 harness；改它的源码、把它换成新的自己，是 evolve skill 的事。
 ---
 
 # 自我控制
 
 harness 给你四类杠杆：**回合**（turn）、**进程**（谁能收尸）、**上下文**（什么会活下来）、
 **身份**（跑着你的那个 exe）。每个都有确切的作用域，其中三个是单向门。
+
+这份文件只讲**怎么用**这个 harness。**改它的源码、把它换成新的自己**，是 `evolve` skill 的事，
+不在这里混着写。
 
 先记住贯穿全文的一个问题：**谁回来收这活？** 有主的东西才谈得上"停"；无主的东西只有
 `del_bash` 停得住，而本回合被换掉时没有任何人回来。
@@ -210,80 +213,11 @@ gongga del_session --session sub1            # 它在你名下，收尾是你的
 
 ---
 
-## 6. 换掉自己（self-evolution）
+## 6. 改源码不是用 harness
 
-完整流程在 **`evolve` skill**（`$GONGGA_HOME/skills/evolve/SKILL.md`），脚本是
-`$GONGGA_HOME/skills/evolve/evolve.sh`。这里只留几条容易忘的：
-
-```bash
-S=$GONGGA_HOME/skills/evolve/evolve.sh
-$S stage        # 测试 + 构建到 .dev/target + 暂存 + 生成 launcher
-# 用 bash --detached 启动它打印的 launcher
-$S swap <stamp> # 守卫通过才 cancel
-```
-
-1. **先起继任者，再 cancel**。反过来一旦新二进制起不来，home 就空着，没人 resume 本回合。
-2. **不要写交接笔记。** resume 会重放完整 transcript（含每个工具调用和结果），笔记不会
-   多提供任何信息；02:24 那次我写了笔记，结果 pending 行丢了、根本没人被唤醒。
-   该做的是**重新测量外部状态**：`server.lock`、端口、`pending_tasks`、残留 detached。
-3. **验证看继任者自己的日志**，不看 `server.lock` 变了没：
-
-   ```bash
-   sed 's/\x1b\[[0-9;]*m//g' ~/.gongga/detached/<最新>.log | grep -E "replaying a turn|resumed=true"
-   ```
-
-   两行都在、时间戳几乎相同，才算接上了。
-4. **Windows 上 `exec` 不保留 pid**（实测：launcher 是 bash，exe 成了它的子进程）。
-   所以 `server.lock` 的 pid ≠ `launch.pid` 是**正常**的，别据此判断换手失败。
-
-### 改服务端代码时的两个 Windows 坑
-
-1. **`拒绝访问 (os error 5)`**：`target/` 里的 `.exe` 正被跑着，`cargo build` 写不进去。
-   如果你为了测试起过一个服务端，先关掉它再编。
-2. **别信"私有 target 目录会让 `cli_path` 测试失败"这句话。** 实测
-   `CARGO_TARGET_DIR=.dev/target-test1` 下那条测试**是通过的**（`cli_path()` 有三层兜底）。
-   看到"某条测试会失败"这类断言，先自己跑一遍再转述——包括本文档里的。
-
-日常开发换二进制用 `scripts/dev.sh`（把 exe 复制出 `target/` 再起，避免锁）。
-
----
-
-### 改服务端又不影响自己：隔离一套环境
-
-要验证服务端改动（新端点、新工具、新 roster 字段），**不要用你自己正在跑的 home 和 roster**。
-一套隔离环境只多三行：
-
-```bash
-# 1. 自己的 roster，指向自己的 fake 端点
-cat > .dev/v/llm.toml <<'EOF'
-[[provider]]
-id = "fake"
-  [[provider.endpoint]]
-  api = "openai-responses"
-  base_url = "http://127.0.0.1:8899/v1"
-  ...
-EOF
-
-# 2. 自己的 home + 端口；GONGGA_LLM_CATALOG 才是 roster 的入口
-GONGGA_LLM_CATALOG=$PWD/.dev/v/llm.toml GONGGA_KEY=sk-fake \
-  ./.dev/target-test1/debug/gongga-server.exe --home .dev/v/srv --bind 127.0.0.1:8900
-
-# 3. 客户端显式指过去
-./target/debug/gongga.exe --server 127.0.0.1:8900 --key sk-fake set_session --session s --llm fake/fake
-```
-
-三个坑：
-
-- **`HOME=` 不管用**：roster 走 `GONGGA_LLM_CATALOG`，`dirs::home_dir()` 在 Windows 上
-  不读 `HOME`。设了 `HOME` 以为隔离了，实际还是读你真实的 `~/.agents/llm.toml`。
-- **roster 是 `OnceLock`，进程启动读一次**。改了 roster 要重启服务端才生效。
-- 用 `scripts/fake_llm.py` 当端点，`FAKE_LLM_DUMP=<path>` 会把**真实请求体**逐行写下来——
-  想看"服务端到底发了什么"，这是唯一可信的办法，别靠读代码推测。
-
-验完记得收尾：关掉测试服务端（否则 `target/` 里的 exe 锁着，见上面的 `os error 5`），
-删掉 `.dev/v/`。
-
----
+换掉跑着自己的那个 exe、改它的源码、用它自己的开发环，都是另一件事，在 **`evolve` skill**
+（`$GONGGA_HOME/skills/evolve/SKILL.md`）。这里的每一条都是**使用**这个 harness 的规矩；
+要动它的源码，先去读那个 skill。
 
 ## 7. 单向门：做之前先看范围
 
@@ -341,8 +275,7 @@ EOF
   用 `del_bash`。
 - **用 `send_message` 记日志。** 它会永久留在 transcript 里并进入笔记，而且**会打断
   你正在等的命令**（见 §5）。
-- **信 `.agents/notes` 或本文档里的"某条测试会失败"而不自己跑一遍。** 已经踩过一次：
-  有记录说私有 target 目录会让 `cli_path` 测试失败，实测是通过的。
+
 - **以为写了 skill 文件就等于能被发现。** 发现靠提示词里那句索引；索引不在（旧服务端、
   cwd 不在仓库里），文件就是死的。先跑一遍索引命令再指望别人读到。
 
@@ -372,9 +305,7 @@ EOF
 | `cancel` 保留 pending、`interrupt_session` 删 pending、`del_session` 连带停 detached | 读 `crates/server/src/commands.rs` |
 | resume 不带任何 instruction | 读 `agent.rs::turn_inner`（`user_text: None` 不写行） |
 | 阈值 70% / transcript 不改写 / 只由 `heir` 交走 | 读 `agent.rs`、`store.rs` |
-| evolve 的四条纪律与 swap 守卫 | 读 `$GONGGA_HOME/skills/evolve/evolve.sh` + `status` 实跑 |
 | `evolve.sh swap` 的完整换手 | **实跑 9 次**，其中 02:24 那次**丢了回合**（pending 行被 `resume_pending` 的收尾无条件删除），修好后 3 次全部 resume 成功 |
-| swap 后验证行为而非 pid | 本会话实测：新二进制里"消息打断等待"只有真跑一条长命令才验得出，`server.lock` 变了不证明任何事 |
 | 只读 sqlite 自查 | 本会话实测 |
 
 ---
