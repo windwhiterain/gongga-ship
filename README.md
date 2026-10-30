@@ -33,7 +33,7 @@ different versions on one machine should not be reading one copy.
 A general skill speaks about the world outside: `remote` ssh's to another box,
 `proxy` and `latency` reason about the network this machine has, `computer_use`
 drives a desktop, `web-search` reads a provider's REST endpoint. Those belong to
-the machine, next to `llm.toml`, which the harness reads rather than owns. A
+the machine, next to `providers.toml`, which the harness reads rather than owns. A
 standing rule about this machine is a skill here too: the harness reads no rules
 file into a prompt, so prose that is always true is still prose somebody has to
 ask for.

@@ -54,7 +54,7 @@ $S fetch <url>                 # 一页正文转 markdown
 | `no results` | 查询太窄或无索引 | 换关键词，别加引号堆砌 |
 | `the endpoint returned no content for this URL` | 页面没有可提取正文 | 换来源 |
 
-环境变量：`DEEPSEEK_API_KEY`（优先生效）、`DEEPSEEK_ROSTER`（默认 `~/.agents/llm.toml`）、`DEEPSEEK_TOOLS_URL`（默认 `https://api.deepseek.com/v1/tools`）。
+环境变量：`DEEPSEEK_API_KEY`（优先生效）、`DEEPSEEK_ROSTER`（默认 `~/.agents/providers.toml`）、`DEEPSEEK_TOOLS_URL`（默认 `https://api.deepseek.com/v1/tools`）。
 
 ## 为什么不用 provider 内置搜索
 

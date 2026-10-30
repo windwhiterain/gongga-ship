@@ -9,7 +9,7 @@
 # Needs no model that supports server-side search, so it works on any session.
 set -uo pipefail
 
-ROSTER="${DEEPSEEK_ROSTER:-$HOME/.agents/llm.toml}"
+ROSTER="${DEEPSEEK_ROSTER:-$HOME/.agents/providers.toml}"
 BASE="${DEEPSEEK_TOOLS_URL:-https://api.deepseek.com/v1/tools}"
 
 die() { printf '%s\n' "$*" >&2; exit 1; }

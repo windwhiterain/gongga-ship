@@ -325,7 +325,7 @@ EOF
 - **harness 桶** → `<home>/skills/<name>/`。跟着 home 走，随服务端实例存在。
   命令一律写成 `$GONGGA_HOME/skills/<name>/...`——`$GONGGA_HOME`、`$GONGGA_SERVER`、
   `$GONGGA_SESSION` 本来就在每个 shell 的环境里，`gongga` 也在这条 `PATH` 上（脚本同理）。本文件、`heir`、`evolve`、`image` 都在这个桶。
-- **通用桶** → `~/.agents/skills/<name>/`。跟着机器走，和 `llm.toml` 做邻居：机器自己的
+- **通用桶** → `~/.agents/skills/<name>/`。跟着机器走，和 `providers.toml` 做邻居：机器自己的
   常驻规矩也放这儿当一个 skill——`instructions` 里没有任何东西是从磁盘自动读进来的。
   命令写成 `~/.agents/skills/<name>/...`。
   `computer_use`、`latency`、`proxy`、`remote`、`web-search` 在这个桶。

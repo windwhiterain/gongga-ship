@@ -171,7 +171,7 @@ du -ch .dev/evolve-*-server.exe | tail -1
 
 ```bash
 # 1. 自己的 roster，指向自己的 fake 端点
-cat > .dev/v/llm.toml <<'EOF'
+cat > .dev/v/providers.toml <<'EOF'
 [[provider]]
 id = "fake"
   [[provider.endpoint]]
@@ -180,8 +180,8 @@ id = "fake"
   ...
 EOF
 
-# 2. 自己的 home + 端口；roster 的入口是 GONGGA_LLM_CATALOG
-GONGGA_LLM_CATALOG=$PWD/.dev/v/llm.toml GONGGA_KEY=sk-fake   ./.dev/target-test1/debug/gongga --home .dev/v/srv serve --port 8900
+# 2. 自己的 home + 端口；roster 的入口是 GONGGA_PROVIDERS_CATALOG
+GONGGA_PROVIDERS_CATALOG=$PWD/.dev/v/providers.toml GONGGA_KEY=sk-fake   ./.dev/target-test1/debug/gongga --home .dev/v/srv serve --port 8900
 
 # 3. 客户端显式指过去，并且不要让它自己拉服务端
 ./target/debug/gongga --server 127.0.0.1:8900 --home .dev/v/srv --key sk-fake --client-only   set_session --session s --llm fake/fake
@@ -189,8 +189,8 @@ GONGGA_LLM_CATALOG=$PWD/.dev/v/llm.toml GONGGA_KEY=sk-fake   ./.dev/target-test1
 
 三个坑：
 
-- **`HOME=` 不管用**：roster 走 `GONGGA_LLM_CATALOG`，`dirs::home_dir()` 在 Windows 上
-  不读 `HOME`。设了 `HOME` 以为隔离了，实际还是读你真实的 `~/.agents/llm.toml`。
+- **`HOME=` 不管用**：roster 走 `GONGGA_PROVIDERS_CATALOG`，`dirs::home_dir()` 在 Windows 上
+  不读 `HOME`。设了 `HOME` 以为隔离了，实际还是读你真实的 `~/.agents/providers.toml`。
 - **roster 是 `OnceLock`，进程启动读一次**。改了 roster 要重启服务端才生效。
 - 用 `scripts/fake_llm.py` 当端点，`FAKE_LLM_DUMP=<path>` 会把**真实请求体**逐行写下来——
   想看"服务端到底发了什么"，这是唯一可信的办法，别靠读代码推测。

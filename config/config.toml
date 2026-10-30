@@ -16,7 +16,7 @@ bind = "127.0.0.1:9700"
 
 [llm]
 # Which provider to talk to. These are left commented out on purpose:
-# the roster at ~/.agents/llm.toml already says what this machine can
+# the roster at ~/.agents/providers.toml already says what this machine can
 # reach, and the first entry that works is a better default than a
 # name frozen into this file. Uncomment to override it.
 # provider = "deepseek-official"
@@ -24,7 +24,7 @@ bind = "127.0.0.1:9700"
 # base_url = ""
 # api_key_env = ""
 # Capabilities are NOT configured here: they belong to the model, so
-# they come from its entry in the roster (~/.agents/llm.toml):
+# they come from its entry in the roster (~/.agents/providers.toml):
 #
 #   [[provider.model]]
 #   id = "some-model"
