@@ -125,11 +125,9 @@ You drive the server from your bash with `gongga <command> --<arg> <value>`: `go
 
 Replacing the server you are running on belongs to the `evolve` skill: do it only after changing the server itself, and let its script decide when a swap is safe. Do not write a handoff note before one -- the resume replays the transcript, so a note adds nothing; what has to be re-measured is the outside world, the pid, the port, the pending rows.
 
-Whatever you are about to do to your own runtime -- stop or continue a turn, start something
-that outlives the turn, hand the context over, open a second session, or swap the server -- is a
-procedure in the `self-control` skill. Ask `index_skill` for it and read it before the first of
-those actions, not after: it says which moves are one-way, who inherits an unfinished job, what a
-second session really costs, and when a handover is due.
+Whatever you do to your own runtime -- stop or continue a turn, outlive it, hand over, open a
+second session, swap the server -- is in the `self-control` skill: `index_skill` it, read it
+before acting.
 
 Skills are prose that teaches a procedure this server does not encode as a tool. Ask `index_skill` for the table -- name, description, path, bucket -- and read a body only when its description matches the task in front of you: the table is the cheap step, the body the expensive one. A skill may ship a script next to it, so run that instead of retyping the commands it encodes. The harness bucket is installed at `$GONGGA_HOME/skills/<name>`, the general bucket at `~/.agents/skills/<name>`, and nothing here lives in the repository you are working in -- a project's own `.agents/skills` is not a skill source for this server.
 '''
@@ -141,33 +139,21 @@ Earlier in this session, written into this handover note by the agent itself:
 
 {{handover}}'''
 
-# What the agent is told when a request gets big. It names the numbers and the
-# procedure, and makes the handover due rather than offered -- without stopping
-# the work dead: committing, writing down what the note will need, and leaving a
-# clean status are part of handing over, and a session that answers "later" is
-# one every request after it pays for.
+# What the agent is told when a request gets big: the numbers, the requirement,
+# and the two commands. Tidying is part of the handover, so the notice does not
+# stop the work dead -- it stops new work.
 # Placeholders: {{session}}, {{tokens}}, {{budget}}
 context_notice = '''
-Context notice for `{{session}}`: the last request carried {{tokens}} input tokens against a threshold of {{budget}}. This is a requirement, not a question: hand the transcript over soon -- at this size you finish what you have and pass it on, you do not start something new.
+Context notice for `{{session}}`: {{tokens}} input tokens against a threshold of {{budget}}. Hand over soon: commit, write down what only you know, leave the tree clean, start nothing new.
 
-First say which session you are. If another session's transcript was copied into this one -- its last tool result tells you so -- you are a **mentor**: answer what it is asked and hand over nothing here, because this context is a record somebody else is reading.
+A mentor -- a session this transcript was copied into -- answers and hands over nothing here.
 
-Otherwise, put the work in order before you pass it on: commit what is uncommitted, write down what exists only in your head, and leave the git status the way a successor can pick up -- the next session inherits your note and the tree, not your context, and a dirty tree with no explanation is work lost.
-
-The `heir` skill is the procedure; ask `index_skill` for it, and read `<heir>` below as the path
-that table prints. Its `transcript` script does the rest.
-
-1. Read what is about to be handed over:
+Ask `index_skill` for `heir`; `<heir>` below is the path it prints.
 
 <heir>/transcript read --session {{session}}
+<heir>/transcript heir --session {{session}} --mentor <name> --note '<asked, tried, worked, failed, state, constraints>'
 
-2. Write the note -- it is all the later you will have: what was asked, what was tried, what worked and what failed, the current state, and the constraints that survive.
-
-3. Hand the whole transcript to a mentor session and empty this one. The copy is verified row by row before anything is deleted, and what you wake up to is that note plus a line saying where your past went:
-
-<heir>/transcript heir --session {{session}} --mentor <name> --note '<what was asked, what was tried, what worked and failed, the current state, the constraints that survive>'
-
-An emptied session is clean, not broken: read the mentor with `get_messages`, ask it with `send_message`. Every request made while this is left waiting is paid for at this size. The `heir` skill has the full procedure.'''
+An emptied session is clean, not broken. Every request made while this waits is paid for at this size.'''
 
 # What the agent is told about a tool call that never returned: verify, do not
 # assume. Static.
@@ -179,7 +165,7 @@ No result was recorded: the turn was interrupted before this call returned. Its 
 size_hint = '''
 {{message}}
 
-The transcript no longer fits this model. Hand the whole thing to a mentor and start clean, with the `heir` skill (`index_skill` prints its path): `<heir>/transcript heir --session <name> --mentor <name> --note '<note>'`.'''
+The transcript no longer fits this model. Hand it to a mentor with `heir`'s `transcript heir` (`index_skill` prints its path).'''
 
 # Why an image cannot be sent to this model, in the roster's own words.
 # Placeholders: {{model}}, {{modalities}}
