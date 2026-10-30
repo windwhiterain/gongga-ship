@@ -59,13 +59,10 @@ BUILD="$RUN/target"
 mkdir -p "$RUN"
 
 # The CLI has to be reachable from a plain bash call, exactly as the model
-# would call it: prefer the one the harness exported, then the build here.
-if [ -n "${GONGGA_CLI:-}" ] && [ -x "${GONGGA_CLI}" ]; then
-  CLI="$GONGGA_CLI"
-elif [ -x "$ROOT/target/debug/gongga.exe" ]; then
+# would call it: the name on PATH first, then the build in this repo.
+CLI="$(command -v gongga || command -v gongga.exe || true)"
+if [ -z "$CLI" ] && [ -x "$ROOT/target/debug/gongga.exe" ]; then
   CLI="$ROOT/target/debug/gongga.exe"
-else
-  CLI="$(command -v gongga.exe || command -v gongga || true)"
 fi
 
 die() { echo "evolve: $*" >&2; exit 1; }
@@ -330,7 +327,7 @@ its launcher has already left the queue -- run stage again if you meant the newe
   pid="$(running_pid || true)"
   [ -n "$pid" ] || die "no live server on $HOME_DIR; refusing to cancel"
   if [ -z "$CLI" ] || [ ! -x "$CLI" ]; then
-    die "no gongga CLI to send cancel with; set GONGGA_CLI"
+    die "no gongga CLI to send cancel with; is one on PATH?"
   fi
   disk_line "disk before:"
   echo "old server pid $pid; successor $exe (pid $launch_pid) is waiting"
