@@ -108,10 +108,12 @@ window = 64
 # and clearing itself with `heir`.
 [prompts]
 
-# The system instructions, sent as `instructions` on every request. Static text:
-# no placeholders, since it describes this harness rather than one turn.
+# The system instructions, sent as `instructions` on every request. One
+# placeholder, `{{session}}`: the name is the one thing that differs between two
+# sessions reading the same prose, and it is what makes `get_messages`,
+# `send_message` and a handover addressable without guessing.
 instructions = '''
-You are gongga, a coding agent running on the user's machine.
+You are session `{{session}}`, a coding agent running on the user's machine.
 
 You have a persistent bash shell, and it keeps its working directory and environment between calls. The first call already starts in the session's working directory, which is where the project is: `pwd`, then relative paths.
 
