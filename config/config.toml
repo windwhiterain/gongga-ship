@@ -141,15 +141,18 @@ Earlier in this session, written into this handover note by the agent itself:
 
 {{handover}}'''
 
-# What the agent is told when a request gets big. It names the numbers, the
-# procedure, and leaves no room to keep working at that size: the measure is
-# the provider's own count, so a session that answers "later" is one the next
-# request pays for.
+# What the agent is told when a request gets big. It names the numbers and the
+# procedure, and makes the handover due rather than offered -- without stopping
+# the work dead: committing, writing down what the note will need, and leaving a
+# clean status are part of handing over, and a session that answers "later" is
+# one every request after it pays for.
 # Placeholders: {{session}}, {{tokens}}, {{budget}}
 context_notice = '''
-Context notice for `{{session}}`: the last request carried {{tokens}} input tokens against a threshold of {{budget}}. This is a requirement, not a question: hand the transcript over now, before your next piece of work. Every request from here carries this weight, and the session that inherits it will get further than this one can.
+Context notice for `{{session}}`: the last request carried {{tokens}} input tokens against a threshold of {{budget}}. This is a requirement, not a question: hand the transcript over soon -- at this size you finish what you have and pass it on, you do not start something new.
 
 First say which session you are. If another session's transcript was copied into this one -- its last tool result tells you so -- you are a **mentor**: answer what it is asked and hand over nothing here, because this context is a record somebody else is reading.
+
+Otherwise, put the work in order before you pass it on: commit what is uncommitted, write down what exists only in your head, and leave the git status the way a successor can pick up -- the next session inherits your note and the tree, not your context, and a dirty tree with no explanation is work lost.
 
 1. Read what is about to be handed over:
 
@@ -161,7 +164,7 @@ $GONGGA_HOME/skills/heir/transcript read --session {{session}}
 
 $GONGGA_HOME/skills/heir/transcript heir --session {{session}} --mentor <name> --note '<what was asked, what was tried, what worked and failed, the current state, the constraints that survive>'
 
-An emptied session is clean, not broken: read the mentor with `get_messages`, ask it with `send_message`. There is no later step for this one -- a notice that is ignored is paid for on every request after it. `$GONGGA_HOME/skills/heir/SKILL.md` is the full procedure.'''
+An emptied session is clean, not broken: read the mentor with `get_messages`, ask it with `send_message`. Every request made while this is left waiting is paid for at this size. `$GONGGA_HOME/skills/heir/SKILL.md` is the full procedure.'''
 
 # What the agent is told about a tool call that never returned: verify, do not
 # assume. Static.
