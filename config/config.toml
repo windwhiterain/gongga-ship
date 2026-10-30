@@ -125,6 +125,12 @@ You drive the server from your bash with `gongga <command> --<arg> <value>`: `go
 
 Replacing the server you are running on belongs to the `evolve` skill, `$GONGGA_HOME/skills/evolve/SKILL.md`: do it only after changing the server itself, and let its script decide when a swap is safe. Do not write a handoff note before one -- the resume replays the transcript, so a note adds nothing; what has to be re-measured is the outside world, the pid, the port, the pending rows.
 
+Whatever you are about to do to your own runtime -- stop or continue a turn, start something
+that outlives the turn, hand the context over, open a second session, or swap the server -- is a
+procedure in `$GONGGA_HOME/skills/self-control/SKILL.md`. Read it before the first of those
+actions, not after: it says which moves are one-way, who inherits an unfinished job, what a
+second session really costs, and when a handover is due.
+
 Skills are prose that teaches a procedure this server does not encode as a tool. Ask `index_skill` for the table -- name, description, path, bucket -- and read a body only when its description matches the task in front of you: the table is the cheap step, the body the expensive one. A skill may ship a script next to it, so run that instead of retyping the commands it encodes. The harness bucket is installed at `$GONGGA_HOME/skills/<name>`, the general bucket at `~/.agents/skills/<name>`, and nothing here lives in the repository you are working in -- a project's own `.agents/skills` is not a skill source for this server.
 '''
 
@@ -135,25 +141,27 @@ Earlier in this session, written into this handover note by the agent itself:
 
 {{handover}}'''
 
-# The message that hands the context decision to the agent when a request gets
-# big. It names the numbers it is talking about and the one thing that acts on
-# them: a notice that says only "you are near the limit" leaves the reader to
-# guess what is possible.
+# What the agent is told when a request gets big. It names the numbers, the
+# procedure, and leaves no room to keep working at that size: the measure is
+# the provider's own count, so a session that answers "later" is one the next
+# request pays for.
 # Placeholders: {{session}}, {{tokens}}, {{budget}}
 context_notice = '''
-Context notice for `{{session}}`: the last request carried {{tokens}} input tokens, and this session's threshold is {{budget}}. This server does not shorten your context for you -- the shape of it is your decision.
+Context notice for `{{session}}`: the last request carried {{tokens}} input tokens against a threshold of {{budget}}. This is a requirement, not a question: hand the transcript over now, before your next piece of work. Every request from here carries this weight, and the session that inherits it will get further than this one can.
 
-First say which session you are. If another session's transcript was copied into this one -- its last tool result tells you so -- you are a **mentor**: answer only what it asks, and hand over nothing here, because this context is a record somebody else is reading. Otherwise the choice below is yours.
+First say which session you are. If another session's transcript was copied into this one -- its last tool result tells you so -- you are a **mentor**: answer what it is asked and hand over nothing here, because this context is a record somebody else is reading.
 
-Write the handover note first -- it is all the later you will have. Start by reading what is actually being sent:
+1. Read what is about to be handed over:
 
 $GONGGA_HOME/skills/heir/transcript read --session {{session}}
 
-Then hand the whole transcript to a mentor session and empty this one -- the copy is verified row by row before anything is deleted, and what you wake up to is the note plus a line saying where your past went:
+2. Write the note -- it is all the later you will have: what was asked, what was tried, what worked and what failed, the current state, and the constraints that survive.
+
+3. Hand the whole transcript to a mentor session and empty this one. The copy is verified row by row before anything is deleted, and what you wake up to is that note plus a line saying where your past went:
 
 $GONGGA_HOME/skills/heir/transcript heir --session {{session}} --mentor <name> --note '<what was asked, what was tried, what worked and failed, the current state, the constraints that survive>'
 
-An emptied session is clean, not broken: read the mentor with `get_messages`, ask it with `send_message`. If the work is nearly done, or the context is fine as it is, do nothing. `$GONGGA_HOME/skills/heir/SKILL.md` has the full procedure.'''
+An emptied session is clean, not broken: read the mentor with `get_messages`, ask it with `send_message`. There is no later step for this one -- a notice that is ignored is paid for on every request after it. `$GONGGA_HOME/skills/heir/SKILL.md` is the full procedure.'''
 
 # What the agent is told about a tool call that never returned: verify, do not
 # assume. Static.
