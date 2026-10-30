@@ -40,10 +40,13 @@ bind = "127.0.0.1:9700"
 #   # know fails every request of every turn.
 #   builtin_tools = ["web_search"]
 store = false
-# A request that never answers used to park a turn forever. These
-# bound it: one request may take this long overall, and this long
-# between chunks, before it counts as broken and is retried.
-request_timeout_ms = 180000
+# A request that never answers used to park a turn forever. Two
+# timers bound it, each knowing what it bounds: the answer's
+# headers must arrive within this long, and the model may not go
+# this long without saying anything -- keep-alive chunks carry no
+# event and do not count. Nothing bounds the body's total time: a
+# long answer is allowed to take as long as it takes.
+headers_timeout_ms = 180000
 idle_timeout_ms = 60000
 # Retries after a failure, a timeout, or a response with nothing in
 # it. 0 = no ceiling: retry until the turn is cancelled. The delay
