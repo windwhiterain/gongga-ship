@@ -1,6 +1,6 @@
 ---
 name: subagent
-description: 把一块独立的工作交给另一个会话并行做——子 agent 不是一个工具，而是一个普通会话：自己的 transcript、自己的上下文与阈值、自己的 turn。当你要并行推进两条互不相干的实现、要把一个大的验证/探查丢给别人而自己不涨上下文、或者要一个只读的侦察兵时，读这个。用 gongga-cli set_session / send_message / get_messages / del_session 操作它。
+description: 把一块独立的工作交给另一个会话并行做——子 agent 不是一个工具，而是一个普通会话：自己的 transcript、自己的上下文与阈值、自己的 turn。当你要并行推进两条互不相干的实现、要把一个大的验证/探查丢给别人而自己不涨上下文、或者要一个只读的侦察兵时，读这个。用 gongga-cli set_session / send_message / get_messages / del_session 操作它；创建会话时 `--model` 是必填，从 model_pool skill 取。
 ---
 
 # 子 agent
@@ -12,14 +12,37 @@ transcript、自己的上下文与压缩阈值、自己的 turn，跑在同一�
 （`SessionHandle::gate`），不是全局。
 
 ```bash
+S=~/.agents/skills/model_pool/model_pool
 G=gongga-cli
 $G set_session --session sub1 --cwd /path/to/its/checkout \
-    --model <provider>/<model name> --context_limit 20%
+    --model "$($S pick)" --context_limit 20%
 $G send_message --session sub1 --message '<自足的 brief>'
 $G get_messages --session sub1 --range -20:     # 它说到哪了
 $G interrupt_session --session sub1             # 别干了，丢掉这一轮
 $G del_session --session sub1                   # 它在你名下，收尾是你的活
 ```
+
+**`--model` 是必填，不是可选。** 服务端不再有任何"默认会话模型"：配置里的
+`[model]` 只是服务端自己想事情用的模型，不会成为任何会话的模型。所以
+`set_session` 新建会话时不给 `--model` 会直接失败——这是设计，不要绕过它（也别指望
+在 config 里写一个默认值，那条路已经没有了）。
+
+模型从 **model_pool skill** 拿：它按 flash / pro / sota 三档、按各 provider 当前
+额度抽一个这台机器现在真能跑的模型，输出的就是 `<provider>/<model id>`，可以直接
+喂给 `--model`：
+
+```bash
+$S pick                          # 随便抽一个能的
+$S pick --tier flash             # 便宜活：读文件、跑测试、搬代码
+$S pick --tier sota              # 硬活：设计、疑难定位
+$S pick --provider kimi-coding   # 只从某个 provider 里抽（比如只有它还有额度）
+$S status                        # 每个模型：档位、能不能用、剩多少
+```
+
+要点：`flash` 是**价格档不是能力档**——这台机器上最聪明的模型可能就在 flash 里；
+`sota` 买的是贵的前沿，不是"最划算的答案"。抽到哪个由额度决定，所以两条并行的
+子 agent 一般落在两个不同的 provider 上，正好不互相抢配额。子 agent 死在额度上时：
+`$S mark <provider>/<model>` 把它挡一会儿，再抽一个。
 
 **它忙不忙、上下文多大**：`get_messages` 看内容；只读查库看状态（服务端在跑时也安全）：
 
@@ -43,7 +66,13 @@ EOF
 4. **没有完成通知。** turn 结束只意味着它 idle；你要自己去读（`get_messages` 或上面那张
    表）。别指望一条消息回来。
 5. **它和你抢同一个 provider 配额。** 并发越多，单个请求越慢；开到你自己读得过来的数量。
+   用 `model_pool` 把它们摊到不同 provider 上，是这里唯一有效的缓解：抽到同一个就再抽。
+   某一轮真的死在额度上（子 agent 的 transcript 里会有一行 403/429），`model_pool mark`
+   那个路由，然后重抽——不要自己编一个模型名。
 6. **收尾**：`del_session` 会连它的 transcript 和 detached 作业一起删。留着不管，它就一直是
    一个占着上下文的空会话。
+7. **换模型就是一次 `set_session --model`。** 同一个子 agent 换个模型重试用的是它的
+   transcript：`set_session --session sub1 --model "$($S pick)"`，下一轮就换过去了，
+   历史还在。它跑的那段路不值得留，就 `del_session` 重开一个。
 
 它不是新进程、不是新服务端，也不用新 home 或新端口。
