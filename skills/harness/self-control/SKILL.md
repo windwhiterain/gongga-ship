@@ -1,6 +1,6 @@
 ---
 name: self-control
-description: 控制"自己"的运行——本回合、自己起的进程、自己的上下文、自己的会话。当你要停/续自己的回合、要起一个活得比自己久的作业、要跨重启或压缩保留意图、要开第二个会话或子 agent、或者发现自己的输出/进程/状态不对劲时，读这个。只讲怎么用这个 harness；改它的源码、把它换成新的自己，是 evolve skill 的事。
+description: 控制"自己"的运行——本回合、自己起的进程、自己的上下文、自己的会话。当你要停/续自己的回合、要起一个活得比自己久的作业、要跨重启或压缩保留意图、或者发现自己的输出/进程/状态不对劲时，读这个。只讲怎么用这个 harness：开第二个会话并行干活是 subagent skill，改它的源码、把它换成新的自己，是 evolve skill 的事。
 ---
 
 # 自我控制
@@ -182,37 +182,11 @@ gongga-cli send_message --session test1 --message "SELF-NOTE: ..."
   会被 provider 整单拒绝，所以注入点在 step 边界。
 - 消息自己也是 pending 行，`cancel` 前后都能活下来 —— 这是跨重启留意图最省事的办法。
 
-### 子 agent：多开一个会话就是多一个上下文
-
-这里没有"subagent 工具"，也不需要：**一个子 agent 就是一个普通会话**——它有自己的
-transcript、自己的上下文与压缩阈值、自己的 turn，跑在同一个服务端上。2026-10-30 实测：
-给 `main` 和 `sub1` 各发一条消息，两行 `turn start` 相隔 8 ms 出现，两个模型请求并行发出，
-两次 `turn end` 同时回来。并发是真的——turn 的互斥锁是**每个会话一把**
-（`SessionHandle::gate`），不是全局。
-
-```bash
-gongga set_session --session sub1 --cwd /path/to/its/checkout     --llm <provider>/<model> --context_limit 20%
-gongga send_message --session sub1 --message '<自足的 brief>'
-gongga report --session sub1                 # 请求数 / 上下文 / 忙还是空闲
-gongga get_messages --session sub1 --range -20:
-gongga del_session --session sub1            # 它在你名下，收尾是你的活
-```
-
-规矩：
-
-1. **brief 必须自足。** 它看不到你的 transcript，只有你发的那条消息和它自己的 cwd。
-2. **一份工作树只有一个写者。** 两个会话同时改同一份文件会互相覆盖：要么给它
-   `git worktree add` 一份自己的，要么让它只读探查。
-3. **它的上下文记在它自己账上。** 父会话不会因为它干活而变大——这就是它的价值：
-   一个会话承载全部工作时，上下文会一路涨到阈值以上几倍；把两条独立的实现分出去，
-   父会话就能一直待在阈值以下。
-4. **没有完成通知。** turn 结束只意味着它 idle；你得自己 `report` / `get_messages` 去读。
-5. **它和你抢同一个 provider 配额。** 并发越多，单个请求越慢，开到你自己读得过来的数量。
-
-它不是新进程、不是新服务端，也不用新 home 或新端口。
-
----
-
+### 子 agent：一块独立的工作交给另一个会话
+
+多开一个会话就有第二个上下文，可以并行做另一件事。怎么开、brief 要写什么、什么时候不能
+并发写同一份树，都在 **`subagent` skill**。
+
 ## 6. 改源码不是用 harness
 
 换掉跑着自己的那个 exe、改它的源码、用它自己的开发环，都是另一件事，在 **`evolve` skill**
