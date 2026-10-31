@@ -202,6 +202,42 @@ GONGGA_PROVIDERS_CATALOG=$PWD/.dev/v/providers.toml GONGGA_KEY=sk-fake   ./.dev/
 有记录说私有 target 目录会让 `cli_path` 测试失败，实测 `CARGO_TARGET_DIR=.dev/target-test1`
 下那条测试是通过的（`cli_path()` 有三层兜底）。
 
+## 症状：代码改了，命令目录还是旧的
+
+最常见的「我以为改完了」不是构建失败，而是**跑着的服务端还是旧 build**。特征：
+
+```bash
+$ gongga-cli                        # 命令目录里还是旧的参数名
+12 command(s); run one with `gongga <command> --<arg> <value>`.
+set_session -- takes: --session (required), --cwd (optional), --llm (optional), ...
+                                                   # 而源码里早就没有 --llm 了
+```
+
+命令目录是编进二进制、由服务端发布的，所以**源码正确不影响它**。确认到底是谁在服务：
+
+```bash
+cat ~/.gongga/server.lock                                    # pid
+powershell -NoProfile -Command "(Get-CimInstance Win32_Process -Filter 'ProcessId=<pid>').CommandLine"
+```
+
+`ExecutablePath` 不在 `target/` 也不在 `payload/<本 build>/` 下，就说明是别人的继任者或旧暂存件
+——它不会自己更新，只能走一次本 skill。**别去改源码找原因**，源码多半是对的。
+
+顺带一条：修完 `store.rs` 这类 schema 迁移之后，旧服务端的进程仍然持有旧代码，即使数据库
+已经被新二进制迁过了——两边对同一个库的假设不一样，这就是「什么都对不上」的来源。
+
+## 症状：TUI 关了，服务端还在
+
+说明那个服务端不是窗口起的（`--parent` 只管窗口自己 spawn 的），而是从别处来的——最常见
+就是被放弃的 evolve 继任者。窗口连上它会**认领**它（`signal::adopt`，见
+`docs/notes/server-signal.md`），此后关窗口就会停掉它；但**认领发生在连上之后**，所以
+「窗口已经关了」这种情况下只能手动收：
+
+```bash
+$S status            # 谁在等、端口与锁
+$S clean             # 收掉没人会 swap 的旧继任者（--artifacts 连旧暂存件）
+```
+
 ## 什么时候不需要它
 
 - 只改了 skill 脚本 / 文档 / TUI → 不用换服务端（TUI 要重开客户端而已）。
