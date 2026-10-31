@@ -169,9 +169,9 @@ def ensure_mentor(conn, name, source):
         return row["id"], False
     now = int(time.time() * 1000)
     conn.execute(
-        """insert into sessions (name, status, model, cwd, created_at, updated_at, provider)
-            values (?, 'idle', ?, ?, ?, ?, ?)""",
-        (name, source["model"], source["cwd"], now, now, source["provider"]),
+        """insert into sessions (name, status, model, cwd, created_at, updated_at)
+            values (?, 'idle', ?, ?, ?, ?)""",
+        (name, source["model"], source["cwd"], now, now),
     )
     return conn.execute("select id from sessions where name = ?", (name,)).fetchone()["id"], True
 
@@ -190,7 +190,7 @@ def cmd_heir(args):
     conn = connect()
     sid = session_id(conn, args.session)
     source = conn.execute(
-        "select model, cwd, provider, context_tokens, context_limit from sessions where id = ?",
+        "select model, cwd, context_tokens, context_limit from sessions where id = ?",
         (sid,),
     ).fetchone()
     rows = conn.execute(

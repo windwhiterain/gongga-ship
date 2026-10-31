@@ -34,7 +34,7 @@ create table sessions (
     created_at integer not null,
     updated_at integer not null,
     handover text,
-    provider text,
+    model_name text,
     context_limit integer,
     thinking_effort integer,
     context_tokens integer not null default 0
@@ -67,7 +67,7 @@ def server_schema(path):
 
 
 def wire_item(kind, payload):
-    """The distinct provider and reader shapes written by the current server."""
+    """The distinct model and reader shapes written by the current server."""
     if kind == "text":
         role = payload.get("role") or "user"
         text = payload.get("text") or ""
@@ -98,9 +98,9 @@ class Home:
 
     def session(self, name, model="p/m1", cwd="C:/work", tokens=777000):
         self.c.execute(
-            "insert into sessions (name, model, cwd, created_at, updated_at, provider, context_tokens)"
-            " values (?, ?, ?, 1, 1, ?, ?)",
-            (name, model, cwd, model, tokens),
+            "insert into sessions (name, model, cwd, created_at, updated_at, context_tokens)"
+            " values (?, ?, ?, 1, 1, ?)",
+            (name, model, cwd, tokens),
         )
         self.c.commit()
         return self.c.execute("select id from sessions where name=?", (name,)).fetchone()["id"]

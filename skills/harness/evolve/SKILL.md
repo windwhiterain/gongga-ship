@@ -184,7 +184,7 @@ EOF
 GONGGA_PROVIDERS_CATALOG=$PWD/.dev/v/providers.toml GONGGA_KEY=sk-fake   ./.dev/target-test1/debug/gongga --home .dev/v/srv serve --port 8900
 
 # 3. 客户端显式指过去，并且不要让它自己拉服务端
-./target/debug/gongga --server 127.0.0.1:8900 --home .dev/v/srv --key sk-fake --client-only   set_session --session s --provider fake/fake
+./target/debug/gongga --server 127.0.0.1:8900 --home .dev/v/srv --key sk-fake --client-only   set_session --session s --model fake/fake
 ```
 
 三个坑：

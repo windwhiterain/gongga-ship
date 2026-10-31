@@ -182,11 +182,16 @@ gongga-cli send_message --session test1 --message "SELF-NOTE: ..."
   会被 provider 整单拒绝，所以注入点在 step 边界。
 - 消息自己也是 pending 行，`cancel` 前后都能活下来 —— 这是跨重启留意图最省事的办法。
 
-### 子 agent：一块独立的工作交给另一个会话
-
-多开一个会话就有第二个上下文，可以并行做另一件事。怎么开、brief 要写什么、什么时候不能
-并发写同一份树，都在 **`subagent` skill**。
-
+### 子 agent：一块独立的工作交给另一个会话
+
+
+
+多开一个会话就有第二个上下文，可以并行做另一件事。怎么开、brief 要写什么、什么时候不能
+
+并发写同一份树，都在 **`subagent` skill**。
+
+
+
 ## 6. 改源码不是用 harness
 
 换掉跑着自己的那个 exe、改它的源码、用它自己的开发环，都是另一件事，在 **`evolve` skill**
@@ -221,7 +226,7 @@ gongga-cli send_message --session test1 --message "SELF-NOTE: ..."
 python - <<'EOF'
 import sqlite3, os
 c = sqlite3.connect(f"file:{os.path.expanduser('~/.gongga/gongga.db')}?mode=ro", uri=True)
-print(c.execute("select name,status,provider,context_limit,context_tokens from sessions").fetchall())
+print(c.execute("select name,status,model,context_limit,context_tokens from sessions").fetchall())
 print(c.execute("select name,status,count(*) from tool_calls group by name,status").fetchall())
 print(c.execute("select ID,session,kind from pending_tasks").fetchall())
 EOF
