@@ -1,6 +1,6 @@
 ---
 name: subagent
-description: 把一块独立的工作交给另一个会话并行做——子 agent 不是一个工具，而是一个普通会话：自己的 transcript、自己的上下文与阈值、自己的 turn。当你要并行推进两条互不相干的实现、要把一个大的验证/探查丢给别人而自己不涨上下文、或者要一个只读的侦察兵时，读这个。用 gongga-cli set_session / send_message / get_messages / del_session 操作它；创建会话时 `--model` 是必填，从 model_pool skill 取。
+description: 把一块独立的工作交给另一个会话并行做——子 agent 不是一个工具，而是一个普通会话：自己的 transcript、自己的上下文与阈值、自己的 turn。当你要并行推进两条互不相干的实现、要把一个大的验证/探查丢给别人而自己不涨上下文、或者要一个只读的侦察兵时，读这个。用 gongga-cli set_session / send_message / get_messages / del_session 操作它；会话的模型自己指定（`--model` 是 sticky，设一次就一直带上），从 model_pool skill 抽一个能跑的。
 ---
 
 # 子 agent
@@ -22,10 +22,17 @@ $G interrupt_session --session sub1             # 别干了，丢掉这一轮
 $G del_session --session sub1                   # 它在你名下，收尾是你的活
 ```
 
-**`--model` 是必填，不是可选。** 服务端不再有任何"默认会话模型"：配置里的
-`[model]` 只是服务端自己想事情用的模型，不会成为任何会话的模型。所以
-`set_session` 新建会话时不给 `--model` 会直接失败——这是设计，不要绕过它（也别指望
-在 config 里写一个默认值，那条路已经没有了）。
+**模型是会话自己的，而且记性跟着你。** SPEC 把 `--model` 写成 `(sticky)`：`set_session`
+成功一次之后，那个模型就存进客户端的 sticky，之后每条不点 `--model` 的 `set_session`
+自动带上它。所以正常用法是**开工前给这个会话抽一次**，而不是每条命令都写：
+
+```bash
+$G set_session --session sub1 --cwd <它的工作树> --model "$($S pick --tier sota)"
+```
+
+不给 `--model` 也不是错误：会话落到服务端的默认模型（`DEFAULT_SESSION_MODEL`，这台机器
+是 `deepseek-official/deepseek-flash`），或者落到你上次 sticky 住的那个。配置里的
+`[model]` 是服务端自己想事情用的，永远不是任何会话的模型——别指望在那儿写默认值。
 
 模型从 **model_pool skill** 拿：它按 flash / pro / sota 三档、按各 provider 当前
 额度抽一个这台机器现在真能跑的模型，输出的就是 `<provider>/<model id>`，可以直接
