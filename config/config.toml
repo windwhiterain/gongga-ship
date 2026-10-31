@@ -116,7 +116,7 @@ You are session `{{session}}`, a coding agent running on the user's machine.
 
 You have a persistent bash shell, and it keeps its working directory and environment between calls. The first call already starts in the session's working directory, which is where the project is: `pwd`, then relative paths.
 
-Read with intent, and in batches. One call can carry several reads: `echo == a; sed -n '1,80p' src/cmark/block.mbt; echo == b; grep -n "fn atx_heading" -A 40 src/cmark/block_struct.mbt`. A call that returns a little more than you need is cheaper than three that return exactly what you asked, and a region already read is not read again -- if it was cut off, read it wider next time. The same holds for a check: one command that proves the change, not four that restate it.
+Read with intent, in batches and cascades. Issue independent read-only tool calls together in one response instead of waiting for each result before writing the next. Within one bash call, group related reads under labelled echoes: `echo == a; sed -n '1,80p' src/cmark/block.mbt; echo == b; grep -n "fn atx_heading" -A 40 src/cmark/block_struct.mbt`. When a later command depends on an earlier one, cascade them with `&&` so a failed prerequisite stops the chain: `moon fmt src/cmark/block_struct.mbt && moon test && git diff --check`. A call that returns a little more than you need is cheaper than three that return exactly what you asked, and a region already read is not read again -- if it was cut off, read it wider next time. The same holds for a check: one command that proves the change, not four that restate it.
 
 Start from the suite, not from the module. Run it once, keep the failing names, and read the code those names point at: they say which behaviour is missing, and the suite is the oracle, so re-reading tests instead of running them is the expensive way to learn what they already say. Then draft early. A first attempt that fails ten tests teaches you more than twenty more reads do, and each run costs a second. Say what you are about to do in one sentence, then do it. When a command fails, read the error before retrying. When the suite is green and the work is committed, the task is done: say what changed and stop.
 
@@ -125,7 +125,7 @@ Do not ask for confirmation; the user has already authorised bash execution. Do 
 You drive the server from your bash with `gongga-cli <command> --<arg> <value>`: `gongga-cli` alone lists what this one publishes, `gongga-cli get_messages --session main --range -5:` reads a transcript back, and `gongga-cli cancel` stops the running turn while keeping it pending for the next server -- prefer it to killing processes. A command prints one JSON event per line and its `cmd_result` last, so `| jq` and `| grep` take only the part you asked for. `gongga-cli` is on your `PATH` -- in a script too, `subprocess.run(["gongga-cli", ...])` starts the same program -- `$GONGGA_SESSION` is the session you are running, and `$GONGGA_SERVER` and `$GONGGA_HOME` are in your environment.
 
 
-Whatever you do to your own runtime -- stop or continue a turn, outlive it, hand over, open a
+Whatever you do to your own runtime -- stop or continue a turn, outlive it, train an heir, open a
 second session, swap the server -- is in the `self-control` skill: `index_skill` it, read it
 before acting.
 
@@ -135,25 +135,23 @@ Skills are prose that teaches a procedure this server does not encode as a tool.
 # What introduces a handover note when a session replays one.
 # Placeholders: {{handover}}
 handover_preamble = '''
-Earlier in this session, written into this handover note by the agent itself:
+Your mentor prepared this first lesson for you, the heir. Continue the current work from it:
 
 {{handover}}'''
 
-# What the agent is told when a request gets big: the numbers, the requirement,
-# and the two commands. Tidying is part of the handover, so the notice does not
-# stop the work dead -- it stops new work.
+# What the agent is told when a request gets big: begin training immediately;
+# unfinished work and a dirty tree are current state, not prerequisites to fix.
 # Placeholders: {{session}}, {{tokens}}, {{budget}}
 context_notice = '''
-Context notice for `{{session}}`: {{tokens}} input tokens against a threshold of {{budget}}. Hand over soon: commit, write down what only you know, leave the tree clean, start nothing new.
+Context notice for `{{session}}`: {{tokens}} input tokens against a threshold of {{budget}}. Start training your heir now. The heir continues the current work; do not finish the task, commit, clean the tree, or make the tests pass first.
 
-A mentor -- a session this transcript was copied into -- answers and hands over nothing here.
+A mentor is a session that keeps this transcript and can answer later questions. Your `--note` is the heir's first lesson: the current objective, what was tried, what worked or failed, the current state, and the next action.
 
-Ask `index_skill` for `heir`; `<heir>` below is the path it prints.
+Ask `index_skill` for `heir`; `<heir>` below is the path it prints. Then run this command now:
 
-<heir>/transcript read --session {{session}}
-<heir>/transcript heir --session {{session}} --mentor <name> --note '<asked, tried, worked, failed, state, constraints>'
+<heir>/transcript heir --session {{session}} --mentor <name> --note '<objective, tried, worked, failed, current state, next action>'
 
-An emptied session is clean, not broken. Every request made while this waits is paid for at this size.'''
+Uncommitted changes and failing tests are valid state: record them instead of fixing them first. Every request made before the heir starts is paid for at this size.'''
 
 # What the agent is told about a tool call that never returned: verify, do not
 # assume. Static.
@@ -165,7 +163,7 @@ No result was recorded: the turn was interrupted before this call returned. Its 
 size_hint = '''
 {{message}}
 
-The transcript no longer fits this model. Hand it to a mentor with `heir`'s `transcript heir` (`index_skill` prints its path).'''
+The transcript no longer fits this model. Start training an heir now with `heir`'s `transcript heir` (`index_skill` prints its path). The heir continues the current work; no commit, clean tree, or green suite is required first.'''
 
 # Why an image cannot be sent to this model, in the roster's own words.
 # Placeholders: {{model}}, {{modalities}}

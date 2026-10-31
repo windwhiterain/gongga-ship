@@ -8,9 +8,9 @@ happy path.
 
     python3 test_heir.py
 
-The schema here is the minimum `transcript.py` touches, written out on purpose:
-if the server adds a column the script needs, the script fails first and this
-fixture tells you which columns were assumed.
+The standalone schema is the minimum `transcript.py` touches. The release gate
+passes `--schema-source crates/server/src/store.rs`, so the same checks also run
+against the server's current schema instead of a fixture that can drift.
 """
 
 import gc
@@ -44,10 +44,45 @@ create table messages (
     session_id integer not null,
     seq integer not null,
     kind text not null,
-    content text not null,
+    content text,
+    display text not null,
+    call_id text,
     created_at integer not null
 );
 """
+
+
+def server_schema(path):
+    """The schema constant, extracted rather than copied from the server."""
+    source = open(path, encoding="utf-8").read()
+    opening = 'const SCHEMA: &str = r#"'
+    start = source.find(opening)
+    if start < 0:
+        raise ValueError(f"no schema constant in {path}")
+    start += len(opening)
+    end = source.find('"#;', start)
+    if end < 0:
+        raise ValueError(f"unterminated schema constant in {path}")
+    return source[start:end]
+
+
+def wire_item(kind, payload):
+    """The distinct provider and reader shapes written by the current server."""
+    if kind == "text":
+        role = payload.get("role") or "user"
+        text = payload.get("text") or ""
+        if role == "assistant":
+            return {"role": role, "content": [{"type": "output_text", "text": text}]}
+        return {"role": role, "content": text}
+    if kind == "tool_call":
+        return {"type": "function_call", **payload}
+    if kind == "tool_result":
+        return {
+            "type": "function_call_output",
+            "call_id": payload["call_id"],
+            "output": payload["output"],
+        }
+    return payload
 
 
 class Home:
@@ -75,16 +110,23 @@ class Home:
             seq = self.c.execute(
                 "select coalesce(max(seq),0)+1 from messages where session_id=?", (sid,)
             ).fetchone()[0]
+        content = json.dumps(wire_item(kind, payload), ensure_ascii=False)
+        display = json.dumps(payload, ensure_ascii=False)
+        call_id = payload.get("call_id") if kind in ("tool_call", "tool_result") else None
         self.c.execute(
-            "insert into messages (session_id, seq, kind, content, created_at) values (?, ?, ?, ?, 1)",
-            (sid, seq, kind, json.dumps(payload, ensure_ascii=False)),
+            """insert into messages
+                (session_id, seq, kind, content, display, call_id, created_at)
+                values (?, ?, ?, ?, ?, ?, 1)""",
+            (sid, seq, kind, content, display, call_id),
         )
         self.c.commit()
         return seq
 
     def rows(self, sid):
         return self.c.execute(
-            "select seq, kind, content from messages where session_id=? order by seq", (sid,)
+            """select seq, kind, content, display, call_id from messages
+                where session_id=? order by seq""",
+            (sid,),
         ).fetchall()
 
     def close(self):
@@ -114,7 +156,7 @@ def test_guards():
         h.add(sid, "text", {"role": "user", "text": "hi"})
 
         p = run(h, "heir", "--session", "main", "--mentor", "m", "--note", "   ")
-        assert p.returncode != 0 and "empty handover" in p.stderr, p.stderr
+        assert p.returncode != 0 and "empty lesson" in p.stderr, p.stderr
         assert len(h.rows(sid)) == 1, "a refused heir must not delete"
 
         p = run(h, "heir", "--session", "main", "--mentor", "main", "--note", "note")
@@ -153,10 +195,16 @@ def test_heir_moves_every_row_then_empties():
         mid = h.c.execute("select id from sessions where name='mentor-main'").fetchone()["id"]
         mentor = h.rows(mid)
         assert len(mentor) == 5, [dict(r) for r in mentor]
-        assert "handed its transcript over" in json.loads(mentor[0]["content"])["text"]
-        assert [(r["kind"], r["content"]) for r in mentor[1:]] == [
-            (k, json.dumps(v, ensure_ascii=False)) for k, v in source
-        ], "every row must arrive byte for byte"
+        assert "started training an heir" in json.loads(mentor[0]["display"])["text"]
+        assert [(r["kind"], r["content"], r["display"], r["call_id"]) for r in mentor[1:]] == [
+            (
+                k,
+                json.dumps(wire_item(k, v), ensure_ascii=False),
+                json.dumps(v, ensure_ascii=False),
+                v.get("call_id") if k in ("tool_call", "tool_result") else None,
+            )
+            for k, v in source
+        ], "every row must arrive with its wire item, reader payload and call id"
 
         # Nothing was injected when the session woke up: its last row was an
         # answered exchange, so the whole transcript is the past and the session
@@ -169,7 +217,7 @@ def test_heir_moves_every_row_then_empties():
         s = h.c.execute("select handover, context_tokens from sessions where id=?", (sid,)).fetchone()
         assert s["handover"] == note and s["context_tokens"] == 0, dict(s)
         h.add(sid, "text", {"role": "user", "text": "醒来第一句"})
-        assert [json.loads(r["content"])["text"] for r in h.rows(sid)] == ["醒来第一句"], "seq restarts at 1"
+        assert [json.loads(r["display"])["text"] for r in h.rows(sid)] == ["醒来第一句"], "seq restarts at 1"
         m = h.c.execute("select model, cwd from sessions where id=?", (mid,)).fetchone()
         assert (m["model"], m["cwd"]) == ("p/m1", "C:/work"), dict(m)
 
@@ -209,6 +257,8 @@ def test_heir_keeps_the_call_in_flight():
         assert report["rows_copied"] == 2 and report["deleted"] == 1, report
         assert report["through_seq"] == 1 and report["mentor_rows"] == 4, report
         assert "archive" in report["you"] and "get_messages" in report["you"], report
+        assert "continue the current work" in report["you"], report
+        assert "no clean state is required" in report["you"], report
 
         # The session keeps exactly the call whose result the server has yet to write.
         mine = h.rows(sid)
@@ -276,6 +326,7 @@ def test_read_shows_every_row_that_is_actually_sent():
 
         out = json.loads(run(h, "read", "--session", "main").stdout)
         assert out["live_messages"] == 2 and out["shown_messages"] == 2, out
+        assert [message["text"] for message in out["messages"]] == ["第一句", "第二句"], out
         assert out["handover"] is None
         assert out["last_seq"] == 4, out
 
@@ -287,7 +338,24 @@ def test_read_shows_every_row_that_is_actually_sent():
         h.close()
 
 
+def test_shipped_prompts_batch_and_train_immediately():
+    config = open(os.path.join(HERE, "../../../config/config.toml"), encoding="utf-8").read()
+    assert "Issue independent read-only tool calls together in one response" in config
+    assert "cascade them with `&&`" in config
+    assert "Start training your heir now" in config
+    assert "do not finish the task, commit, clean the tree, or make the tests pass first" in config
+    assert "Uncommitted changes and failing tests are valid state" in config
+    assert "Hand over soon" not in config
+
+
 def main():
+    global SCHEMA
+    arguments = sys.argv[1:]
+    if arguments:
+        if len(arguments) != 2 or arguments[0] != "--schema-source":
+            print("usage: test_heir.py [--schema-source crates/server/src/store.rs]", file=sys.stderr)
+            return 2
+        SCHEMA = server_schema(arguments[1])
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     failed = []
     for t in tests:

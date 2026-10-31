@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
-"""Read and hand over a gongga session's transcript, straight from the database.
+"""Read a session and start training an heir from its transcript.
 
-Handing a transcript away is a decision about work only the agent has seen, so
-the server does not take it: it measures the context and says so (`Context
-notice`), and this script is how the agent acts on it.
+Training an heir is a decision about work only the agent has seen, so the server
+does not take it: it measures the context and says so (`Context notice`), and
+this script is how the agent starts immediately.
 
     transcript.py read     [--session S] [--after SEQ] [--limit N] [--preview]
     transcript.py heir     --session S --mentor M --note TEXT
 
-`heir` empties a session: it copies the whole transcript into another session
-(the mentor), verifies the copy, deletes the original rows, and answers the
-call in flight with a note telling the agent where its past went and how to
-reach it. No row is hidden behind a boundary: the rows are either here or in
-the mentor, never both.
+`heir` empties the current session so it continues as the heir: it copies the
+whole transcript into a mentor session, verifies the copy, deletes the original
+rows, and answers the call in flight with the heir's next instructions. The
+heir continues the current work from its first lesson; no clean state is needed.
 
 Reading returns what a conversation is made of -- the model's own messages and
 anything injected into the session. Tool calls, tool results and reasoning are
@@ -68,7 +67,7 @@ def session_id(conn, name):
 def body(row):
     """The text of a stored message row, as `get_messages` renders it."""
     try:
-        value = json.loads(row["content"])
+        value = json.loads(row["display"])
     except ValueError:
         return ""
     return value.get("text") or value.get("handover") or ""
@@ -83,7 +82,7 @@ def cmd_read(args):
     after = 0 if args.after is None else args.after
 
     rows = conn.execute(
-        """select seq, kind, content from messages
+        """select seq, kind, display from messages
             where session_id = ? and kind = 'text' and seq > ?
             order by seq""",
         (sid, after),
@@ -96,7 +95,7 @@ def cmd_read(args):
         text = body(row)
         role = "user"
         try:
-            role = json.loads(row["content"]).get("role") or "user"
+            role = json.loads(row["display"]).get("role") or "user"
         except ValueError:
             pass
         shown = text
@@ -134,35 +133,27 @@ def cmd_read(args):
 
 
 def learner_message(session, mentor, kept):
-    """What the emptied session reads back as the answer to its own command.
-
-    No message is injected into the session any more: the call in flight survives
-    the handover precisely so that its result can carry this, which is what the
-    model was going to read anyway -- one row instead of a forged user turn.
-    """
+    """What the heir reads as the answer to the command that started it."""
     return (
-        f"Your transcript through the handover is in `{mentor}` now, and this session "
-        f"`{session}` is emptied {'down to the call you are reading this from' if kept else 'to nothing'}. "
-        "You are its heir: the handover note "
-        "opening the next request is the only part of the past the server still carries "
-        "for you, and everything else is readable, just not here.\n"
+        f"You are now the heir in `{session}`, and `{mentor}` holds the complete transcript. "
+        f"This session is empty {'down to the call you are reading this from' if kept else 'for your next request'}. "
+        "Your first lesson is the note opening that request: it carries the current objective, "
+        "state, failed attempts, and next action. Everything else remains readable in the mentor.\n"
         f"  read it:  harness {{command: \"get_messages\", arguments: {{session: \"{mentor}\", range: \"1:\"}}}}\n"
         f"  ask it:   harness {{command: \"send_message\", arguments: {{session: \"{mentor}\", message: \"...\"}}}}\n"
-        "Read before you ask: what was done and decided is in those rows, and no model "
-        "can tell you better than the record itself. Ask the mentor when the question is "
-        "a judgement -- was this the right call, what did the failed attempt mean -- "
-        "because it holds the whole exchange and you hold the note of it.\n"
-        "Nothing about the task changed. Continue from the note's next step."
+        "Read before you ask. Ask the mentor only when you need a judgement about the earlier work. "
+        "Nothing about the task changed and no clean state is required: continue the current work "
+        "from the lesson's next action."
     )
 
 
 def mentor_message(learner):
-    """The other half of the copied pair, and the mentor's notice of what it is."""
+    """The mentor's duty while the heir continues the current work."""
     return (
-        f"You are the mentor of `{learner}`: its transcript through the handover was "
-        "copied into this session row for row, and this row is the answer to its last "
-        "call. Answer only what that session asks, by `get_messages` on this session or "
-        "`send_message` to it; do not start work of your own here."
+        f"You are the mentor of `{learner}`: its complete transcript was copied into "
+        "this session row for row, and this row answers its last call. The heir is "
+        "continuing the current work there. Answer only what it asks, by `get_messages` "
+        "on this session or `send_message` to it; do not start work of your own here."
     )
 
 
@@ -188,8 +179,8 @@ def ensure_mentor(conn, name, source):
 def cmd_heir(args):
     if not args.note.strip():
         die(
-            "refusing to empty a session with an empty handover note: the copy in the "
-            "mentor is the archive, but this note is what you will actually be sending"
+            "refusing to train an heir with an empty lesson: the mentor holds the archive, "
+            "but this lesson is what the heir actually sends"
         )
     if args.session == args.mentor:
         die(
@@ -203,11 +194,12 @@ def cmd_heir(args):
         (sid,),
     ).fetchone()
     rows = conn.execute(
-        "select seq, kind, content, created_at from messages where session_id = ? order by seq",
+        """select seq, kind, content, display, call_id, created_at
+            from messages where session_id = ? order by seq""",
         (sid,),
     ).fetchall()
     if not rows:
-        die(f"{args.session} has no transcript to hand over; nothing was written")
+        die(f"{args.session} has no transcript for the heir's mentor; nothing was written")
 
     # The server runs a call the moment it streams, so the last row is this
     # command's own call and its result does not exist yet. That pair stays -- a
@@ -218,8 +210,8 @@ def cmd_heir(args):
     moved = rows[:-1] if kept is not None else rows
     through = moved[-1]["seq"] if moved else 0
     marker = (
-        f"[heir] `{args.session}` handed its transcript over through seq {through} "
-        f"({len(moved)} rows), keeping the call in flight. It may read this session "
+        f"[heir] `{args.session}` started training an heir through seq {through} "
+        f"({len(moved)} rows), keeping the call in flight. The heir may read this mentor "
         "with get_messages and ask it with send_message."
     )
 
@@ -230,27 +222,47 @@ def cmd_heir(args):
         ).fetchone()[0]
         now = int(time.time() * 1000)
         conn.execute(
-            """insert into messages (session_id, seq, kind, content, created_at)
-                values (?, ?, 'text', ?, ?)""",
-            (mid, base + 1, json.dumps({"role": "user", "text": marker}), now),
+            """insert into messages (session_id, seq, kind, content, display, call_id, created_at)
+                values (?, ?, 'text', ?, ?, NULL, ?)""",
+            (
+                mid,
+                base + 1,
+                json.dumps({"role": "user", "content": marker}),
+                json.dumps({"role": "user", "text": marker}),
+                now,
+            ),
         )
         for offset, row in enumerate(rows):
             conn.execute(
-                """insert into messages (session_id, seq, kind, content, created_at)
-                    values (?, ?, ?, ?, ?)""",
-                (mid, base + 2 + offset, row["kind"], row["content"], row["created_at"]),
+                """insert into messages (session_id, seq, kind, content, display, call_id, created_at)
+                    values (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    mid,
+                    base + 2 + offset,
+                    row["kind"],
+                    row["content"],
+                    row["display"],
+                    row["call_id"],
+                    row["created_at"],
+                ),
             )
 
         # The archive is checked before the original is touched: an heir that
         # deleted first would turn a half-written copy into lost work.
         copied = conn.execute(
-            "select kind, content from messages where session_id = ? and seq > ? order by seq",
+            """select kind, content, display, call_id from messages
+                where session_id = ? and seq > ? order by seq""",
             (mid, base + 1),
         ).fetchall()
         if len(copied) != len(rows):
             die(f"the copy has {len(copied)} row(s) and the original has {len(rows)}")
         for got, original in zip(copied, rows):
-            if (got["kind"], got["content"]) != (original["kind"], original["content"]):
+            if (got["kind"], got["content"], got["display"], got["call_id"]) != (
+                original["kind"],
+                original["content"],
+                original["display"],
+                original["call_id"],
+            ):
                 die(
                     f"the copy differs at seq {original['seq']}; nothing was deleted "
                     f"(mentor {args.mentor} holds {len(copied)} copied row(s))"
@@ -260,19 +272,23 @@ def cmd_heir(args):
         # be read back as a transcript. Give it its result, and tell the mentor
         # what it has become: this is the row that says so.
         if kept is not None:
+            call_id = json.loads(kept["display"])["call_id"]
+            output = mentor_message(args.session)
             conn.execute(
-                """insert into messages (session_id, seq, kind, content, created_at)
-                    values (?, ?, 'tool_result', ?, ?)""",
+                """insert into messages (session_id, seq, kind, content, display, call_id, created_at)
+                    values (?, ?, 'tool_result', ?, ?, ?, ?)""",
                 (
                     mid,
                     base + 2 + len(rows),
                     json.dumps(
                         {
-                            "call_id": json.loads(kept["content"])["call_id"],
-                            "output": mentor_message(args.session),
-                            "images": [],
+                            "type": "function_call_output",
+                            "call_id": call_id,
+                            "output": output,
                         }
                     ),
+                    json.dumps({"call_id": call_id, "images": [], "output": output}),
+                    call_id,
                     now,
                 ),
             )
@@ -334,7 +350,7 @@ def cmd_heir(args):
             # old to have the table, or a write that fails, must not undo the
             # copy -- and it must not be silent either.
             print(
-                f"warning: the handover happened but was not recorded ({e})",
+                f"warning: heir training succeeded but was not recorded ({e})",
                 file=sys.stderr,
             )
 
@@ -371,11 +387,11 @@ def main():
 
     heir = sub.add_parser(
         "heir",
-        help="copy the whole transcript into --mentor, verify it, empty this session down to this call",
+        help="start training an heir: save the transcript with --mentor, verify it, and empty this session",
     )
     heir.add_argument("--session", required=True)
     heir.add_argument("--mentor", required=True, help="any session name; created if it does not exist")
-    heir.add_argument("--note", required=True, help="the handover note this session wakes up to")
+    heir.add_argument("--note", required=True, help="the heir's first lesson: objective, state, failures and next action")
     heir.set_defaults(func=cmd_heir)
 
     args = parser.parse_args()

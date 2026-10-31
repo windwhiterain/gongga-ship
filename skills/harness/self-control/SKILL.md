@@ -91,7 +91,7 @@ EOF
 - 你正卡在前台 `bash` 里 → 那条命令连同进程树被杀，你带着「已取消、退出码未知」的结果退出；
 - 你正在写文件 → 那一步会跑完，然后退出。
 
-想"立刻死、不要了"用 `interrupt_session`；想"留个干净交接"用 `cancel`。
+想"立刻死、不要了"用 `interrupt_session`；想"停在这里，下次从完整 transcript 原样恢复"用 `cancel`。
 
 ---
 
@@ -127,7 +127,7 @@ EOF
 
 | 事件 | transcript | 摘要 | 你的"当前意图" |
 |---|---|---|---|
-| 交接 | 服务端**从不改写**行；只有 agent 自己会 | `heir` 把整份 transcript 交进 mentor 会话后**删空自己**（删前逐行校验副本），只留一条 handover 笔记 | 可能丢 |
+| 培养继承人 | 服务端**从不改写**行；只有 agent 自己会 | `heir` 把整份 transcript 存进 mentor 会话后**删空当前会话**（删前逐行校验副本），只留继承人的第一课 | 由第一课明确保留，继承人继续当前工作 |
 | 回合结束 | 保留 | — | 丢（除非写下来了） |
 | `cancel` + 重启 | 保留 | 保留 | **丢**（resume 无提示，见 §2） |
 | `del_session` | 全删 | 删 | 全没 |
@@ -278,7 +278,7 @@ EOF
 | 两个会话的 turn 真的并行（互斥锁每会话一把） | 2026-10-30 实测：`main` 与 `sub1` 相隔 8ms 起 turn、两次请求并行、两次 turn end 同时回来 |
 | `cancel` 保留 pending、`interrupt_session` 删 pending、`del_session` 连带停 detached | 读 `crates/server/src/commands.rs` |
 | resume 不带任何 instruction | 读 `agent.rs::turn_inner`（`user_text: None` 不写行） |
-| 阈值 70% / transcript 不改写 / 只由 `heir` 交走 | 读 `agent.rs`、`store.rs` |
+| 阈值 70% / transcript 不改写 / 只有 `heir` 培养继承人时移动 | 读 `agent.rs`、`store.rs` |
 | `evolve.sh swap` 的完整换手 | **实跑 9 次**，其中 02:24 那次**丢了回合**（pending 行被 `resume_pending` 的收尾无条件删除），修好后 3 次全部 resume 成功 |
 | 只读 sqlite 自查 | 本会话实测 |
 
