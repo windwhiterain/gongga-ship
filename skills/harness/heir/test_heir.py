@@ -34,7 +34,7 @@ create table sessions (
     created_at integer not null,
     updated_at integer not null,
     handover text,
-    llm text,
+    provider text,
     context_limit integer,
     thinking_effort integer,
     context_tokens integer not null default 0
@@ -98,7 +98,7 @@ class Home:
 
     def session(self, name, model="p/m1", cwd="C:/work", tokens=777000):
         self.c.execute(
-            "insert into sessions (name, model, cwd, created_at, updated_at, llm, context_tokens)"
+            "insert into sessions (name, model, cwd, created_at, updated_at, provider, context_tokens)"
             " values (?, ?, ?, 1, 1, ?, ?)",
             (name, model, cwd, model, tokens),
         )

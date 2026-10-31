@@ -221,7 +221,7 @@ gongga-cli send_message --session test1 --message "SELF-NOTE: ..."
 python - <<'EOF'
 import sqlite3, os
 c = sqlite3.connect(f"file:{os.path.expanduser('~/.gongga/gongga.db')}?mode=ro", uri=True)
-print(c.execute("select name,status,llm,context_limit,context_tokens from sessions").fetchall())
+print(c.execute("select name,status,provider,context_limit,context_tokens from sessions").fetchall())
 print(c.execute("select name,status,count(*) from tool_calls group by name,status").fetchall())
 print(c.execute("select ID,session,kind from pending_tasks").fetchall())
 EOF

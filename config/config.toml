@@ -13,7 +13,7 @@ bind = "127.0.0.1:9700"
 # The database is `<home>/gongga.db` and there is no key for it: a home that could
 # name its database elsewhere could also name somebody else's.
 
-[llm]
+[provider]
 # Which provider to talk to. These are left commented out on purpose:
 # the roster at ~/.agents/providers.toml already says what this machine can
 # reach, and the first entry that works is a better default than a
@@ -163,7 +163,7 @@ The transcript no longer fits this model. Start training an heir now with `heir`
 # Why an image cannot be sent to this model, in the roster's own words.
 # Placeholders: {{model}}, {{modalities}}
 image_refusal = '''
-this model cannot look at images: the roster lists modalities = [{{modalities}}] for {{model}}, with no "image" in it. Use a model whose roster entry includes "image" (set_session --llm <provider>/<model>), or leave the image out.'''
+this model cannot look at images: the roster lists modalities = [{{modalities}}] for {{model}}, with no "image" in it. Use a model whose roster entry includes "image" (set_session --provider <provider>/<model>), or leave the image out.'''
 
 # Spliced into capped tool output where the middle was cut, naming the file the
 # whole thing was written to. Placeholders: {{omitted}}, {{total}}, {{path}}

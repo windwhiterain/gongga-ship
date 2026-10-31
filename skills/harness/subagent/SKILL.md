@@ -14,7 +14,7 @@ transcript、自己的上下文与压缩阈值、自己的 turn，跑在同一�
 ```bash
 G=gongga-cli
 $G set_session --session sub1 --cwd /path/to/its/checkout \
-    --llm <provider>/<model> --context_limit 20%
+    --provider <provider>/<model> --context_limit 20%
 $G send_message --session sub1 --message '<自足的 brief>'
 $G get_messages --session sub1 --range -20:     # 它说到哪了
 $G interrupt_session --session sub1             # 别干了，丢掉这一轮
