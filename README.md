@@ -9,8 +9,11 @@ that commit's content at startup:
 | here | installed at | who it belongs to |
 | --- | --- | --- |
 | `config/config.toml` | `<home>/config.toml` | one harness home |
-| `skills/harness/<name>` | `<home>/skills/<name>` | one harness home |
-| `skills/general/<name>` | `~/.agents/skills/<name>` | this machine, every home |
+| `skills/<name>` | `<home>/skills/<name>` | one harness home |
+
+One level: a skill directory here is a skill directory there. The machine's skills
+are not installed from here at all -- they are the community clone's, which
+`agents::link_skills` links into `~/.agents/skills`. See `## Two buckets` below.
 
 The install destination is a working tree, and the install is a git three-way
 merge: base = the content of the pin that last installed here, ours = what is on
@@ -24,10 +27,18 @@ safe to be a merge target at all.
 
 ## Two buckets, and why they are not one
 
-A harness skill speaks about *this server*: `heir` trains a successor from the current transcript and its mentor session, `evolve` replaces the process it is running on, `image` uses the
-harness's own attachment channel, `self-control` governs the turn. Those belong to
-a home, because a home is the thing they act on -- and because two harnesses of
-different versions on one machine should not be reading one copy.
+A harness skill speaks about *this server*: `heir` trains a successor from the
+current transcript and its mentor session, `image` uses the harness's own
+attachment channel, `self-control` governs the turn, `subagent` hands work to
+another session. Those belong to a home, because a home is the thing they act
+on -- and because two harnesses of different versions on one machine should not
+be reading one copy.
+
+`evolve` is not here, although it is a harness skill: it walks up from its own
+path to a `Cargo.toml`, builds the workspace and stages a binary under `.dev/`.
+Installed into `$GONGGA_HOME` it would find no repository, so it lives in the
+gongga checkout's own `.agents/skills/evolve/` instead -- content that travels
+with the code it acts on, not with a pin.
 
 A general skill speaks about the world outside: `remote` ssh's to another box,
 `proxy` and `latency` reason about the network this machine has, `computer_use`
@@ -63,13 +74,14 @@ start.
 
 A skill body must never assume it lives in a repository. Write the install path:
 
-- harness bucket: `$GONGGA_HOME/skills/<name>/...` -- the harness exports
+- this bucket: `$GONGGA_HOME/skills/<name>/...` -- the harness exports
   `GONGGA_HOME`, `GONGGA_SERVER` and `GONGGA_SESSION` into every shell and script
   it runs, and a `PATH` whose first entry is the home's `bin`, where `gongga-cli`
   is the command layer and `gongga-server` the program behind it.
-- general bucket: `~/.agents/skills/<name>/...`
+- the machine's: `~/.agents/skills/<name>/...`
+- a project's own, if it has one: `<that repository>/.agents/skills/<name>/...`
 
-Both spellings are runnable exactly as written, which is the only rule that keeps
+Every spelling is runnable exactly as written, which is the only rule that keeps
 a skill honest after a session's cwd has moved somewhere else.
 
 ## Changing what a running harness sees

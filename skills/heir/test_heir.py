@@ -339,7 +339,8 @@ def test_read_shows_every_row_that_is_actually_sent():
 
 
 def test_shipped_prompts_batch_and_train_immediately():
-    config = open(os.path.join(HERE, "../../../config/config.toml"), encoding="utf-8").read()
+    # Two levels: this skill sits at `skills/<name>` since the buckets went flat.
+    config = open(os.path.join(HERE, "../../config/config.toml"), encoding="utf-8").read()
     assert "Issue independent read-only tool calls together in one response" in config
     assert "cascade them with `&&`" in config
     assert "Start training your heir now" in config
