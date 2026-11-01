@@ -15,8 +15,8 @@ bind = "127.0.0.1:9700"
 
 [model]
 # Which model to talk to. These are left commented out on purpose:
-# the roster at ~/.agents/providers.toml already says what this machine can
-# reach, and the first entry that works is a better default than a
+# the roster at ~/.agents/gongga-agents/providers.toml already says what this
+# machine can reach, and the first entry that works is a better default than a
 # name frozen into this file. Uncomment to override it.
 # `model_name` is the name the provider's API takes; `provider` is whose it
 # is, and may be left out when only one provider carries that name.
@@ -24,8 +24,8 @@ bind = "127.0.0.1:9700"
 # provider = "deepseek-official"
 # base_url = ""
 # api_key_env = ""
-# Capabilities are NOT configured here: they belong to the model, so
-# they come from its entry in the roster (~/.agents/providers.toml):
+# Capabilities are NOT configured here: they belong to the model, so they come
+# from its entry in the roster (~/.agents/gongga-agents/providers.toml):
 #
 #   [[provider.model]]
 #   id = "some-model"
