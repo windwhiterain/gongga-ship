@@ -168,10 +168,13 @@ def ensure_mentor(conn, name, source):
     if row is not None:
         return row["id"], False
     now = int(time.time() * 1000)
+    # `model_name` is the bare name and is NOT NULL; `model` is the pair. A row
+    # written without the first failed the constraint outright.
+    bare = str(source["model"]).split("/")[-1]
     conn.execute(
-        """insert into sessions (name, status, model, cwd, created_at, updated_at)
-            values (?, 'idle', ?, ?, ?, ?)""",
-        (name, source["model"], source["cwd"], now, now),
+        """insert into sessions (name, status, model_name, model, cwd, created_at, updated_at)
+            values (?, 'idle', ?, ?, ?, ?, ?)""",
+        (name, bare, source["model"], source["cwd"], now, now),
     )
     return conn.execute("select id from sessions where name = ?", (name,)).fetchone()["id"], True
 
