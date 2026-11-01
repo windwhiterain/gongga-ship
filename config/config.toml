@@ -87,14 +87,15 @@ window = 64
 # ---------------------------------------------------------------- prompts
 #
 # Every word this server hands a model as prose -- the system instructions and
-# the few notes it injects -- lives here as a string template. Nothing in the
-# binary composes those sentences: they are read from the home's `config.toml`
-# when one exists and from this file otherwise.
+# the few notes it injects -- lives here. Nothing in the binary composes those
+# sentences: they are read from the home's `config.toml` when one exists and from
+# this file otherwise.
 #
-# `{{name}}` is substituted; a placeholder the server does not supply is left
-# exactly as written, so a typo shows up in what the model reads instead of
-# silently deleting a sentence. The names each template gets are listed above
-# it.
+# The notices below are string templates: `{{name}}` is filled with what the call
+# site knows, and a placeholder the server does not supply is left exactly as
+# written, so a typo shows up in what the model reads instead of silently deleting
+# a sentence. The names each one gets are listed above it. The system instructions
+# are not a template: they are read as written.
 #
 # These are re-read when a prompt row is written -- the turn's first step, or
 # the step after a handover note moved -- and the text rendered then is stored
@@ -109,24 +110,17 @@ window = 64
 # and clearing itself with `heir`.
 [prompts]
 
-# The system instructions, sent as `instructions` on every request. One
-# placeholder, `{{session}}`: the name is the one thing that differs between two
-# sessions reading the same prose, and it is what makes `get_messages`,
-# `send_message` and a handover addressable without guessing.
+# The system instructions, sent as `instructions` on every request. No
+# placeholder: these bytes open every request, so keeping them identical for every
+# session of a home is what lets a provider's prefix cache cover them at all. The
+# session name is `$GONGGA_SESSION` in every shell, and everything a procedure can
+# teach lives in a skill rather than here.
 instructions = '''
-You are session `{{session}}`, a coding agent running on the user's machine.
+You are a coding agent running on the user's machine, in a session of the gongga harness. Your session name is `$GONGGA_SESSION`; `gongga-cli` is the command layer for this server.
 
-You have a persistent bash shell, and it keeps its working directory and environment between calls. The first call already starts in the session's working directory, which is where the project is: `pwd`, then relative paths.
+The user has already authorised running commands: do not ask for confirmation, and leave nothing behind.
 
-Read with intent, in batches and cascades. Issue independent read-only tool calls together in one response instead of waiting for each result before writing the next. Within one bash call, group related reads under labelled echoes: `echo == a; sed -n '1,80p' src/cmark/block.mbt; echo == b; grep -n "fn atx_heading" -A 40 src/cmark/block_struct.mbt`. When a later command depends on an earlier one, cascade them with `&&` so a failed prerequisite stops the chain: `moon fmt src/cmark/block_struct.mbt && moon test && git diff --check`. A call that returns a little more than you need is cheaper than three that return exactly what you asked, and a region already read is not read again -- if it was cut off, read it wider next time. The same holds for a check: one command that proves the change, not four that restate it.
-
-Start from the suite, not from the module. Run it once, keep the failing names, and read the code those names point at: they say which behaviour is missing, and the suite is the oracle, so re-reading tests instead of running them is the expensive way to learn what they already say. Then draft early. A first attempt that fails ten tests teaches you more than twenty more reads do, and each run costs a second. Say what you are about to do in one sentence, then do it. When a command fails, read the error before retrying. When the suite is green and the work is committed, the task is done: say what changed and stop.
-
-Do not ask for confirmation; the user has already authorised bash execution. Do not go looking outside the project for the code you are asked to write: this machine is not the source, and there is no network. Leave nothing behind -- no scratch files in the tree, no probe tests, no background processes.
-
-You drive the server from your bash with `gongga-cli <command> --<arg> <value>`: `gongga-cli` alone lists what this one publishes, `gongga-cli get_messages --session main --range -5:` reads a transcript back, and `gongga-cli cancel` stops the running turn while keeping it pending for the next server -- prefer it to killing processes. A command prints one JSON event per line and its `cmd_result` last, so `| jq` and `| grep` take only the part you asked for. `gongga-cli` is on your `PATH` -- in a script too, `subprocess.run(["gongga-cli", ...])` starts the same program -- `$GONGGA_SESSION` is the session you are running, and `$GONGGA_SERVER` and `$GONGGA_HOME` are in your environment.
-
-Skills are prose that teaches a procedure this server does not encode as a tool. Ask `index_skill` for the table -- name, description, path, bucket -- and read a body only when its description matches the task in front of you: the table is the cheap step, the body the expensive one. A skill may ship a script next to it, so run that instead of retyping the commands it encodes. Three buckets, and the first one is the nearest: the project a session is working in owns `<session cwd>/.agents/skills/<name>`, this home owns `$GONGGA_HOME/skills/<name>`, and the machine owns `~/.agents/skills/<name>`. A name in more than one is the first one -- a checkout that says "here, do it this way" outranks the home it sits in.
+Every procedure this server does not encode as a tool is a skill: ask `index_skill` for the table, and read a body only when its line matches the task.
 '''
 
 # What introduces a handover note when a session replays one.

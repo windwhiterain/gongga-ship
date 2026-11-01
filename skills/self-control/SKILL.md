@@ -16,6 +16,27 @@ harness 给你四类杠杆：**回合**（turn）、**进程**（谁能收尸）
 
 ---
 
+## 0. 一个 shell，一条命令层
+
+系统提示只留了身份和一句话：能跑命令、别问、别留垃圾、程序去 skill 里找。下面这些是它
+原来顺带说的事，现在住在这里。
+
+**shell 是持久的，且跨调用**：`bash` 每次调用都在同一个 shell 里跑，工作目录、环境变量、
+shell 函数、导出的东西都留着，第一次调用就已经在会话的工作目录（也就是项目所在处）。
+所以要 `pwd` 一次、之后写相对路径；要改环境就 `export`，下一个调用还在。
+两个例外会把它换掉：回合被取消、命令超时——那时同名 shell 是新的一个，cwd 回到会话目录
+（§1、§3 有细节），别假设 export 还在。
+
+**`gongga-cli` 是这台服务端的命令层**，就在 `PATH` 首位，脚本里 `["gongga-cli", ...]`
+起的是同一个程序。一条命令打印**每行一个 JSON 事件**，最后一行是 `cmd_result`——所以
+`| jq`、`| grep` 只拿你要的那部分，不必整段读。`$GONGGA_SESSION` 是你自己的会话名，
+`$GONGGA_SERVER`、`$GONGGA_HOME` 都在环境里；`gongga-cli` 裸跑列出这个服务端发布了什么。
+
+**别把 `/xxx` 当命令**：交互输入行里的 `/` 是另一层语法，脚本和 bash 里只写裸名字
+（§9 有代价记录）。
+
+---
+
 ## 1. 进程：三种 ownership
 
 同一个 `bash` 工具，`background` / `detached` 改的不是"等不等"，是**所有权**。
@@ -295,24 +316,30 @@ EOF
 `name` / `description` / `path` / `bucket`。先只看这张表，命中才读正文——
 这就是全部成本。别再 `grep` 目录：那等于让每个会话重新实现一遍这个工具。
 
-系统提示（`instructions`）已经不是 Rust 里的静态字符串了：它是模板，来自 ship
-仓库，在写 prompt 行的时候重读一次并把渲染结果存进那一行，所以它认得 skill 现在
-住在哪两个根。它不再拼任何东西：没有哪个磁盘上的文件会被并进 `instructions`。
+系统提示（`instructions`）是 ship 仓库里的一段**静态文本**：不渲染、不拼任何东西、
+没有占位符，所以每个会话收到的字节都一样——它开在请求最前面，一样才谈得上被 provider
+的前缀缓存覆盖。它只留身份、一句授权（能跑命令、别问、别留垃圾）、一句"程序去 skill 里找"。
+会话名靠 `$GONGGA_SESSION`，不靠提示词里的插值；其余的说明都在 skill 里，也就是这一份。
 
-两个桶，两个根：
+为什么这么切：任何随会话变化的东西都会让那条会话拥有自己的前缀，缓存一点也留不住；
+而一份要读三段的常驻规矩，只有真需要它的人付得起。
 
-- **harness 桶** → `<home>/skills/<name>/`。跟着 home 走，随服务端实例存在。
-  命令一律写成 `$GONGGA_HOME/skills/<name>/...`——`$GONGGA_HOME`、`$GONGGA_SERVER`、
-  `$GONGGA_SESSION` 本来就在每个 shell 的环境里，`gongga-cli` 也在这条 `PATH` 上（脚本同理）。本文件、`heir`、`evolve`、`image` 都在这个桶。
+三个桶，优先级就是顺序（同名以先出现的为准）：
+
+- **项目桶** → `<cwd>/.agents/skills/<name>/`。会话正在干活的那个 checkout 自己的，
+  最具体，所以排第一：一个仓库说"here, do it this way"就压过它所在的 home。
+- **harness 桶** → `$GONGGA_HOME/skills/<name>/`。跟着 home 走，随服务端实例存在。
+  命令一律写成 `$GONGGA_HOME/skills/<name>/...`。本文件、`heir`、`image` 在这个桶。
 - **通用桶** → `~/.agents/skills/<name>/`。跟着机器走，和 `providers.toml` 做邻居：机器自己的
   常驻规矩也放这儿当一个 skill——`instructions` 里没有任何东西是从磁盘自动读进来的。
   命令写成 `~/.agents/skills/<name>/...`。
   `computer_use`、`latency`、`proxy`、`remote`、`web-search` 在这个桶。
 
-仓库里的 `.agents/skills/` **不再是 skill 的来源**，一个项目的 skill 也不该被
-当成 harness 的 skill。skill 的源头是一个独立的 ship 仓库，服务端 pin 它的一个
-commit：启动时把内容装进上面两个根，用 git 三方合并把上游更新和你的本地修改合
-起来——你改过的不被覆盖，合不上就报错而不是硬合。
+`evolve` 不在任何桶里：它要从自己的路径往上找 `Cargo.toml` 并 stage 二进制，装进 home
+就找不到仓库，所以它住在 gongga checkout 自己的 `.agents/skills/evolve/`。
+
+home 的两个桶来自一个独立的 ship 仓库，服务端 pin 它的一个 commit：启动时把内容装进去，
+用 git 三方合并把上游更新和你的本地修改合起来——你改过的不被覆盖，合不上就报错而不是硬合。
 
 要点（这几条从旧机制继承，仍然成立）：
 
