@@ -156,6 +156,14 @@ size_hint = '''
 
 The transcript no longer fits this model. Start training an heir now with `heir`'s `transcript heir` (`index_skill` prints its path). The heir continues the current work; no commit, clean tree, or green suite is required first.'''
 
+# What introduces the index of the references the first message named: their text,
+# each after the spelling that names it, which the message then leaves as written.
+# Placeholder: {{entries}}
+reference_index = '''
+The text of every reference named in this conversation. A line that is only a reference is followed by the text it stands for.
+
+{{entries}}'''
+
 # Why an image cannot be sent to this model, in the roster's own words.
 # Placeholders: {{model}}, {{modalities}}
 image_refusal = '''
