@@ -80,6 +80,14 @@ max_output_chars = 8000
 # roster; otherwise the threshold is a share of the window.
 compress_above_tokens = 40000
 
+# How often a prefix the provider once held is assumed to be gone by the next
+# request, `0.0` to `1.0`. It is what turns the roster's rates into what a warm
+# item is *expected* to be worth: at `0.2`, a cached token is worth 80% of the
+# discount the roster advertises. A hyperparameter, not a measurement -- raise it
+# for a provider whose cache is short-lived, and the plan starts preferring what
+# it is sure of over what it hopes is still there.
+cache_invalid_rate = 0.0
+
 [transport]
 mtu = 1200
 window = 64
