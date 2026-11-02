@@ -1,6 +1,6 @@
 ---
 name: subagent
-description: 把一块独立的工作交给另一个会话并行做——子 agent 不是一个工具，而是一个普通会话：自己的 transcript、自己的上下文与阈值、自己的 turn。当你要并行推进两条互不相干的实现、要把一个大的验证/探查丢给别人而自己不涨上下文、或者要一个只读的侦察兵时，读这个。用 gongga-cli set_session / send_message / get_messages / del_session 操作它；会话的模型自己指定（`--model` 是 sticky，设一次就一直带上），从 `@skill:model_pool` 抽一个能跑的。
+description: 把一块独立的工作交给另一个会话并行做——子 agent 不是一个工具，而是一个普通会话：自己的 transcript、自己的上下文与阈值、自己的 turn。当你要并行推进两条互不相干的实现、要把一个大的验证/探查丢给别人而自己不涨上下文、或者要一个只读的侦察兵时，读这个。用 gongga-cli set_session / send_message / get_messages / del_session 操作它；会话的模型自己指定（`--model` 是 sticky，设一次就一直带上），从 `@skill:model_pool` 抽一个能跑的。brief 就是这个会话的第一条消息，所以写文件/技能一律用 `@file:`/`@skill:`（`@skill:prefix-cache`）。
 ---
 
 # 子 agent
@@ -101,10 +101,36 @@ print(c.execute("select name,status,context_tokens,context_limit from sessions")
 EOF
 ```
 
+## brief 是这个会话的第一句话，把引用写进去
+
+`send_message --message` 就是子 agent 的**第一条** user 消息，所以 brief 里写的
+`@file:`/`@skill:` 会进它的 index、跟着系统提示走前缀缓存：**一次**付费，之后它每一轮
+都是命中。写成路径（`plan.md`）或直接让它 `cat`，那份正文就躺在 transcript 中间，
+之后每次请求都重新计费，而且它后面的一切都跟着一起重算。
+
+```bash
+$G send_message --session sub1 --message "实现 @file: docs/notes/plan.md 里的第一步。
+约定见 @skill: whiting-dev。验收：cargo test -p gongga-server 绿。不要动 docs/。"
+```
+
+两条必须遵守的：
+
+- **值是一个词，后面要有空白。** `@file: docs/notes/plan.md` 对；在它后面直接接中文标点
+  （`@file: docs/notes/plan.md，然后`）是错的——中文标点不是分隔符，值会变成
+  `docs/notes/plan.md，然后`，读不到，而且**静默**。路径有空格就换一个没空格的路径，
+  引用不吃引号也不吃转义。
+- **技能要在 brief 里点名。** `@skill:` 只有第一句话里的会被索引；第二轮再补一条
+  `@skill: foo` 不会进 index（它被就地换成一行 metadata），那份正文每轮都要重发。
+
+派完再补的消息同样有效，但更贵：`@file:` 会在下一次重建时进 index（写一行新 prompt 行），
+`@skill:` 则永远不进。所以**要它读什么，就在 brief 里写完**。细则与拼写表见
+`@skill:prefix-cache`。
+
 ## 规矩
 
 1. **brief 必须自足。** 它看不到你的 transcript，只有你发的那条消息和它自己的 cwd：
-   要它做什么、验收标准、不许动什么，都写进去。
+   要它做什么、验收标准、不许动什么，都写进去。上面那条"把引用写进去"是同一件事的
+   省钱版本：不是叫你把文件内容贴进 brief，而是让 index 替你贴。
 2. **一份工作树只有一个写者。** 两个会话同时改同一份文件会互相覆盖：给它
    `git worktree add` 一份自己的，或者让它只读。
 3. **它的上下文记在它自己账上。** 父会话不会因为它干活而变大——这就是它的价值：一个

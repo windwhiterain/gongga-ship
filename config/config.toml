@@ -147,6 +147,8 @@ Context notice for `{{session}}`: {{tokens}} input tokens against a threshold of
 
 A mentor is a session that keeps this transcript and can answer later questions. Your `--note` is the heir's first lesson: the current objective, what was tried, what worked or failed, the current state, and the next action.
 
+Name in that lesson whatever the heir will need to read, as `@file: <one word>` or `@skill: <name>` -- the session is empty, so the lesson is its first user message, and a reference written there is text the index carries once instead of a file read again every turn. The spelling is strict: the value is exactly one word, and a Chinese comma right after it makes the reference silently vanish. `@skill:prefix-cache` says the rest.
+
 Ask `index_skill` for `heir`; `<heir>` below is the path it prints. Then run this command now:
 
 <heir>/transcript heir --session {{session}} --mentor <name> --note '<objective, tried, worked, failed, current state, next action>'

@@ -45,7 +45,7 @@ $T heir --session <你的会话名> --mentor mentor-<你的会话名> \
 
 清空之后没有隐藏的边界：指引就在 `heir` 命令的结果里，第一课则是脚本用一次 `send_message` 发的普通消息，在下一个 step 边界落成一条 user 行。当前会话留下这个 call 和它的结果，provider 才能接受下一次请求。
 
-第一课走 `send_message` 而不是写进数据库，有两个原因：一，它现在就在这条 call 里跑，直接插一行会落在 call 和它的结果之间，那是 provider 不收的形状；二，一条普通消息才会被当作**空会话的首条 user 消息**处理——它命名的 `@file:`/`@skill:` 因此进 index、随前缀缓存只收一次费。别把它改回某种"笔记列"，那正是这条路原来的样子。
+第一课走 `send_message` 而不是写进数据库，有两个原因：一，它现在就在这条 call 里跑，直接插一行会落在 call 和它的结果之间，那是 provider 不收的形状；二，一条普通消息才会被当作**空会话的首条 user 消息**处理——它命名的 `@file:`/`@skill:` 因此进 index、随前缀缓存只收一次费（机制、拼法和写错的后果见 `@skill:prefix-cache`）。别把它改回某种"笔记列"，那正是这条路原来的样子。
 
 ```bash
 gongga-cli get_messages --session mentor-main --range 1:
@@ -67,6 +67,10 @@ gongga-cli send_message --session mentor-main --message "…"
 ## 继承人的第一课写什么
 
 写给**继续当前工作的继承人**。它下一次请求只有这份笔记，没有当前会话的原文。
+
+要它读的东西**写成引用**，别写成一串路径：`@file: docs/notes/plan.md` 会让正文自动进
+index（第一课是空会话的第一条消息），写 `docs/notes/plan.md` 只会让它再花一次 bash 去读。
+值必须是一个词、后面要有空白，否则引用静默失效——细则见 `@skill:prefix-cache`。
 
 必须写清：
 
@@ -93,6 +97,7 @@ gongga-cli send_message --session mentor-main --message "…"
 
 - **`--note` 不能空**：原文在 mentor，继承人每次真正带着的是第一课。
 - **第一课发不出去就整体报告出来**：会话此时已空，脚本会把第一课原样写进结果（也就是这条 call 的 tool_result）并非零退出。那不是丢课，是换了个位置存。
+- **第一课里的引用要用 `@file:`/`@skill:`**，而且值是一个词：它是整份 transcript 被清空之后唯一的一条消息，写对了只付一次费，写错了模型只能自己再去读。
 - **不需要 clean state**：不要先修复、提交、清理或验证再运行命令；当前状态本身就是课程内容。
 - **`heir` 之后 `seq` 从 1 重新开始**（没有在飞的 call 时），第一课就是第 1 行；没有隐藏边界，也没有"笔记列"。不要自己手写 SQL 动这张表。
 - **不要频繁培养**：每次都要重新写第一课；但收到新的 `Context notice` 时仍应立即行动。

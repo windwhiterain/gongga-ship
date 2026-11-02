@@ -208,11 +208,12 @@ gongga-cli send_message --session test1 --message "SELF-NOTE: ..."
 
 ### 子 agent：一块独立的工作交给另一个会话
 
-
-
 多开一个会话就有第二个上下文，可以并行做另一件事。怎么开、brief 要写什么、什么时候不能
-
 并发写同一份树，都在 **`subagent` skill**。
+
+一条和"自己"直接相关的：`send_message` 发出去的 brief 就是那个会话的**第一条** user 消息，
+所以 brief 里写的 `@file:`/`@skill:` 会进它的 index，随前缀缓存只收一次费——这也是
+"派活时把要读的东西一次说清"比"派完再补一条"便宜的原因（见 `@skill:prefix-cache`）。
 
 
 
