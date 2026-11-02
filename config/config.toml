@@ -181,6 +181,13 @@ Session `{{session}}`, harness gongga at `{{build}}`, {{now}}, in `{{cwd}}`.'''
 dynamic_tail_remote = '''
 Session `{{session}}`, harness gongga at `{{build}}`, {{now}}, in `{{cwd}}` -- a directory on remote `{{remote}}`, not on the machine this server runs on. `remote_bash` is that machine's shell; `bash` is this one's.'''
 
+# The same, when no directory was named for the session and the peer's shell has not
+# reported one yet. The first card is the one a session keeps, so it may not say
+# "in ``": naming no directory is the documented default, not a mistake.
+# Occupies: {{session}}, {{build}}, {{now}}, {{remote}}
+dynamic_tail_remote_unstated = '''
+Session `{{session}}`, harness gongga at `{{build}}`, {{now}}, working on remote `{{remote}}` -- not on the machine this server runs on. No directory was named there, so that machine's shell starts where that machine starts. `remote_bash` is that machine's shell; `bash` is this one's.'''
+
 # What introduces the index of the references the first message named, and of the
 # `AGENTS.md` the session's own directory keeps: their text, each after the spelling
 # that names it, which the message then leaves as written.
