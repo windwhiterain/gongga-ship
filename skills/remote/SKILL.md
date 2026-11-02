@@ -119,6 +119,14 @@ A session with a remote has shells on **two machines**: `bash` on this one and
 peer. The word is `remote` everywhere: `set_session --remote`, `configure --remote`,
 `[remotes.<name>]`.
 
+The agent is told where it stands. The session's start card (`dynamic_tail_remote`
+in the shipped config) names the peer beside the directory, so a model asked to run
+something knows that a plain path in a message is a path there, and reaches for
+`remote_bash` first instead of being surprised by `bash`. `remote_bash` also declares
+`target`: writing this session's own peer name is accepted and changes nothing, and
+any other name is refused -- a session works on one machine, and moving it is
+`set_session --remote`, not a tool argument.
+
 ```bash
 gongga-cli set_session --session build --remote build \
     --model provider/model --cwd /home/build/project
@@ -133,8 +141,9 @@ Windows path for a Windows peer and a POSIX path for a POSIX peer. A relative re
 path is relative to the runner's starting directory, so an absolute path is clearer.
 
 `--remote none` moves a session back to this machine; omitting the flag leaves the
-machine as it is. Both end every shell on the machine being left, so they are refused
-while a turn runs and applied when it ends.
+machine as it is. Both end every shell on the machine being left. A move asked for
+while a turn is running is queued, not refused: it is applied when that turn ends, and
+the command says so.
 
 The project is not synchronised. Clone/copy it on the peer first, using ordinary SSH,
 SFTP or Git from a local shell. Keep remote sessions separate even when they name the
@@ -155,9 +164,9 @@ the peer's shell for the peer's files.
 - A reference is read on the machine that printed it, so `@image:` and `@file:` in
   a `remote_bash` result are the peer's, and the same reference in a `bash` result is
   this machine's. The prompt's index reads the peer's `AGENTS.md`.
-- Refused, with advice: `background` and `detached` on `remote_bash` (the scratch file
-  and the completion watcher are this machine's), and a capped remote output is not
-  spilled to a path.
+- Not offered, and refused with advice if written anyway: `background` and `detached`
+  on `remote_bash` (the job's scratch file and its completion watcher are this
+  machine's), and a capped remote output is not spilled to a path.
 
 The project is not synchronised either way: a file on the peer is not here, and a
 checkout is not copied for you.
