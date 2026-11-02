@@ -21,7 +21,6 @@ import tomllib
 # Never let an SSH login profile inject frames into a runner or probe.
 BASH = "bash --norc --noprofile"
 PROTOCOL = 1
-DEFAULT_HOME = Path("~/.gongga")
 
 
 class Failure(RuntimeError):
@@ -263,7 +262,7 @@ def install(args: argparse.Namespace) -> None:
         shell_distribution=final,
         protocol=greeting["protocol"],
         cwd=peer_home(peer)[1],
-        config=target_toml(args.target or "build", args, runner),
+        config=remote_toml(args.remote or "build", args, runner),
     )
 
 
@@ -283,7 +282,7 @@ def toml_string(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def target_toml(name: str, args: argparse.Namespace, runner: str) -> str:
+def remote_toml(name: str, args: argparse.Namespace, runner: str) -> str:
     host = f"{args.user}@{args.host}" if args.user else args.host
     lines = [f"[remotes.{name}]", f"host = {toml_string(host)}"]
     if args.port != 22:
@@ -294,40 +293,50 @@ def target_toml(name: str, args: argparse.Namespace, runner: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def home_path(value: str | None) -> Path:
-    return Path(value or os.environ.get("GONGGA_HOME", DEFAULT_HOME)).expanduser().resolve()
+def remotes_path(value: str | None) -> Path:
+    """Where this machine keeps its remotes: an override, else `~/.agents/remotes.toml`.
+
+    Not the home's `config.toml`. That file is the pinned content's and is merged
+    three ways on every install, so it must not carry a host name, a private key
+    path or a runner path -- the three things a remote is made of.
+    """
+    if value:
+        return Path(value).expanduser().resolve()
+    base = os.environ.get("GONGGA_AGENTS_HOME")
+    root = Path(base).expanduser() if base else Path.home() / ".agents"
+    return (root / "remotes.toml").resolve()
 
 
 def configure(args: argparse.Namespace) -> None:
-    if not args.target or args.target == "local" or not args.target.replace("_", "a").replace("-", "a").isalnum():
+    if not args.remote or args.remote == "local" or not args.remote.replace("_", "a").replace("-", "a").isalnum():
         raise Failure("a remote name must be a non-empty TOML bare key other than local")
-    path = home_path(args.home) / "config.toml"
+    path = remotes_path(args.remotes)
     if args.remove:
         if not args.write:
             raise Failure("--remove requires --write")
         data = tomllib.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-        if args.target not in tables(data):
-            raise Failure(f"remote {args.target!r} is not configured in {path}")
+        if args.remote not in tables(data):
+            raise Failure(f"remote {args.remote!r} is not configured in {path}")
         args.write = True
     else:
-        rendered = target_toml(args.target, args, args.runner or "gongga runner")
+        rendered = remote_toml(args.remote, args, args.runner or "gongga runner")
         if not args.write:
             print(rendered, end="")
             return
         data = tomllib.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-        old = tables(data).get(args.target)
-        desired = tomllib.loads(rendered)["remotes"][args.target]
+        old = tables(data).get(args.remote)
+        desired = tomllib.loads(rendered)["remotes"][args.remote]
         if old is not None and old != desired:
-            raise Failure(f"target {args.target!r} already differs in {path}; edit it deliberately")
+            raise Failure(f"remote {args.remote!r} already differs in {path}; edit it deliberately")
         if old == desired:
-            emit("unchanged", config=str(path), target=args.target)
+            emit("unchanged", remotes=str(path), remote=args.remote)
             return
-    # Preserve every other setting and comment. Only this target's exact table
-    # header and body are replaced; no generic TOML reformatting is attempted. The old
-    # `[targets.<name>]` spelling is what the loader aliases, so a config carrying it
-    # is read, and writing this remote replaces that table rather than adding a second.
+    # Preserve every other setting and comment. Only this remote's exact table header
+    # and body are replaced; no generic TOML reformatting is attempted. The old
+    # `[targets.<name>]` spelling is what the loader aliases, so writing this remote
+    # replaces that table rather than adding a second.
     lines = path.read_text(encoding="utf-8").splitlines(keepends=True) if path.exists() else []
-    headers = {f"[remotes.{args.target}]", f"[targets.{args.target}]"}
+    headers = {f"[remotes.{args.remote}]", f"[targets.{args.remote}]"}
     output = []
     index = 0
     found = False
@@ -350,7 +359,7 @@ def configure(args: argparse.Namespace) -> None:
     temporary = path.with_suffix(".toml.remote.tmp")
     temporary.write_text("".join(output), encoding="utf-8", newline="\n")
     temporary.replace(path)
-    emit("removed" if args.remove else "configured", config=str(path), target=args.target, restart_required=True)
+    emit("removed" if args.remove else "configured", remotes=str(path), remote=args.remote, restart_required=True)
 
 
 def runner_verify(peer: Peer, runner: str, timeout: float = 45) -> None:
@@ -505,10 +514,10 @@ def check(args: argparse.Namespace) -> None:
 
 
 def reach(table: dict, timeout: float = 20) -> dict:
-    """Whether one configured target answers, answered as data rather than raised."""
+    """Whether one configured remote answers, answered as data rather than raised."""
     host = str(table.get("host") or "")
     if not host:
-        return {"connected": False, "error": "the target names no host"}
+        return {"connected": False, "error": "the remote names no host"}
     user, _, address = host.rpartition("@")
     chosen = argparse.Namespace(
         host=address,
@@ -523,10 +532,10 @@ def reach(table: dict, timeout: float = 20) -> dict:
     return {"connected": True, "protocol": greeting["protocol"]}
 
 
-def list_targets(args: argparse.Namespace) -> None:
-    path = home_path(args.home) / "config.toml"
+def list_remotes(args: argparse.Namespace) -> None:
+    path = remotes_path(args.remotes)
     if not path.is_file():
-        raise Failure(f"no config at {path}")
+        raise Failure(f"no remotes file at {path}; `install` prints the table to add")
     configured = tables(tomllib.loads(path.read_text(encoding="utf-8")))
     if not configured:
         raise Failure(f"{path} configures no remotes; `install` prints the table to add")
@@ -559,7 +568,11 @@ def remove(args: argparse.Namespace) -> None:
 
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--home", help="local Gongga home for configure")
+    p.add_argument(
+        "--remotes",
+        help="the machine's remotes file (default: $GONGGA_AGENTS_HOME or ~/.agents, "
+        "then remotes.toml)",
+    )
     sub = p.add_subparsers(dest="command", required=True)
 
     def peer_options(command, runner=False):
@@ -572,14 +585,14 @@ def parser() -> argparse.ArgumentParser:
 
     install_parser = sub.add_parser("install", help="build and install a distribution")
     peer_options(install_parser)
-    install_parser.add_argument("--target", help="print config for this target")
+    install_parser.add_argument("--remote", help="print the table for this remote")
     install_parser.add_argument("--build-from", default=".")
     install_parser.add_argument("--artifact")
     install_parser.add_argument("--release", action="store_true")
     install_parser.set_defaults(action=install)
 
     config_parser = sub.add_parser("configure", help="print or update [remotes.<name>]")
-    config_parser.add_argument("--target", required=True)
+    config_parser.add_argument("--remote", required=True)
     config_parser.add_argument("--host", default="")
     config_parser.add_argument("--user")
     config_parser.add_argument("--port", type=int, default=22)
@@ -594,9 +607,9 @@ def parser() -> argparse.ArgumentParser:
         peer_options(command, runner=True)
         command.set_defaults(action=action)
 
-    list_parser = sub.add_parser("list", help="list configured targets")
-    list_parser.add_argument("--check", action="store_true", help="greet each target's runner over SSH")
-    list_parser.set_defaults(action=list_targets)
+    list_parser = sub.add_parser("list", help="list configured remotes")
+    list_parser.add_argument("--check", action="store_true", help="greet each remote's runner over SSH")
+    list_parser.set_defaults(action=list_remotes)
 
     remove_parser = sub.add_parser("remove", help="remove one content-addressed distribution")
     peer_options(remove_parser)

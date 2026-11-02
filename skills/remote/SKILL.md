@@ -1,6 +1,6 @@
 ---
 name: remote
-description: Configure and verify a Gongga session whose shells run on another machine over SSH. Use for 远端 / 远程主机 / remote host / set_session --remote / runner deployment. Covers installing the matching gongga distribution, writing [remotes.<name>], checking the real SSH connection, and what a session with a remote can and cannot do. This is not a general-purpose SSH or PowerShell-remoting skill.
+description: Configure and verify a Gongga session whose shells run on another machine over SSH. Use for 远端 / 远程主机 / remote host / set_session --remote / runner deployment. Covers installing the matching gongga distribution, writing the machine's ~/.agents/remotes.toml, checking the real SSH connection, and what a session with a remote can and cannot do. This is not a general-purpose SSH or PowerShell-remoting skill.
 ---
 
 # Gongga remote sessions
@@ -48,23 +48,27 @@ These examples use `R=/path/from/index_skill/remote`, not a command assumed to b
    to cross-compile. `--artifact` is also the way to test an existing build. Read the
    reported peer OS in the result and do not call a Windows/Git Bash check a POSIX one.
 
-2. **Write the endpoint into the local server's config.** Use the `runner` printed by
+2. **Write the endpoint into this machine's remotes file.** Use the `runner` printed by
    `install`:
 
    ```bash
-   "$R" configure --target build --host 192.168.1.10 --user build \
+   "$R" configure --remote build --host 192.168.1.10 --user build \
        --identity ~/.ssh/id_ed25519 \
        --runner '/home/build/.gongga/bin/gongga-HASH runner' --write
    ```
 
-   `--home` defaults to `$GONGGA_HOME`, then `~/.gongga`. Without `--write`, the command
-   only prints TOML. An existing different remote is never overwritten. The installer
-   also reports `cwd`: use a `C:/...` path for a Windows peer and `/...` for a POSIX
-   peer; do not use Git Bash's `/c/...` as the runner's cwd. Configuration
-   is read at server startup, so restart that server afterwards. When changing server
-   code in development, use the `evolve` skill rather than leaving an old server alive.
+   It writes `~/.agents/remotes.toml` (`$GONGGA_AGENTS_HOME`, or `--remotes <path>`),
+   **not** the home's `config.toml`: that file is the pinned content's and is merged
+   three ways on every install, so a host name, a private key path and a runner path
+   must not live there. `~/.agents/` is never a repository, which is what `keys.toml`
+   already relies on. Without `--write`, the command only prints the table. An
+   existing different remote is never overwritten. The installer also reports `cwd`:
+   use a `C:/...` path for a Windows peer and `/...` for a POSIX peer; do not use Git
+   Bash's `/c/...` as the runner's cwd. The file is read at server startup, so restart
+   that server afterwards. When changing server code in development, use the `evolve`
+   skill rather than leaving an old server alive.
 
-   The equivalent manual configuration is:
+   The equivalent manual configuration, in `~/.agents/remotes.toml`:
 
    ```toml
    [remotes.build]
@@ -73,6 +77,10 @@ These examples use `R=/path/from/index_skill/remote`, not a command assumed to b
    identity = "C:/keys/build_ed25519"
    runner = "/home/build/.gongga/bin/gongga-HASH runner"
    ```
+
+   A home from before this file existed has its tables in `config.toml`; the server
+   says so at startup, and `<home>/migrate/3-to-4.py --home <home> --db <home>/gongga.db`
+   moves them.
 
    `identity` is a path on the **local** machine. `runner` is a command on the peer;
    its default is `gongga runner`, which requires the distribution on the peer's
@@ -99,7 +107,8 @@ These examples use `R=/path/from/index_skill/remote`, not a command assumed to b
 
 A session with a remote has shells on **two machines**: `bash` on this one and
 `remote_bash` on the peer. It has one directory, and that directory belongs to the
-peer. `--target` is the installer script's own flag; the server's is `--remote`.
+peer. The word is `remote` everywhere: `set_session --remote`, `configure --remote`,
+`[remotes.<name>]`.
 
 ```bash
 gongga-cli set_session --session build --remote build \
@@ -157,7 +166,7 @@ Remove only the distribution and remote you named:
 ```bash
 "$R" remove --distribution '/home/build/.gongga/bin/gongga-HASH' \
     --host 192.168.1.10 --user build --identity ~/.ssh/id_ed25519
-"$R" configure --target build --remove --write
+"$R" configure --remote build --remove --write
 ```
 
 Close sessions using that remote first. Do not remove a distribution while its runner
