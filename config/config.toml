@@ -88,12 +88,13 @@ compress_above_tokens = 40000
 # it is sure of over what it hopes is still there.
 cache_invalid_rate = 0.0
 
-# How long a cached prefix is assumed to survive, in seconds. `0` means "as long as
-# the layout remembers" -- the only honest answer for a provider that states no
-# lifetime. A positive value is enforced: each chain records when it was last sent,
-# and a chain whose front is older than this is dropped before the next plan, so a
-# provider that has certainly forgotten is not planned for as though it had not.
-# Set it to what the provider documents; 300 is a common shape for an empty window.
+# A lifetime for a cached prefix, in seconds, for a machine that wants one number for
+# every provider. `0` is no opinion rather than "never": the roster's own
+# `cache_ttl_secs` for the provider is what the plan uses then, and a provider that
+# states none either is the one left never expiring. A lifetime in force is enforced:
+# each chain records when it was last sent, and a chain whose front is older than this
+# is dropped before the next plan, so a provider that has certainly forgotten is not
+# planned for as though it had not.
 cache_ttl_secs = 0
 
 [transport]
