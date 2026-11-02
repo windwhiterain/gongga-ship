@@ -159,9 +159,11 @@ EOF
 
 ### 记忆写在文件里，不写在上下文里
 
-- 服务端**不读任何 `AGENTS.md`**（2026-10-28 起：`constitution` 注入被删掉，`~/.agents/agents.md`
-  和项目目录里的 `AGENTS.md` 都不再进提示词）。所以重要的约定要么放进 `instructions`，要么
-  写成 skill 让 `index_skill` 列出来——否则新会话根本不会看见它。
+- 服务端只读**一个** `AGENTS.md`：会话 cwd 里的那个（2026-11-02 起）。它作为 index 的
+  第一个 root 进 `instructions`，随前缀缓存，所以写在那里的话每轮都算一次、改一次才重算；
+  父目录的、`~/.agents/AGENTS.md` 都不读。机器自己的常驻规矩仍是
+  `~/.agents/skills/whiting-dev`。别的约定要么放进 `instructions`，要么写成 skill 让
+  `index_skill` 列出来——否则新会话根本不会看见它。
 - WIP 按仓库约定写 `.agents/notes/<date>-<slug>.md`。
 - 长输出溢出的全文在 `~/.gongga/outputs/`，文件名是 `<session>-<shell>-<task>-<callid>`
   ——所以 `bash` 的 `task` 参数是给"未来的自己"和读 dump 的人的索引，不是装饰。
@@ -353,3 +355,4 @@ home 的两个桶来自一个独立的 ship 仓库，服务端 pin 它的一个 
 历史：懒发现是 2026-10-24 加的（那时 skill 文件存在但没人会看见，包括本文件第一版）；
 2026-10-28 提示词进模板、`AGENTS.md` 开始注入；同日 skill 移出项目目录、
 发现改成 `index_skill`；还是同日，注入被撤销——常驻规矩活了一天就当上了 skill。
+2026-11-02 回来的只有 cwd 那一个，而且走 index 而不是拼进 `instructions`。

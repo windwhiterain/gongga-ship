@@ -178,11 +178,12 @@ The transcript no longer fits this model. Start training an heir now with `heir`
 dynamic_tail = '''
 Session `{{session}}`, harness gongga at `{{build}}`, {{now}}, in `{{cwd}}`.'''
 
-# What introduces the index of the references the first message named: their text,
-# each after the spelling that names it, which the message then leaves as written.
+# What introduces the index of the references the first message named, and of the
+# `AGENTS.md` the session's own directory keeps: their text, each after the spelling
+# that names it, which the message then leaves as written.
 # Placeholder: {{entries}}
 reference_index = '''
-The text of every reference named in this conversation. A line that is only a reference is followed by the text it stands for.
+The text of every reference named in this conversation, and of the `AGENTS.md` this session's directory carries. A line that is only a reference is followed by the text it stands for.
 
 {{entries}}'''
 
