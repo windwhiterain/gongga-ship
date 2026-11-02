@@ -114,9 +114,8 @@ window = 64
 # are not a template: they are read as written.
 #
 # These are re-read when a prompt row is written -- the turn's first step, or
-# the step after a handover note moved -- and the text rendered then is stored
-# in that row and sent from it, so an edit lands at a boundary rather than at
-# every step. Prose sits in front of the whole transcript in the provider's
+# one whose index changed -- and the text rendered then is stored in that row
+# and sent from it, so an edit lands at a boundary rather than at every step. Prose sits in front of the whole transcript in the provider's
 # cached prefix: re-rendering per step re-bills the history behind it once per
 # edit, and storing the render says what the model was actually told.
 #
@@ -139,13 +138,6 @@ The user has already authorised running commands: do not ask for confirmation, a
 
 Every procedure this server does not encode as a tool is a skill: ask `index_skill` for the table, and read a body only when its line matches the task.
 '''
-
-# What introduces a handover note when a session replays one.
-# Placeholders: {{handover}}
-handover_preamble = '''
-Your mentor prepared this first lesson for you, the heir. Continue the current work from it:
-
-{{handover}}'''
 
 # What the agent is told when a request gets big: begin training immediately;
 # unfinished work and a dirty tree are current state, not prerequisites to fix.
@@ -187,6 +179,15 @@ reference_index = '''
 The text of every reference named in this conversation, and of the `AGENTS.md` this session's directory carries. A line that is only a reference is followed by the text it stands for.
 
 {{entries}}'''
+
+# What catches up an entry above that has changed since it was sent. The index keeps
+# the text the provider already cached, so what changed is said once, at the end,
+# instead of re-sending the entry and everything planned after it.
+# Placeholder: {{revisions}}
+reference_revision = '''
+An entry above is out of date when a block below names it: the block replaces the lines it removes (`-`) with the lines it adds (`+`), keeping three unchanged lines around each change, counted from the start of that entry's text. Read the entry and its block together. A line a block does not mention still reads as the entry says, and the entry's text is not otherwise rewritten.
+
+{{revisions}}'''
 
 # Why an image cannot be sent to this model, in the roster's own words.
 # Placeholders: {{model}}, {{modalities}}

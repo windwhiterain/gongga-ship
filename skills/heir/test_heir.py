@@ -33,7 +33,6 @@ create table sessions (
     cwd text not null,
     created_at integer not null,
     updated_at integer not null,
-    handover text,
     model_name text,
     context_limit integer,
     thinking_effort integer,
@@ -85,16 +84,55 @@ def wire_item(kind, payload):
     return payload
 
 
+def command_stub(tmp):
+    """A stand-in for the harness's command, recording what it is asked to send.
+
+    The script hands the heir's lesson to `send_message` rather than writing a row
+    itself, so what is checked here is the argument it hands over. The stub is a
+    shell script on POSIX and a `.cmd` on Windows: an interpreter is what a test
+    has, and a real `gongga-cli` is an executable the fixture does not have.
+    """
+    log = os.path.join(tmp, "sent.jsonl")
+    stub = os.path.join(tmp, "stub_command.py")
+    with open(stub, "w", encoding="utf-8") as f:
+        f.write(
+            "import json\n"
+            "import sys\n"
+            f"with open({log!r}, 'a', encoding='utf-8') as out:\n"
+            "    out.write(json.dumps(sys.argv[1:], ensure_ascii=False) + '\\n')\n"
+            "print(json.dumps({'t': 'cmd_result', 'id': 1, 'ok': True, "
+            "'message': 'message queued for the next step boundary'}))\n"
+        )
+    if os.name == "nt":
+        path = os.path.join(tmp, "gongga-cli.cmd")
+        with open(path, "w", encoding="utf-8", newline="\r\n") as f:
+            f.write(f'@"{sys.executable}" "{stub}" %*\n')
+    else:
+        path = os.path.join(tmp, "gongga-cli")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(f'#!/bin/sh\nexec "{sys.executable}" "{stub}" "$@"\n')
+        os.chmod(path, 0o755)
+    return path, log
+
+
 class Home:
     """A home directory whose database the script under test can be pointed at."""
 
     def __init__(self, tmp):
         self.path = tmp
         self.db = os.path.join(tmp, "gongga.db")
+        self.cli, self.log = command_stub(tmp)
         sqlite3.connect(self.db).close()
         self.c = sqlite3.connect(self.db)
         self.c.executescript(SCHEMA)
         self.c.row_factory = sqlite3.Row
+
+    def sent(self):
+        """Every command the script handed to the command layer, oldest first."""
+        if not os.path.exists(self.log):
+            return []
+        with open(self.log, encoding="utf-8") as f:
+            return [json.loads(line) for line in f if line.strip()]
 
     def session(self, name, model="p/m1", cwd="C:/work", tokens=777000):
         self.c.execute(
@@ -133,11 +171,14 @@ class Home:
         self.c.close()
 
 
-def run(home, *args):
+def run(home, *args, cli=True):
     env = dict(os.environ, GONGGA_HOME=home.path)
-    python = sys.executable
+    # Unset on purpose, to reach the failure path a shell that lost it would.
+    env.pop("GONGGA_CLI", None)
+    if cli:
+        env["GONGGA_CLI"] = home.cli
     return subprocess.run(
-        [python, os.path.join(HERE, "transcript.py"), *args],
+        [sys.executable, os.path.join(HERE, "transcript.py"), *args],
         capture_output=True,
         text=True,
         env=env,
@@ -183,9 +224,6 @@ def test_heir_moves_every_row_then_empties():
         )
         for kind, payload in source:
             h.add(sid, kind, payload)
-        h.c.execute("update sessions set handover='旧笔记' where id=?", (sid,))
-        h.c.commit()
-
         note = "用户要 A；B 失败因为 C；现在在 D"
         p = run(h, "heir", "--session", "main", "--mentor", "mentor-main", "--note", note)
         assert p.returncode == 0, p.stderr
@@ -206,16 +244,17 @@ def test_heir_moves_every_row_then_empties():
             for k, v in source
         ], "every row must arrive with its wire item, reader payload and call id"
 
-        # Nothing was injected when the session woke up: its last row was an
-        # answered exchange, so the whole transcript is the past and the session
-        # is simply empty.
+        # Nothing is left but the row the server appends when this command
+        # returns: no row of the past, and no note stored beside the transcript.
         mine = h.rows(sid)
         assert mine == [], [dict(r) for r in mine]
 
-        # An emptied session numbers its next row from 1, so the note may claim to
-        # cover nothing -- or that row would be folded away before it was ever sent.
-        s = h.c.execute("select handover, context_tokens from sessions where id=?", (sid,)).fetchone()
-        assert s["handover"] == note and s["context_tokens"] == 0, dict(s)
+        # The lesson went out as the message an operator would send, to this
+        # session, and the measurement of a transcript that no longer exists is
+        # zeroed so the next step does not remind about it.
+        assert h.sent() == [["send_message", "--session", "main", "--message", note]], h.sent()
+        s = h.c.execute("select context_tokens from sessions where id=?", (sid,)).fetchone()
+        assert s["context_tokens"] == 0, dict(s)
         h.add(sid, "text", {"role": "user", "text": "醒来第一句"})
         assert [json.loads(r["display"])["text"] for r in h.rows(sid)] == ["醒来第一句"], "seq restarts at 1"
         m = h.c.execute("select model, cwd from sessions where id=?", (mid,)).fetchone()
@@ -233,6 +272,8 @@ def test_heir_moves_every_row_then_empties():
         # session starts from seq 1 again.
         assert second["rows_copied"] == 2 and second["kept_call"] is None, second
         assert second["mentor_created"] is False, second
+        assert [sent[0] for sent in h.sent()] == ["send_message"] * 2, h.sent()
+        assert h.sent()[-1][-1] == "第二份", h.sent()
         assert len(h.rows(mid)) == before + 1 + 2, (before, len(h.rows(mid)))
         again = h.c.execute("select content from messages where session_id=? and seq=900", (mid,)).fetchone()
         assert "mentor 自己的旧行" in again["content"], "appending must not rewrite what is there"
@@ -264,8 +305,7 @@ def test_heir_keeps_the_call_in_flight():
         mine = h.rows(sid)
         assert [r["kind"] for r in mine] == ["tool_call"], [dict(r) for r in mine]
         assert mine[0]["seq"] == 2, dict(mine)
-        s = h.c.execute("select handover from sessions where id=?", (sid,)).fetchone()
-        assert s["handover"] == "要做 X；Y 失败因为 Z", dict(s)
+        assert h.sent() == [["send_message", "--session", "main", "--message", "要做 X；Y 失败因为 Z"]], h.sent()
 
         # The archive holds the whole exchange, and the copied call is answered
         # there: a mentor reads its own transcript back as a valid request.
@@ -309,8 +349,8 @@ def test_a_bad_copy_rolls_everything_back():
         assert p.returncode != 0 and "the copy differs" in p.stderr, p.stderr
         assert len(h.rows(sid)) == mine_before, "the learner kept every row"
         assert len(h.rows(mid)) == mentor_before, "the mentor gained nothing"
-        s = h.c.execute("select handover from sessions where id=?", (sid,)).fetchone()
-        assert s["handover"] == "第一轮", s["handover"]
+        # Only the first, successful handover reached the command layer.
+        assert h.sent() == [["send_message", "--session", "main", "--message", "第一轮"]], h.sent()
         h.close()
 
 
@@ -327,22 +367,40 @@ def test_read_shows_every_row_that_is_actually_sent():
         out = json.loads(run(h, "read", "--session", "main").stdout)
         assert out["live_messages"] == 2 and out["shown_messages"] == 2, out
         assert [message["text"] for message in out["messages"]] == ["第一句", "第二句"], out
-        assert out["handover"] is None
         assert out["last_seq"] == 4, out
 
-        # A note changes nothing about the rows: only `heir` can remove one.
-        h.c.execute("update sessions set handover='笔记' where id=?", (sid,))
-        h.c.commit()
+        # A lesson is a message like any other, so reading has nothing to add to it.
+        h.add(sid, "text", {"role": "user", "text": "第一课"})
         out = json.loads(run(h, "read", "--session", "main").stdout)
-        assert out["handover"] == "笔记" and out["live_messages"] == 2, out
+        assert [message["text"] for message in out["messages"]][-1] == "第一课", out
+        assert "handover" not in out, out
         h.close()
 
 
-def test_shipped_prompts_batch_and_train_immediately():
+def test_a_lesson_that_cannot_be_sent_is_printed():
+    """A shell without the command layer empties the session and says so.
+
+    The lesson is the heir's only copy at that point, so losing it silently would be
+    the one unrecoverable failure this command has.
+    """
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        h = Home(tmp)
+        sid = h.session("main")
+        h.add(sid, "text", {"role": "user", "text": "清空你自己"})
+
+        note = "用户要 A；下一步读 docs/notes/x.md"
+        p = run(h, "heir", "--session", "main", "--mentor", "m", "--note", note, cli=False)
+        assert p.returncode != 0, p.stdout
+        assert "GONGGA_CLI" in p.stderr, p.stderr
+        assert note in p.stderr, "the lesson has to survive in the result"
+        # Emptied before the send, as it must be: the mentor holds the archive.
+        assert h.rows(sid) == [], [dict(r) for r in h.rows(sid)]
+        h.close()
+
+
+def test_shipped_prompt_trains_immediately():
     # Two levels: this skill sits at `skills/<name>` since the buckets went flat.
     config = open(os.path.join(HERE, "../../config/config.toml"), encoding="utf-8").read()
-    assert "Issue independent read-only tool calls together in one response" in config
-    assert "cascade them with `&&`" in config
     assert "Start training your heir now" in config
     assert "do not finish the task, commit, clean the tree, or make the tests pass first" in config
     assert "Uncommitted changes and failing tests are valid state" in config

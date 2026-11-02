@@ -13,6 +13,11 @@ whole transcript into a mentor session, verifies the copy, deletes the original
 rows, and answers the call in flight with the heir's next instructions. The
 heir continues the current work from its first lesson; no clean state is needed.
 
+The lesson is a message: it goes to the session with `send_message`, exactly as
+an operator's would, so the server reads it as a first user message -- its
+references become index roots, and nothing has to teach the server what a lesson
+is.
+
 Reading returns what a conversation is made of -- the model's own messages and
 anything injected into the session. Tool calls, tool results and reasoning are
 left out: they are most of the rows and least of the meaning.
@@ -22,6 +27,7 @@ import argparse
 import json
 import os
 import sqlite3
+import subprocess
 import sys
 import time
 
@@ -30,6 +36,8 @@ PREVIEW_CHARS = 120
 # The server writes are short but frequent; give a racing write time to clear
 # instead of failing the one operation that must not fail halfway.
 BUSY_TIMEOUT_MS = 5000
+# The command layer, exported by the server to every shell it starts.
+COMMAND_VARIABLE = "GONGGA_CLI"
 
 
 def die(message):
@@ -70,15 +78,12 @@ def body(row):
         value = json.loads(row["display"])
     except ValueError:
         return ""
-    return value.get("text") or value.get("handover") or ""
+    return value.get("text") or ""
 
 
 def cmd_read(args):
     conn = connect()
     sid = session_id(conn, args.session)
-    note = conn.execute(
-        "select handover from sessions where id = ?", (sid,)
-    ).fetchone()[0]
     after = 0 if args.after is None else args.after
 
     rows = conn.execute(
@@ -120,7 +125,6 @@ def cmd_read(args):
         json.dumps(
             {
                 "session": args.session,
-                "handover": note,
                 "last_seq": last,
                 "live_messages": live,
                 "shown_messages": len(messages),
@@ -132,12 +136,75 @@ def cmd_read(args):
     )
 
 
+def command_layer():
+    """This server's own command, as the shell it started was given it."""
+    return os.environ.get(COMMAND_VARIABLE)
+
+
+def command_result(stdout):
+    """The terminal outcome of the one command the CLI ran, as its events report it."""
+    for line in stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(event, dict) and event.get("t") == "cmd_result":
+            return event
+    return None
+
+
+def send_lesson(session, lesson):
+    """Puts the heir's first lesson in the session as an ordinary message.
+
+    # Invariant
+
+    A failure here never loses the lesson: it is printed, which is what the call's
+    result carries into the heir's own transcript -- the session is already empty,
+    so that result is the only copy left.
+
+    Returns what the command said it did, because whether a message is delivered now
+    or at the next step boundary is the server's answer, not this script's.
+    """
+    cli = command_layer()
+    detail = None
+    if not cli:
+        detail = (
+            f"{COMMAND_VARIABLE} is not set: only a shell the server started has it "
+            f'(check with: echo "${COMMAND_VARIABLE}")'
+        )
+    else:
+        try:
+            sent = subprocess.run(
+                [cli, "send_message", "--session", session, "--message", lesson],
+                capture_output=True,
+                text=True,
+            )
+        except OSError as e:
+            sent = None
+            detail = str(e)
+        if sent is not None:
+            outcome = command_result(sent.stdout)
+            if sent.returncode == 0 and outcome is not None and outcome.get("ok"):
+                return outcome.get("message") or ""
+            detail = (
+                (outcome or {}).get("message")
+                or (sent.stderr or "").strip()
+                or f"the command exited {sent.returncode}"
+            )
+    die(
+        f"the transcript was copied to a mentor and emptied, but the lesson could not be "
+        f"sent to {session!r} ({detail}). It is repeated here because this result is now "
+        f"the only place it exists; continue from it, and from now on carry it as your "
+        f"own message:\n\n{lesson}"
+    )
+
+
 def learner_message(session, mentor, kept):
     """What the heir reads as the answer to the command that started it."""
     return (
         f"You are now the heir in `{session}`, and `{mentor}` holds the complete transcript. "
         f"This session is empty {'down to the call you are reading this from' if kept else 'for your next request'}. "
-        "Your first lesson is the note opening that request: it carries the current objective, "
+        "Your first lesson is the message that follows this one: it carries the current objective, "
         "state, failed attempts, and next action. Everything else remains readable in the mentor.\n"
         f"  read it:  harness {{command: \"get_messages\", arguments: {{session: \"{mentor}\", range: \"1:\"}}}}\n"
         f"  ask it:   harness {{command: \"send_message\", arguments: {{session: \"{mentor}\", message: \"...\"}}}}\n"
@@ -304,10 +371,8 @@ def cmd_heir(args):
         # would have the server measure this session as still full and remind on
         # every single step.
         conn.execute(
-            """update sessions
-                  set handover = ?, context_tokens = 0, updated_at = ?
-                where id = ?""",
-            (args.note, now, sid),
+            "update sessions set context_tokens = 0, updated_at = ? where id = ?",
+            (now, sid),
         )
         # What this handover did, in the table the server keeps its own events in,
         # so "how many times did this session compact" is a count of rows rather
@@ -357,6 +422,12 @@ def cmd_heir(args):
                 file=sys.stderr,
             )
 
+    # The session is empty now, so this is the first user message it will carry.
+    # Sent from here rather than written into the database: a row inserted between
+    # the call in flight and its result is a transcript no provider accepts, and
+    # `send_message` is what puts a lesson where an operator's message would go.
+    delivery = send_lesson(args.session, args.note)
+
     print(
         json.dumps(
             {
@@ -368,7 +439,8 @@ def cmd_heir(args):
                 "kept_call": json.loads(kept["content"])["call_id"] if kept is not None else None,
                 "mentor_rows": len(copied) + 1 + (1 if kept is not None else 0),
                 "deleted": len(moved),
-                "handover_chars": len(args.note),
+                "lesson_chars": len(args.note),
+                "lesson_delivery": delivery,
                 "you": learner_message(args.session, args.mentor, kept is not None),
             },
             ensure_ascii=False,

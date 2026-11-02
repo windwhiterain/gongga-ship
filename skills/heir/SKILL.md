@@ -1,6 +1,6 @@
 ---
 name: heir
-description: 立即开始培养继承人——把当前目标、试过什么、成败与失败原因、文件状态和下一步写成继承人的第一课；脚本把 transcript 整份存进 mentor 会话并清空当前会话，继承人从笔记继续当前工作。收到「Context notice」就先运行 heir，不要求任务完成、commit、git clean 或测试全绿。用 $GONGGA_HOME/skills/heir/transcript（read / heir）；删行之前会逐行校验 mentor 的完整副本。
+description: 立即开始培养继承人——把当前目标、试过什么、成败与失败原因、文件状态和下一步写成继承人的第一课；脚本把 transcript 整份存进 mentor 会话、清空当前会话，再把第一课作为一条消息发给它，继承人从那句话继续当前工作。收到「Context notice」就先运行 heir，不要求任务完成、commit、git clean 或测试全绿。用 $GONGGA_HOME/skills/heir/transcript（read / heir）；删行之前会逐行校验 mentor 的完整副本。
 ---
 
 # 立即开始培养继承人
@@ -13,9 +13,9 @@ description: 立即开始培养继承人——把当前目标、试过什么、�
 
 | | `heir` |
 |---|---|
-| 做的事 | 全份存进 mentor → 校验 → **删空当前会话**（留在飞的那个 call） |
+| 做的事 | 全份存进 mentor → 校验 → **删空当前会话**（留在飞的那个 call）→ 用 `send_message` 把第一课发给自己 |
 | 原文还在当前会话吗 | 不在，完整副本在 mentor 会话里 |
-| 继承人下一次请求发什么 | 第一课 + 你这条 call 和它的结果，就这些 |
+| 继承人下一次请求发什么 | 你这条 call 和它的结果、第一课这条消息，就这些 |
 
 ## 开始培养
 
@@ -43,7 +43,9 @@ $T heir --session <你的会话名> --mentor mentor-<你的会话名> \
 
 ## 继承人先读，再问
 
-清空之后不会多插一行：指引就在 `heir` 命令的结果里。当前会话留下这个 call 和它的结果，provider 才能接受下一次请求。
+清空之后没有隐藏的边界：指引就在 `heir` 命令的结果里，第一课则是脚本用一次 `send_message` 发的普通消息，在下一个 step 边界落成一条 user 行。当前会话留下这个 call 和它的结果，provider 才能接受下一次请求。
+
+第一课走 `send_message` 而不是写进数据库，有两个原因：一，它现在就在这条 call 里跑，直接插一行会落在 call 和它的结果之间，那是 provider 不收的形状；二，一条普通消息才会被当作**空会话的首条 user 消息**处理——它命名的 `@file:`/`@skill:` 因此进 index、随前缀缓存只收一次费。别把它改回某种"笔记列"，那正是这条路原来的样子。
 
 ```bash
 gongga-cli get_messages --session mentor-main --range 1:
@@ -60,7 +62,7 @@ gongga-cli send_message --session mentor-main --message "…"
 
 ## 为什么这是一个脚本而不是服务端工具
 
-它只执行几条 SQL：`read` 一条 SELECT，`heir` 是一个事务里的 INSERT + 校验 SELECT + DELETE。是否培养继承人由最了解当前工作的 agent 决定，脚本只负责可靠地保存原文和准备继承人的起点。
+它只做两件事：`read` 一条 SELECT；`heir` 是一个事务里的 INSERT + 校验 SELECT + DELETE，事务提交之后再用 `send_message` 把第一课发给自己。是否培养继承人由最了解当前工作的 agent 决定，脚本只负责可靠地保存原文和准备继承人的起点。
 
 ## 继承人的第一课写什么
 
@@ -90,8 +92,9 @@ gongga-cli send_message --session mentor-main --message "…"
 ## 硬规矩
 
 - **`--note` 不能空**：原文在 mentor，继承人每次真正带着的是第一课。
+- **第一课发不出去就整体报告出来**：会话此时已空，脚本会把第一课原样写进结果（也就是这条 call 的 tool_result）并非零退出。那不是丢课，是换了个位置存。
 - **不需要 clean state**：不要先修复、提交、清理或验证再运行命令；当前状态本身就是课程内容。
-- **`heir` 之后 `seq` 从 1 重新开始**，笔记只由 `handover` 列承载，没有隐藏边界。不要自己手写 SQL 动这张表。
+- **`heir` 之后 `seq` 从 1 重新开始**（没有在飞的 call 时），第一课就是第 1 行；没有隐藏边界，也没有"笔记列"。不要自己手写 SQL 动这张表。
 - **不要频繁培养**：每次都要重新写第一课；但收到新的 `Context notice` 时仍应立即行动。
 - 图片的 provider 侧 `file_id` 随原行走；继承人需要再次发送同一张图时要重新上传。
 - 成功后 `context_tokens` 归零是正常的，下一次请求会重新测量。
@@ -108,4 +111,4 @@ scripts/heir_selftest.sh
 
 ## 留下了什么记录
 
-`heir` 成功后往 `events` 表写一条 `kind = 'handover'`：机制、mentor、行数、seq、在飞的 call、笔记字数、当时的 `context_tokens` 和 `context_limit`。这是记录，不是决定请求内容的事实来源；写入失败只报告 stderr，不让已经成功的培养过程回滚。
+`heir` 成功后往 `events` 表写一条 `kind = 'handover'`：机制、mentor、行数、seq、在飞的 call、第一课字数、当时的 `context_tokens` 和 `context_limit`。这是记录，不是决定请求内容的事实来源；写入失败只报告 stderr，不让已经成功的培养过程回滚。
