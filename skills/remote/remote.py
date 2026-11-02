@@ -32,11 +32,31 @@ def emit(kind: str, **fields) -> None:
     print(json.dumps({"result": kind, **fields}, ensure_ascii=False))
 
 
+def note(message: str) -> None:
+    # Progress is narration for the person waiting, so it goes to stderr: stdout
+    # carries the one JSON answer, and a reader parsing it must not skip past prose.
+    print(message, file=sys.stderr, flush=True)
+
+
+def human_size(count: int) -> str:
+    value = float(count)
+    for unit in ("B", "KiB", "MiB"):
+        if value < 1024:
+            return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{value:.1f} GiB"
+
+
 def run(argv: list[str], *, stdin=None, timeout: float = 60) -> subprocess.CompletedProcess:
+    # A child that inherits this process's stdin holds the caller's terminal open
+    # after it exits, and the shell that started this script then waits for a
+    # command that has already printed its answer. Only an explicit batch is
+    # passed through; every other child gets a closed stdin.
+    fed = {"input": stdin} if stdin is not None else {"stdin": subprocess.DEVNULL}
     try:
         result = subprocess.run(
             argv,
-            input=stdin,
+            **fed,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             timeout=timeout,
@@ -168,6 +188,7 @@ def distribution(args: argparse.Namespace) -> tuple[Path, str]:
         command = ["cargo", "build", "-p", "gongga-bundle"]
         if args.release:
             command.append("--release")
+        note("building gongga-bundle; a cold tree takes minutes")
         checked(run(command, timeout=1200), "building gongga-bundle")
         artifact = root / "target" / profile / ("gongga.exe" if os.name == "nt" else "gongga")
     if not artifact.is_file():
@@ -214,15 +235,24 @@ def install(args: argparse.Namespace) -> None:
     checked(peer.ssh(f"{BASH} -c {shlex.quote('mkdir -p ' + shlex.quote(root))}"), "creating the distribution directory")
     # An existing content-addressed binary can be running. Replace only after
     # the new bytes are fully uploaded; never overwrite it in place.
-    exists = peer.ssh(f"test -x {shlex.quote(final)}")
+    # Through the explicit POSIX shell like every other probe here: a peer whose
+    # login shell is PowerShell does not know `test`, and an exit status read from
+    # that shell would call every installed distribution missing.
+    exists = peer.ssh(f"{BASH} -c {shlex.quote(f'test -x {shlex.quote(final)}')}")
     if exists.returncode != 0:
+        size = artifact.stat().st_size
+        note(f"uploading {human_size(size)} to {peer.destination}:{final}")
         checked(sftp_put_result(peer, artifact, sftp_temporary), "uploading distribution")
-        size = source_size(peer, temporary)
-        if size != artifact.stat().st_size:
-            raise Failure(f"uploaded size {size} != local size {artifact.stat().st_size}")
+        uploaded = source_size(peer, temporary)
+        if uploaded != size:
+            raise Failure(f"uploaded size {uploaded} != local size {size}")
+        note("uploaded; activating")
         checked(peer.ssh(f"{BASH} -c {shlex.quote(f'mv -f {shlex.quote(temporary)} {shlex.quote(final)}')}"), "activating distribution")
+    else:
+        note(f"{final} is already installed; skipping the upload")
     shell_final = f"{sftp_home}/.gongga/bin/gongga-{digest}{suffix}"
     runner = f"{shell_final} runner"
+    note("greeting the runner")
     greeting = probe(peer, runner, timeout=45)
     emit(
         "installed",
@@ -467,6 +497,48 @@ def check(args: argparse.Namespace) -> None:
     emit("connected", peer=peer.destination, runner=runner, protocol=greeting["protocol"])
 
 
+def reach(table: dict, timeout: float = 20) -> dict:
+    """Whether one configured target answers, answered as data rather than raised."""
+    host = str(table.get("host") or "")
+    if not host:
+        return {"connected": False, "error": "the target names no host"}
+    user, _, address = host.rpartition("@")
+    chosen = argparse.Namespace(
+        host=address,
+        user=user or None,
+        port=int(table.get("port", 22)),
+        identity=table.get("identity"),
+    )
+    try:
+        greeting = probe(Peer(chosen), str(table.get("runner") or "gongga runner"), timeout=timeout)
+    except Failure as error:
+        return {"connected": False, "error": str(error)}
+    return {"connected": True, "protocol": greeting["protocol"]}
+
+
+def list_targets(args: argparse.Namespace) -> None:
+    path = home_path(args.home) / "config.toml"
+    if not path.is_file():
+        raise Failure(f"no config at {path}")
+    configured = tomllib.loads(path.read_text(encoding="utf-8")).get("targets") or {}
+    if not configured:
+        raise Failure(f"{path} configures no targets; `install` prints the table to add")
+    rows = []
+    for name in sorted(configured):
+        table = configured[name]
+        row = {
+            "name": name,
+            "host": table.get("host"),
+            "port": table.get("port", 22),
+            "identity": table.get("identity"),
+            "runner": table.get("runner", "gongga runner"),
+        }
+        if args.check:
+            row.update(reach(table))
+        rows.append(row)
+    emit("targets", config=str(path), targets=rows)
+
+
 def remove(args: argparse.Namespace) -> None:
     peer = Peer(args)
     distribution = args.distribution
@@ -514,6 +586,10 @@ def parser() -> argparse.ArgumentParser:
         command = sub.add_parser(name, help=f"{name} a runner over real SSH")
         peer_options(command, runner=True)
         command.set_defaults(action=action)
+
+    list_parser = sub.add_parser("list", help="list configured targets")
+    list_parser.add_argument("--check", action="store_true", help="greet each target's runner over SSH")
+    list_parser.set_defaults(action=list_targets)
 
     remove_parser = sub.add_parser("remove", help="remove one content-addressed distribution")
     peer_options(remove_parser)

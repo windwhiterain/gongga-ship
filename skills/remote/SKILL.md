@@ -15,11 +15,23 @@ The script beside this file is self-contained Python 3.11+ and uses the machine'
 PowerShell Remoting setup. Host-key checking stays enabled. Never disable it to make a
 connection work.
 
+Every command prints one JSON line on stdout and its progress on stderr, so nothing
+that parses the answer has to skip past narration. A command returns when its work is
+done: `install` says when it is building, uploading and greeting, and skips the upload
+when that exact content-addressed distribution is already on the peer.
+
 ## Set up one endpoint
 
 Find this skill's installed path with `index_skill`, then call its `remote` launcher.
 These examples use `R=/path/from/index_skill/remote`, not a command assumed to be on
 `PATH`.
+
+0. **See what this server already has.** `list` reads the local config; `--check` also
+   greets each target's runner, which is the cheapest proof that a peer still answers:
+
+   ```bash
+   "$R" list --check
+   ```
 
 1. **Build and install the distribution.** Run from the Gongga checkout:
 
@@ -130,7 +142,8 @@ background jobs and Windows-peer production hardening are not silently emulated.
 ## Inspect and remove
 
 `get_messages` reads the local transcript as usual. `list_bash` only shows live named
-shells; a retired command reports through its completion message. If setup fails,
+shells; a retired command reports through its completion message. `list --check` was
+in step 0: it changes nothing and answers whether each target still answers. If setup fails,
 read the command's error and the local server log rather than falling back to a local
 shell.
 
