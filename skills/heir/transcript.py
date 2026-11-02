@@ -6,7 +6,7 @@ does not take it: it measures the context and says so (`Context notice`), and
 this script is how the agent starts immediately.
 
     transcript.py read     [--session S] [--after SEQ] [--limit N] [--preview]
-    transcript.py heir     --session S --mentor M --note TEXT
+    transcript.py heir     --session S [--mentor M] --note TEXT
 
 `heir` empties the current session so it continues as the heir: it copies the
 whole transcript into a mentor session, verifies the copy, deletes the original
@@ -224,12 +224,43 @@ def mentor_message(learner):
     )
 
 
+def established(conn, name):
+    """Whether `name` is a session that already holds rows.
+
+    A mentor an earlier handover used is an archive, not a scratch pad: training
+    another heir into it would put two archives in one transcript, and the heir
+    reads that transcript from its first row.
+    """
+    row = conn.execute("select id from sessions where name = ?", (name,)).fetchone()
+    if row is None:
+        return False
+    count = conn.execute(
+        "select count(*) from messages where session_id = ?", (row["id"],)
+    ).fetchone()[0]
+    return count > 0
+
+
+def free_name(conn, wanted):
+    """`wanted` itself when it holds no rows, else `wanted/2`, `wanted/3`, ...
+
+    A segment is added rather than a suffix, because a name is a path: the archive
+    of the second handover belongs under the first one's name, where the tree in
+    the session list already shows it.
+    """
+    if not established(conn, wanted):
+        return wanted
+    n = 2
+    while established(conn, f"{wanted}/{n}"):
+        n += 1
+    return f"{wanted}/{n}"
+
+
 def ensure_mentor(conn, name, source):
     """The mentor's id, creating the session with the learner's model and directory.
 
     A mentor is an ordinary session: the agent reads it and talks to it with the
     same commands every client has, which is the whole reason it is a session and
-    not a file.
+    not a file. `name` is already the free one -- see `free_name`.
     """
     row = conn.execute("select id from sessions where name = ?", (name,)).fetchone()
     if row is not None:
@@ -252,12 +283,16 @@ def cmd_heir(args):
             "refusing to train an heir with an empty lesson: the mentor holds the archive, "
             "but this lesson is what the heir actually sends"
         )
-    if args.session == args.mentor:
+    conn = connect()
+    # The mentor a handover makes room for: the asked-for name when nothing holds it,
+    # otherwise the next one under it. Never the session being emptied, and never an
+    # archive an earlier handover left behind.
+    mentor = free_name(conn, args.mentor)
+    if mentor == args.session:
         die(
             "the mentor has to be another session: copying a transcript into itself and "
             "then deleting it would delete the archive with the original"
         )
-    conn = connect()
     sid = session_id(conn, args.session)
     source = conn.execute(
         "select model, cwd, context_tokens, context_limit from sessions where id = ?",
@@ -286,7 +321,7 @@ def cmd_heir(args):
     )
 
     with conn:
-        mid, created = ensure_mentor(conn, args.mentor, source)
+        mid, created = ensure_mentor(conn, mentor, source)
         base = conn.execute(
             "select coalesce(max(seq), 0) from messages where session_id = ?", (mid,)
         ).fetchone()[0]
@@ -335,7 +370,7 @@ def cmd_heir(args):
             ):
                 die(
                     f"the copy differs at seq {original['seq']}; nothing was deleted "
-                    f"(mentor {args.mentor} holds {len(copied)} copied row(s))"
+                    f"(mentor {mentor} holds {len(copied)} copied row(s))"
                 )
 
         # The copied call is a question with no answer, in a session that will now
@@ -399,7 +434,7 @@ def cmd_heir(args):
                     json.dumps(
                         {
                             "mechanism": "heir",
-                            "mentor": args.mentor,
+                            "mentor": mentor,
                             "mentor_created": created,
                             "rows": len(rows),
                             "rows_moved": len(moved),
@@ -432,7 +467,7 @@ def cmd_heir(args):
         json.dumps(
             {
                 "session": args.session,
-                "mentor": args.mentor,
+                "mentor": mentor,
                 "mentor_created": created,
                 "rows_copied": len(rows),
                 "through_seq": through,
@@ -441,7 +476,7 @@ def cmd_heir(args):
                 "deleted": len(moved),
                 "lesson_chars": len(args.note),
                 "lesson_delivery": delivery,
-                "you": learner_message(args.session, args.mentor, kept is not None),
+                "you": learner_message(args.session, mentor, kept is not None),
             },
             ensure_ascii=False,
             indent=2,
@@ -454,7 +489,7 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
 
     read = sub.add_parser("read", help="show the messages that are actually sent")
-    read.add_argument("--session", required=True)
+    read.add_argument("--session", help="defaults to $GONGGA_SESSION")
     read.add_argument("--after", type=int, help="defaults to the beginning of the transcript")
     read.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     read.add_argument("--preview", action="store_true", help="one line per message")
@@ -464,12 +499,30 @@ def main():
         "heir",
         help="start training an heir: save the transcript with --mentor, verify it, and empty this session",
     )
-    heir.add_argument("--session", required=True)
-    heir.add_argument("--mentor", required=True, help="any session name; created if it does not exist")
+    heir.add_argument("--session", help="defaults to $GONGGA_SESSION")
+    heir.add_argument(
+        "--mentor",
+        help="where the archive goes: `<your session>/mentor` when omitted. A name that "
+        "already holds a transcript is not reused -- `2`, `3`, ... is added under it -- "
+        "so one archive never becomes two.",
+    )
     heir.add_argument("--note", required=True, help="the heir's first lesson: objective, state, failures and next action")
     heir.set_defaults(func=cmd_heir)
 
     args = parser.parse_args()
+    # Both names default to the session the caller is already in: the server exports
+    # it to every shell it starts, so nothing has to be typed twice or guessed.
+    if args.session is None:
+        args.session = os.environ.get("GONGGA_SESSION", "")
+        if not args.session:
+            die(
+                "no --session, and GONGGA_SESSION is not set: name the session, or run "
+                "this from a shell the server started"
+            )
+    if getattr(args, "mentor", None) is None:
+        # A segment, not a prefix: the archive hangs under the session it came from,
+        # where the session list already draws it as a child.
+        args.mentor = f"{args.session}/mentor"
     args.func(args)
 
 

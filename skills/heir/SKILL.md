@@ -1,6 +1,6 @@
 ---
 name: heir
-description: 立即开始培养继承人——把当前目标、试过什么、成败与失败原因、文件状态和下一步写成继承人的第一课；脚本把 transcript 整份存进 mentor 会话、清空当前会话，再把第一课作为一条消息发给它，继承人从那句话继续当前工作。收到「Context notice」就先运行 heir，不要求任务完成、commit、git clean 或测试全绿。入口是本 skill 目录下的 `transcript`（read / heir）；删行之前会逐行校验 mentor 的完整副本。
+description: 立即开始培养继承人——把当前目标、试过什么、成败与失败原因、文件状态和下一步写成继承人的第一课；脚本把 transcript 整份存进 mentor 会话、清空当前会话，再把第一课作为一条消息发给它，继承人从那句话继续当前工作。收到「Context notice」就先运行 heir，不要求任务完成、commit、git clean 或测试全绿。入口是本 skill 目录下的 `transcript`（read / heir）；删行之前会逐行校验 mentor 的完整副本。会话名与 Mentor 名都按路径：`--session` 默认 `$GONGGA_SESSION`，`--mentor` 默认 `<你的会话>/mentor`，已被占就加 `/2`——一代档案一份会话，绝不续进上一代。
 compatibility: 需要 Python 3 与 sqlite3（入口脚本自己挑一个能用的解释器）
 metadata:
   entry: transcript
@@ -24,19 +24,20 @@ metadata:
 
 ```bash
 # 从本 skill 的目录运行：`@skill:` 的展开里写着 `SKILL.md: <path>`，取它的父目录；
-# gongga 里更短：`gongga-cli skill heir read --session <你的会话名>`。
+# gongga 里更短：`gongga-cli skill heir read`。
 SKILL_DIR=<本 SKILL.md 所在目录>
 T="$SKILL_DIR/transcript"
 
 # 可选：只有需要回顾对话时才先读；收到 Context notice 不要先做收尾工作
-$T read --session <你的会话名>
+$T read
 
 # 给继承人的第一课：当前目标、试过什么、成败、当前状态、下一步
-$T heir --session <你的会话名> --mentor mentor-<你的会话名> \
-        --note "<继承人的第一课>"
+$T heir --note "<继承人的第一课>"
 ```
 
-`--mentor` 是**任意一个会话名**，不存在就建一个，沿用当前的 model 和 cwd。它是普通会话，之后能用 `get_messages` 读、用 `send_message` 问。
+`--session` 省略就是 `$GONGGA_SESSION`；`--mentor` 省略就是 **`<你的会话名>/mentor`**。archive 也按路径挂：`main` 的第一份在 `main/mentor`，第二份在 `main/mentor/2`——**不会**续进同一份 archive。理由是继承人要用 `get_messages --range 1:` 读回全部原文，两代档案串在一个会话里，它分不出哪一段是自己的过去、哪一段是上一代的。
+
+`--mentor` 也可以给任意别的名字，同一套规则：已被占就加 `/2`。mentor 不存在就用当前的 model 和 cwd 建一个；它是普通会话，之后能用 `get_messages` 读、用 `send_message` 问。
 
 `read` 读的是**对话本身**：模型说的话和注入的消息。每条带 `seq`、`role`、`chars`、`text`；工具调用、工具结果、reasoning 被过滤。默认读最后 40 条、给全文。需要回顾时才用它，不要为了形式上的完整推迟培养继承人。
 
@@ -54,8 +55,8 @@ $T heir --session <你的会话名> --mentor mentor-<你的会话名> \
 第一课走 `send_message` 而不是写进数据库，有两个原因：一，它现在就在这条 call 里跑，直接插一行会落在 call 和它的结果之间，那是 provider 不收的形状；二，一条普通消息才会被当作**空会话的首条 user 消息**处理——它命名的 `@file:`/`@skill:` 因此进 index、随前缀缓存只收一次费（机制、拼法和写错的后果见 `@skill:prefix-cache`）。别把它改回某种"笔记列"，那正是这条路原来的样子。
 
 ```bash
-gongga-cli get_messages --session mentor-main --range 1:
-gongga-cli send_message --session mentor-main --message "…"
+gongga-cli get_messages --session <你的会话名>/mentor --range 1:
+gongga-cli send_message --session <你的会话名>/mentor --message "…"
 ```
 
 **先读。** 做过什么、决定过什么、哪次失败为什么失败都在原文里；`get_messages` 不走模型、不花额度。

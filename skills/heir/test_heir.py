@@ -200,8 +200,12 @@ def test_guards():
         assert p.returncode != 0 and "empty lesson" in p.stderr, p.stderr
         assert len(h.rows(sid)) == 1, "a refused heir must not delete"
 
+        # A mentor named after the session itself is moved out of the way rather
+        # than refused: `main` already holds a transcript, so the archive goes to
+        # `main/2` and the session is emptied into it.
         p = run(h, "heir", "--session", "main", "--mentor", "main", "--note", "note")
-        assert p.returncode != 0 and "another session" in p.stderr, p.stderr
+        assert p.returncode == 0, p.stderr
+        assert json.loads(p.stdout)["mentor"] == "main/2", p.stdout
 
         p = run(h, "heir", "--session", "unknown", "--mentor", "m", "--note", "note")
         assert p.returncode != 0 and "no session named" in p.stderr, p.stderr
@@ -260,7 +264,9 @@ def test_heir_moves_every_row_then_empties():
         m = h.c.execute("select model, cwd from sessions where id=?", (mid,)).fetchone()
         assert (m["model"], m["cwd"]) == ("p/m1", "C:/work"), dict(m)
 
-        # A second handover into the same mentor appends; the archive is a session.
+        # A second handover asks for the same mentor and gets a new name under it:
+        # one archive per handover, because the heir reads its mentor from row one
+        # and two generations in one transcript cannot be told apart.
         keep = h.add(mid, "text", {"role": "user", "text": "mentor 自己的旧行"}, seq=900)
         h.add(sid, "text", {"role": "user", "text": "第二轮"})
         before = len(h.rows(mid))
@@ -271,13 +277,19 @@ def test_heir_moves_every_row_then_empties():
         # after it. No call was in flight, so the archive takes both and the
         # session starts from seq 1 again.
         assert second["rows_copied"] == 2 and second["kept_call"] is None, second
-        assert second["mentor_created"] is False, second
+        assert second["mentor"] == "mentor-main/2", second
+        assert second["mentor_created"] is True, second
         assert [sent[0] for sent in h.sent()] == ["send_message"] * 2, h.sent()
         assert h.sent()[-1][-1] == "第二份", h.sent()
-        assert len(h.rows(mid)) == before + 1 + 2, (before, len(h.rows(mid)))
+        # The first archive is exactly as it was left: not one row gained, and its
+        # own row is still there.
+        assert len(h.rows(mid)) == before, (before, len(h.rows(mid)))
         again = h.c.execute("select content from messages where session_id=? and seq=900", (mid,)).fetchone()
-        assert "mentor 自己的旧行" in again["content"], "appending must not rewrite what is there"
+        assert "mentor 自己的旧行" in again["content"], "the old archive must not be rewritten"
         assert keep == 900
+        # And the second archive holds the second handover, names in the report.
+        second_mid = h.c.execute("select id from sessions where name='mentor-main/2'").fetchone()["id"]
+        assert len(h.rows(second_mid)) == 1 + 2, len(h.rows(second_mid))
         h.close()
 
 
@@ -331,6 +343,14 @@ def test_a_bad_copy_rolls_everything_back():
         h.add(sid, "text", {"role": "assistant", "text": "这行不该消失"})
         run(h, "heir", "--session", "main", "--mentor", "m1", "--note", "第一轮")
         mid = h.c.execute("select id from sessions where name='m1'").fetchone()["id"]
+        # The next handover asks for the same mentor and is given `m1/2`: the
+        # tampering below has to follow the name the script will really use.
+        target = h.c.execute(
+            """insert into sessions (name, status, model_name, model, cwd, created_at, updated_at)
+                values ('m1/2', 'idle', 'm1', 'p/m1', 'C:/work', 0, 0)"""
+        ).lastrowid
+        h.c.commit()
+        mid = target
         sid = h.c.execute("select id from sessions where name='main'").fetchone()["id"]
         h.add(sid, "text", {"role": "user", "text": "第二轮"})
 

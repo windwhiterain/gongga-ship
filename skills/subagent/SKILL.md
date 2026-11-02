@@ -1,32 +1,58 @@
 ---
 name: subagent
-description: 把一块独立的工作交给另一个会话并行做——子 agent 不是一个工具，而是一个普通会话：自己的 transcript、自己的上下文与阈值、自己的 turn。当你要并行推进两条互不相干的实现、要把一个大的验证/探查丢给别人而自己不涨上下文、或者要一个只读的侦察兵时，读这个。用 gongga-cli set_session / send_message / get_messages / del_session 操作它；会话的模型自己指定（`--model` 是 sticky，设一次就一直带上），从 `@skill:model_pool` 抽一个能跑的。brief 就是这个会话的第一条消息，所以写文件/技能一律用 `@file:`/`@skill:`（`@skill:prefix-cache`）。
-compatibility: 需要 Python 3、sqlite3，以及一个在 PATH 里的 gongga-cli（wait_turn）
+description: 把一块独立的工作交给另一个会话并行做——子 agent 不是一个工具，而是一个普通会话：自己的 transcript、自己的上下文与阈值、自己的 turn。当你要并行推进两条互不相干的实现、要把一个大的验证/探查丢给别人而自己不涨上下文、或者要一个只读的侦察兵时，读这个。用 gongga-cli set_session / send_message / get_messages / del_session 操作它；会话的模型自己指定（`--model` 是 sticky，设一次就一直带上），从 `@skill:model_pool` 抽一个能跑的。brief 就是这个会话的第一条消息，所以写文件/技能一律用 `@file:`/`@skill:`（`@skill:prefix-cache`）。**不要手写会话名**：用本 skill 的 `spawn`，名字是路径 `<父会话>/<角色>`，撞了就加 `/2`，靠 `set_session --must_create` 保证不会选中别人的会话。
+compatibility: 需要 Python 3、sqlite3，以及一个在 PATH 里的 gongga-cli（spawn / wait_turn）
 metadata:
-  entry: wait_turn
+  entry: run
 ---
 
 # 子 agent
 
 这里没有"subagent 工具"，也不需要：**一个子 agent 就是一个普通会话**——它有自己的
 transcript、自己的上下文与压缩阈值、自己的 turn，跑在同一个服务端上。2026-10-30 实测：
-给 `main` 和 `sub1` 各发一条消息，两行 `turn start` 相隔 8 ms 出现，两个模型请求并行发出，
+给 `main` 和 `main/impl` 各发一条消息，两行 `turn start` 相隔 8 ms 出现，两个模型请求并行发出，
 两次 `turn end` 同时回来。并发是真的——turn 的互斥锁是**每个会话一把**
 （`SessionHandle::gate`），不是全局。
 
+## 起一个：名字是路径，撞了自动加段
+
+**不要手写会话名。** `set_session` 是"没有就建、有就选中"，两种情况答的都是
+`session is now X`——所以两个人、或者同一个人两次，都写 `sub1`，第二个 brief 会**静默注进
+第一个的 transcript**：两个 agent 共用一个上下文、互相打断，而且事后看不出来。
+
+名字由 `spawn` 决定，规则是一条路径：
+
+```
+<父会话>/<角色>          例：main/impl、main/scan
+<父会话>/<角色>/<n>      那个名字已被占：main/impl/2、main/impl/3
+```
+
+父会话默认是 `$GONGGA_SESSION`，所以从 `main` 起的子 agent 叫 `main/impl`，它自己再起的
+叫 `main/impl/review`。不同父会话的路径天然不同，**跨父撞名不可能**；同一个父下面重名，
+段往上加。名字就是它在会话列表树里的位置。
+
 ```bash
 G=gongga-cli
-# model_pool 在另一个桶里，它的路径不是本 skill 能算出来的：用名字调它。
-# 当然，不在 gongga 里就没有这个快捷方式：读 `@skill: model_pool`，按它正文的 SKILL_DIR 跑它自己的入口。
+SKILL_DIR=<本 SKILL.md 所在目录>
 S="$G skill model_pool"
-SKILL_DIR=<本 SKILL.md 所在目录>      # `@skill:` 展开里 `SKILL.md: <path>` 的父目录
-$G set_session --session sub1 --cwd /path/to/its/checkout \
-    --model "$($S pick)" --context_limit 20%
-$G send_message --session sub1 --message '<自足的 brief>'
-$G get_messages --session sub1 --range -20:     # 它说到哪了
-$G interrupt_session --session sub1             # 别干了，丢掉这一轮
-$G del_session --session sub1                   # 它在你名下，收尾是你的活
+
+name="$("$SKILL_DIR/spawn" impl --cwd /path/to/its/checkout \
+        --model "$($S pick)" --context-limit 20%)"
+echo "$name"          # main/impl，或者 main/impl/2
+
+$G send_message --session "$name" --message '<自足的 brief>'
+$G get_messages --session "$name" --range -20:     # 它说到哪了
+$G interrupt_session --session "$name"            # 别干了，丢掉这一轮
+$G del_session --session "$name"                  # 它在你名下，收尾是你的活
 ```
+
+`spawn` 只把最终名字打印到 stdout（一行，方便 `$(…)`），撞名跳过了哪几个、模型抽到哪个
+都走 stderr。它靠 `set_session --must_create true` 一次完成"选名字 + 建会话"：服务端在
+同名已存在时**拒绝**这条命令，所以不存在"探测完、创建前"被别人抢走的窗口，也不可能
+选中别人的会话。名字用完了就再加一段，**永远不会共用**。
+
+`--parent` 用来指定别的父会话（默认 `$GONGGA_SESSION`）；`--model` 省略就落到服务端默认。
+其它可选参数：`--context-limit 20%`。
 
 ## 派完要等它做完：`wait_turn`
 
@@ -34,14 +60,14 @@ $G del_session --session sub1                   # 它在你名下，收尾是你
 做别的"很容易变成"在它还写文件的时候就去读结果"。`wait_turn` 是那个"等"：
 
 ```bash
-$G send_message --session sub1 --message '<brief>'
-"$SKILL_DIR/wait_turn" sub1                     # 阻塞到它这一轮结束；gongga 里是 `gongga-cli skill subagent wait_turn sub1`
+$G send_message --session "$name" --message '<brief>'
+"$SKILL_DIR/wait_turn" "$name"                  # 阻塞到它这一轮结束；gongga 里是 `gongga-cli skill subagent wait_turn <name>`
 ```
 
 输出一行 JSON，退出码说明状态：
 
 ```json
-{"session": "sub1", "status": "idle", "turn": "done"}
+{"session": "main/impl", "status": "idle", "turn": "done"}
 ```
 
 | 退出码 | 意思 |
@@ -58,7 +84,7 @@ $G send_message --session sub1 --message '<brief>'
 **它为什么是脚本而不是 CLI 的一条命令。** CLI 的 `wait` 是个 primitive：
 
 ```bash
-$G wait --kind turn_end --session sub1     # 打印下一条这样的日志行就退出
+$G wait --kind turn_end --session <name>   # 打印下一条这样的日志行就退出
 ```
 
 它不知道一轮是不是早就完了、多长算太久、失败意味着什么——这些都是**关于活儿的判断**，
@@ -73,8 +99,10 @@ $G wait --kind turn_end --session sub1     # 打印下一条这样的日志行�
 自动带上它。所以正常用法是**开工前给这个会话抽一次**，而不是每条命令都写：
 
 ```bash
-$G set_session --session sub1 --cwd <它的工作树> --model "$($S pick --tier sota)"
+name="$("$SKILL_DIR/spawn" review --cwd <它的工作树> --model "$($S pick --tier sota)")"
 ```
+
+（`spawn` 的 `--model` 只是转给 `set_session`，sticky 因此照样生效。）
 
 不给 `--model` 也不是错误：会话落到服务端的默认模型（`DEFAULT_SESSION_MODEL`，这台机器
 是 `deepseek-official/deepseek-flash`），或者落到你上次 sticky 住的那个。配置里的
@@ -115,7 +143,7 @@ EOF
 之后每次请求都重新计费，而且它后面的一切都跟着一起重算。
 
 ```bash
-$G send_message --session sub1 --message "实现 @file: docs/notes/plan.md 里的第一步。
+$G send_message --session <name> --message "实现 @file: docs/notes/plan.md 里的第一步。
 约定见 @skill: whiting-dev。验收：cargo test -p gongga-server 绿。不要动 docs/。"
 ```
 
@@ -138,7 +166,8 @@ $G send_message --session sub1 --message "实现 @file: docs/notes/plan.md 里�
    要它做什么、验收标准、不许动什么，都写进去。上面那条"把引用写进去"是同一件事的
    省钱版本：不是叫你把文件内容贴进 brief，而是让 index 替你贴。
 2. **一份工作树只有一个写者。** 两个会话同时改同一份文件会互相覆盖：给它
-   `git worktree add` 一份自己的，或者让它只读。
+   `git worktree add` 一份自己的，或者让它只读。名字也一样：**不要手写会话名**，
+   用 `spawn`——`set_session` 撞名不会报错，会把你的 brief 注进别人的会话。
 3. **它的上下文记在它自己账上。** 父会话不会因为它干活而变大——这就是它的价值：一个
    会话承载全部工作时，上下文会一路涨到阈值以上几倍；把两条独立的实现分出去，父会话
    就能一直待在阈值以下。反过来说，它收到 `Context notice` 时也要立即开始培养继承人，和你没有区别。
@@ -149,9 +178,10 @@ $G send_message --session sub1 --message "实现 @file: docs/notes/plan.md 里�
    某一轮真的死在额度上（子 agent 的 transcript 里会有一行 403/429），`model_pool mark`
    那个路由，然后重抽——不要自己编一个模型名。
 6. **收尾**：`del_session` 会连它的 transcript 和 detached 作业一起删。留着不管，它就一直是
-   一个占着上下文的空会话。
+   一个占着上下文的空会话。删掉的如果是 `main/impl`，它的子会话（`main/impl/review`）
+   不会跟着走——它们是按名字挂着的独立会话，上层的树只要还有一层在就仍然画得出来。
 7. **换模型就是一次 `set_session --model`。** 同一个子 agent 换个模型重试用的是它的
-   transcript：`set_session --session sub1 --model "$($S pick)"`，下一轮就换过去了，
+   transcript：`set_session --session <name> --model "$($S pick)"`，下一轮就换过去了，
    历史还在。它跑的那段路不值得留，就 `del_session` 重开一个。
 
 它不是新进程、不是新服务端，也不用新 home 或新端口。
