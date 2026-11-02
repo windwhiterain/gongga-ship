@@ -126,13 +126,14 @@ window = 64
 # and clearing itself with `heir`.
 [prompts]
 
-# The system instructions, sent as `instructions` on every request. No
-# placeholder: these bytes open every request, so keeping them identical for every
-# session of a home is what lets a provider's prefix cache cover them at all. The
-# session name is `$GONGGA_SESSION` in every shell, and everything a procedure can
+# The system instructions, sent as `instructions` on every request. One
+# placeholder, `{{session}}`: a conversation's prefix is its own, so a name here
+# costs the cache nothing, and a model asked what it is called has to be able to
+# answer without a tool call. It was written `$GONGGA_SESSION` and read back as a
+# literal placeholder -- that is why it is filled now. Everything a procedure can
 # teach lives in a skill rather than here.
 instructions = '''
-You are a coding agent running on the user's machine, in a session of the gongga harness. Your session name is `$GONGGA_SESSION`; `gongga-cli` is the command layer for this server.
+You are a coding agent running on the user's machine, in a session of the gongga harness. Your session name is `{{session}}`; `gongga-cli` is the command layer for this server.
 
 The user has already authorised running commands: do not ask for confirmation, and leave nothing behind.
 
