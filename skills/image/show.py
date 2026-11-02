@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Print a picture so the harness attaches it to this turn.
 
-The harness scans a bash result for `@<path>.<image ext>` and uploads each one to
-the provider's Files API, so the model receives an `input_image` part instead of
+The harness scans a bash result for `@image: <path>` and uploads each one to the
+provider's Files API, so the model receives an `input_image` part instead of
 having to decode base64 in its head. This script's whole job is to print exactly
 that reference, once, for a path that really is a picture.
 
-    show.py <path>...        # print @-references for every readable picture
+    show.py <path>...        # print `@image: <path>` for every readable picture
     show.py --check <path>   # say what it is, print nothing
 """
 
@@ -86,8 +86,16 @@ def main(argv):
         if check:
             print(f"{given}: {media}, {size} bytes")
             continue
-        # The reference must be its own token: the harness splits on whitespace.
-        print(f"@{path}")
+        # `@image:` and the value as one word: the server's parser takes the prefix
+        # and then the next word, so a path with whitespace would be cut in half.
+        if any(c.isspace() for c in path):
+            print(
+                f"{given}: the path contains a space, and an @image: reference is one "
+                f"word -- copy it somewhere without spaces first",
+                file=sys.stderr,
+            )
+            continue
+        print(f"@image: {path}")
         printed += 1
 
     return 0 if printed or check else 1

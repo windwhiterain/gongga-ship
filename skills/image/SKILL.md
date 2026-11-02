@@ -1,20 +1,25 @@
 ---
 name: image
-description: 让模型看一张图（截图、图表、设计稿、照片）。用 $GONGGA_HOME/skills/image/show 打印 @路径，harness 会自动上传并作为图片交给模型——不要用 bash + base64 自己拼。当你要断言"这个界面/图表/图里是什么"、或需要读一张磁盘上的图片时用它。
+description: 让模型看一张图（截图、图表、设计稿、照片）。用 $GONGGA_HOME/skills/image/show 打印 `@image: <路径>`，harness 会自动上传并作为图片交给模型——不要用 bash + base64 自己拼。当你要断言"这个界面/图表/图里是什么"、或需要读一张磁盘上的图片时用它。
 ---
 
 # 看图
 
-harness 会扫描 bash 的输出：任何 `@<路径>.<图片后缀>` 都会被上传到 provider 的
+harness 会扫描每个工具的输出，认出 `@image: <路径>` 就把它上传到 provider 的
 Files API，然后作为 `input_image` 交给模型。**图是真的进到模型眼里，不是一串 base64。**
 
+**前缀必须是 `@image:`。** 裸的 `@C:\...\shot.png` 服务端不认识、**静默丢弃**——
+那条「`@` 开头加图片后缀」的旧规则在 2026-10-31 随 Meta 一起删掉了。打印裸 `@路径` 的
+脚本都会白跑一趟：不报错，只是图永远不到。
+
 ```bash
-$GONGGA_HOME/skills/image/show /path/to/shot.png      # 打印 @引用，harness 接手
+$GONGGA_HOME/skills/image/show /path/to/shot.png      # 打印 `@image:` 引用，harness 接手
 $GONGGA_HOME/skills/image/show --check shot.png       # 只看它是什么、多大
 ```
 
-`show` 会打印形如 `@C:\...\shot.png` 的一行。**这一行必须单独出现**——harness 按空白
-切分 token，`@` 必须是 token 的开头。
+`show` 会打印形如 `@image: C:\...\shot.png` 的一行，一行一张图。**值必须是一个词**——
+服务端读到 `@image:` 之后取下一个词当路径，路径里有空格就只读到前半段；`show` 遇到这种
+路径会拒绝并说明，先把图拷到没有空格的目录。
 
 ## 支持的格式
 
