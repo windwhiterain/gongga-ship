@@ -165,8 +165,9 @@ EOF
   `~/.agents/skills/whiting-dev`。别的约定要么放进 `instructions`，要么写成 skill 让
   `index_skill` 列出来——否则新会话根本不会看见它。
 - WIP 按仓库约定写 `.agents/notes/<date>-<slug>.md`。
-- 长输出溢出的全文在 `~/.gongga/outputs/`，文件名是 `<session>-<shell>-<task>-<callid>`
-  ——所以 `bash` 的 `task` 参数是给"未来的自己"和读 dump 的人的索引，不是装饰。
+- 长输出溢出的全文在 `~/.gongga/outputs/`，文件名是 `<session>-<shell>-<description>-<callid>`
+  ——所以 `bash` 的 `description` 参数是给"未来的自己"和读 dump 的人的索引，不是装饰：
+  它还会印在那一行工具调用上（`bash·check the state`），所以写的是这次要干嘛，不是命令本身。
   默认超过 8000 字符就只回头尾，回执里有路径：用 `sed -n` / `grep` 读，**别 cat**。
 
 ---
@@ -262,7 +263,7 @@ EOF
 ## 9. 别做这些（都有代价记录）
 
 - **一个命令一个 shell 名。** 一个名字 = 一个常驻进程；每次新名字会留下一个空转进程。
-  默认就用 `default`，并在 `task` 里写清这次在干嘛。
+  默认就用 `default`，并在 `description` 里写清这次在干嘛。
 - **把 `timeout_ms` 当 kill。** 它不杀；命令还在那个 shell 里跑，输出稍后自己回来。
 - **超时后假设 cwd 没变。** 同名 shell 已经换成新的、回到会话目录。
 - **`cat` 溢出文件。** 它们可能很大；用 `sed -n` / `grep`。
