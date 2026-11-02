@@ -1,6 +1,9 @@
 ---
 name: remote
 description: Configure and verify a Gongga session whose shells run on another machine over SSH. Use for 远端 / 远程主机 / remote host / set_session --remote / runner deployment. Covers installing the matching gongga distribution, writing the machine's ~/.agents/remotes.toml, checking the real SSH connection, and what a session with a remote can and cannot do. This is not a general-purpose SSH or PowerShell-remoting skill.
+compatibility: Needs Python 3.11+ (tomllib), an OpenSSH client, and on Windows a Git Bash (not the Store alias)
+metadata:
+  entry: remote
 ---
 
 # Gongga remote sessions
@@ -22,9 +25,15 @@ when that exact content-addressed distribution is already on the peer.
 
 ## Set up one endpoint
 
-Find this skill's installed path with `index_skill`, then call its `remote` launcher.
-These examples use `R=/path/from/index_skill/remote`, not a command assumed to be on
-`PATH`.
+Find this skill's own directory -- `@skill:`'s expansion names it after `SKILL.md: `,
+and so does the `path` column of `index_skill` -- then call its `remote` launcher.
+These examples use `R="$SKILL_DIR/remote"`, not a command assumed to be on `PATH`.
+In gongga, `gongga-cli skill remote <command>` is the same launcher, shorter.
+
+```bash
+SKILL_DIR=<the directory this SKILL.md is in>
+R="$SKILL_DIR/remote"
+```
 
 0. **See what this server already has.** `list` reads the local config; `--check` also
    greets each remote's runner, which is the cheapest proof that a peer still answers:

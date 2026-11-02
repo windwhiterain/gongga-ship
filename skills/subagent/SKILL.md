@@ -1,6 +1,9 @@
 ---
 name: subagent
 description: 把一块独立的工作交给另一个会话并行做——子 agent 不是一个工具，而是一个普通会话：自己的 transcript、自己的上下文与阈值、自己的 turn。当你要并行推进两条互不相干的实现、要把一个大的验证/探查丢给别人而自己不涨上下文、或者要一个只读的侦察兵时，读这个。用 gongga-cli set_session / send_message / get_messages / del_session 操作它；会话的模型自己指定（`--model` 是 sticky，设一次就一直带上），从 `@skill:model_pool` 抽一个能跑的。brief 就是这个会话的第一条消息，所以写文件/技能一律用 `@file:`/`@skill:`（`@skill:prefix-cache`）。
+compatibility: 需要 Python 3、sqlite3，以及一个在 PATH 里的 gongga-cli（wait_turn）
+metadata:
+  entry: wait_turn
 ---
 
 # 子 agent
@@ -14,6 +17,7 @@ transcript、自己的上下文与压缩阈值、自己的 turn，跑在同一�
 ```bash
 S=~/.agents/skills/model_pool/model_pool
 G=gongga-cli
+SKILL_DIR=<本 SKILL.md 所在目录>      # `@skill:` 展开里 `SKILL.md: <path>` 的父目录
 $G set_session --session sub1 --cwd /path/to/its/checkout \
     --model "$($S pick)" --context_limit 20%
 $G send_message --session sub1 --message '<自足的 brief>'
@@ -29,7 +33,7 @@ $G del_session --session sub1                   # 它在你名下，收尾是你
 
 ```bash
 $G send_message --session sub1 --message '<brief>'
-~/.agents/skills/subagent/wait_turn sub1        # 阻塞到它这一轮结束
+"$SKILL_DIR/wait_turn" sub1                     # 阻塞到它这一轮结束；gongga 里是 `gongga-cli skill subagent wait_turn sub1`
 ```
 
 输出一行 JSON，退出码说明状态：

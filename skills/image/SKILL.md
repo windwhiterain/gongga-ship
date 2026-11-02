@@ -1,6 +1,9 @@
 ---
 name: image
-description: 让模型看一张图（截图、图表、设计稿、照片）。用 $GONGGA_HOME/skills/image/show 打印 `@image: <路径>`，harness 会自动上传并作为图片交给模型——不要用 bash + base64 自己拼。当你要断言"这个界面/图表/图里是什么"、或需要读一张磁盘上的图片时用它。
+description: 让模型看一张图（截图、图表、设计稿、照片）。用本 skill 目录下的 `show` 打印 `@image: <路径>`，harness 会自动上传并作为图片交给模型——不要用 bash + base64 自己拼。当你要断言"这个界面/图表/图里是什么"、或需要读一张磁盘上的图片时用它。
+compatibility: 需要 Python 3（入口脚本自己挑一个能用的解释器）
+metadata:
+  entry: show
 ---
 
 # 看图
@@ -13,9 +16,14 @@ Files API，然后作为 `input_image` 交给模型。**图是真的进到模型
 脚本都会白跑一趟：不报错，只是图永远不到。
 
 ```bash
-$GONGGA_HOME/skills/image/show /path/to/shot.png      # 打印 `@image:` 引用，harness 接手
-$GONGGA_HOME/skills/image/show --check shot.png       # 只看它是什么、多大
+# 从本 skill 的目录运行：`@skill:` 展开里的 `SKILL.md: <path>` 的父目录就是它。
+# gongga 里更短：`gongga-cli skill image show /path/to/shot.png`。
+SKILL_DIR=<本 SKILL.md 所在目录>
+"$SKILL_DIR/show" /path/to/shot.png                   # 打印 `@image:` 引用，harness 接手
+"$SKILL_DIR/show" --check shot.png                    # 只看它是什么、多大
 ```
+
+本文后面的 `$SKILL_DIR` 都是这个目录。
 
 `show` 会打印形如 `@image: C:\...\shot.png` 的一行，一行一张图。**值必须是一个词**——
 服务端读到 `@image:` 之后取下一个词当路径，路径里有空格就只读到前半段；`show` 遇到这种
@@ -53,7 +61,7 @@ PNG 的，会按文件头判断）。
 ## 一次看多张
 
 ```bash
-$GONGGA_HOME/skills/image/show a.png b.png c.png
+"$SKILL_DIR/show" a.png b.png c.png
 ```
 
 三行引用，三张图都附上。别一次给几十张：每张都是一次上传，而且请求体会变大。
@@ -65,7 +73,7 @@ $GONGGA_HOME/skills/image/show a.png b.png c.png
 python -c "..." > /tmp/x.png     # 或者截图、导出图表
 
 # 2. 让它进到模型眼里
-$GONGGA_HOME/skills/image/show /tmp/x.png
+"$SKILL_DIR/show" /tmp/x.png
 ```
 
 第 2 步的输出会作为这条 bash 结果的一部分回到你面前，同时图被附上。

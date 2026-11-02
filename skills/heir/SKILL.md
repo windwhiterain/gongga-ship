@@ -1,6 +1,9 @@
 ---
 name: heir
-description: 立即开始培养继承人——把当前目标、试过什么、成败与失败原因、文件状态和下一步写成继承人的第一课；脚本把 transcript 整份存进 mentor 会话、清空当前会话，再把第一课作为一条消息发给它，继承人从那句话继续当前工作。收到「Context notice」就先运行 heir，不要求任务完成、commit、git clean 或测试全绿。用 $GONGGA_HOME/skills/heir/transcript（read / heir）；删行之前会逐行校验 mentor 的完整副本。
+description: 立即开始培养继承人——把当前目标、试过什么、成败与失败原因、文件状态和下一步写成继承人的第一课；脚本把 transcript 整份存进 mentor 会话、清空当前会话，再把第一课作为一条消息发给它，继承人从那句话继续当前工作。收到「Context notice」就先运行 heir，不要求任务完成、commit、git clean 或测试全绿。入口是本 skill 目录下的 `transcript`（read / heir）；删行之前会逐行校验 mentor 的完整副本。
+compatibility: 需要 Python 3 与 sqlite3（入口脚本自己挑一个能用的解释器）
+metadata:
+  entry: transcript
 ---
 
 # 立即开始培养继承人
@@ -20,7 +23,10 @@ description: 立即开始培养继承人——把当前目标、试过什么、�
 ## 开始培养
 
 ```bash
-T=$GONGGA_HOME/skills/heir/transcript
+# 从本 skill 的目录运行：`@skill:` 的展开里写着 `SKILL.md: <path>`，取它的父目录；
+# gongga 里更短：`gongga-cli skill heir read --session <你的会话名>`。
+SKILL_DIR=<本 SKILL.md 所在目录>
+T="$SKILL_DIR/transcript"
 
 # 可选：只有需要回顾对话时才先读；收到 Context notice 不要先做收尾工作
 $T read --session <你的会话名>

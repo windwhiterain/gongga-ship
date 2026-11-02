@@ -220,7 +220,7 @@ gongga-cli send_message --session test1 --message "SELF-NOTE: ..."
 ## 6. 改源码不是用 harness
 
 换掉跑着自己的那个 exe、改它的源码、用它自己的开发环，都是另一件事，在 **`evolve` skill**
-（`$GONGGA_HOME/skills/evolve/SKILL.md`）。这里的每一条都是**使用**这个 harness 的规矩；
+（`@skill: evolve`）。这里的每一条都是**使用**这个 harness 的规矩；
 要动它的源码，先去读那个 skill。
 
 ## 7. 单向门：做之前先看范围
@@ -332,12 +332,16 @@ EOF
 
 - **项目桶** → `<cwd>/.agents/skills/<name>/`。会话正在干活的那个 checkout 自己的，
   最具体，所以排第一：一个仓库说"here, do it this way"就压过它所在的 home。
-- **harness 桶** → `$GONGGA_HOME/skills/<name>/`。跟着 home 走，随服务端实例存在。
-  命令一律写成 `$GONGGA_HOME/skills/<name>/...`。本文件、`heir`、`image` 在这个桶。
+- **harness 桶** → `<home>/skills/<name>/`。跟着 home 走，随服务端实例存在。
+  本文件、`heir`、`image`、`remote` 在这个桶。
 - **通用桶** → `~/.agents/skills/<name>/`。跟着机器走，和 `providers.toml` 做邻居：机器自己的
   常驻规矩也放这儿当一个 skill——`instructions` 里没有任何东西是从磁盘自动读进来的。
-  命令写成 `~/.agents/skills/<name>/...`。
-  `computer_use`、`latency`、`proxy`、`remote`、`web-search` 在这个桶。
+  `computer_use`、`latency`、`model_pool`、`polity`、`proxy`、`web-search` 在这个桶。
+
+**桶的路径不是调用方式。** 跑一个 skill 自己的脚本，一律从**它自己的目录**出发：
+`@skill:` 展开里 `SKILL.md: <path>` 的父目录就是那个目录（`index_skill` 的 `path` 列同源）。
+home 会搬、桶会变，把桶的路径写进正文，别的 harness 读到的就是一个不存在的命令。
+gongga 里更短的一层是 `gongga-cli skill <name> [args…]`，它按同样的三根优先级解析。
 
 `evolve` 不在任何桶里：它要从自己的路径往上找 `Cargo.toml` 并 stage 二进制，装进 home
 就找不到仓库，所以它住在 gongga checkout 自己的 `.agents/skills/evolve/`。
