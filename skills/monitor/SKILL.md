@@ -69,7 +69,7 @@ print(c.execute('select name,status,model,monitor_seq,monitor_attempts from sess
 
 | 表 | 关键列 | 用途 |
 | --- | --- | --- |
-| `sessions` | `name,status,model,context_tokens,cached_tokens,tps,ttft_ms,target` | 谁出错了、跑在哪个模型、上下文多大 |
+| `sessions` | `name,status,model,context_tokens,cached_tokens,tps,ttft_ms,remote` | 谁出错了、跑在哪个模型、上下文多大 |
 | `messages` | `session_id,seq,kind,content,display` | 逐行 transcript；`content` 是发给模型的、`display` 是给人看的 |
 | `tool_calls` | `call_id,name,arguments,output,status,started_at,finished_at` | 某个工具跑了多久、成没成 |
 | `events` | `session_id,seq,kind,payload` | `turn_end`、quota、status 这些 |

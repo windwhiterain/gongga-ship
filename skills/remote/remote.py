@@ -274,13 +274,18 @@ def sftp_put_result(peer: Peer, source: Path, destination: str):
     )
 
 
+def tables(data: dict) -> dict:
+    """The remote tables a config holds, under either spelling."""
+    return data.get("remotes") or data.get("targets") or {}
+
+
 def toml_string(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
 def target_toml(name: str, args: argparse.Namespace, runner: str) -> str:
     host = f"{args.user}@{args.host}" if args.user else args.host
-    lines = [f"[targets.{name}]", f"host = {toml_string(host)}"]
+    lines = [f"[remotes.{name}]", f"host = {toml_string(host)}"]
     if args.port != 22:
         lines.append(f"port = {args.port}")
     if args.identity:
@@ -295,14 +300,14 @@ def home_path(value: str | None) -> Path:
 
 def configure(args: argparse.Namespace) -> None:
     if not args.target or args.target == "local" or not args.target.replace("_", "a").replace("-", "a").isalnum():
-        raise Failure("target must be a non-empty TOML bare key other than local")
+        raise Failure("a remote name must be a non-empty TOML bare key other than local")
     path = home_path(args.home) / "config.toml"
     if args.remove:
         if not args.write:
             raise Failure("--remove requires --write")
         data = tomllib.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-        if args.target not in data.get("targets", {}):
-            raise Failure(f"target {args.target!r} is not configured in {path}")
+        if args.target not in tables(data):
+            raise Failure(f"remote {args.target!r} is not configured in {path}")
         args.write = True
     else:
         rendered = target_toml(args.target, args, args.runner or "gongga runner")
@@ -310,22 +315,24 @@ def configure(args: argparse.Namespace) -> None:
             print(rendered, end="")
             return
         data = tomllib.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-        old = data.get("targets", {}).get(args.target)
-        desired = tomllib.loads(rendered)[ "targets"][args.target]
+        old = tables(data).get(args.target)
+        desired = tomllib.loads(rendered)["remotes"][args.target]
         if old is not None and old != desired:
             raise Failure(f"target {args.target!r} already differs in {path}; edit it deliberately")
         if old == desired:
             emit("unchanged", config=str(path), target=args.target)
             return
     # Preserve every other setting and comment. Only this target's exact table
-    # header and body are replaced; no generic TOML reformatting is attempted.
+    # header and body are replaced; no generic TOML reformatting is attempted. The old
+    # `[targets.<name>]` spelling is what the loader aliases, so a config carrying it
+    # is read, and writing this remote replaces that table rather than adding a second.
     lines = path.read_text(encoding="utf-8").splitlines(keepends=True) if path.exists() else []
-    header = f"[targets.{args.target}]"
+    headers = {f"[remotes.{args.target}]", f"[targets.{args.target}]"}
     output = []
     index = 0
     found = False
     while index < len(lines):
-        if lines[index].strip() == header:
+        if lines[index].strip() in headers:
             found = True
             index += 1
             while index < len(lines) and not lines[index].lstrip().startswith("["):
@@ -520,9 +527,9 @@ def list_targets(args: argparse.Namespace) -> None:
     path = home_path(args.home) / "config.toml"
     if not path.is_file():
         raise Failure(f"no config at {path}")
-    configured = tomllib.loads(path.read_text(encoding="utf-8")).get("targets") or {}
+    configured = tables(tomllib.loads(path.read_text(encoding="utf-8")))
     if not configured:
-        raise Failure(f"{path} configures no targets; `install` prints the table to add")
+        raise Failure(f"{path} configures no remotes; `install` prints the table to add")
     rows = []
     for name in sorted(configured):
         table = configured[name]
@@ -536,7 +543,7 @@ def list_targets(args: argparse.Namespace) -> None:
         if args.check:
             row.update(reach(table))
         rows.append(row)
-    emit("targets", config=str(path), targets=rows)
+    emit("remotes", config=str(path), remotes=rows)
 
 
 def remove(args: argparse.Namespace) -> None:
@@ -571,7 +578,7 @@ def parser() -> argparse.ArgumentParser:
     install_parser.add_argument("--release", action="store_true")
     install_parser.set_defaults(action=install)
 
-    config_parser = sub.add_parser("configure", help="print or update [targets.<name>]")
+    config_parser = sub.add_parser("configure", help="print or update [remotes.<name>]")
     config_parser.add_argument("--target", required=True)
     config_parser.add_argument("--host", default="")
     config_parser.add_argument("--user")

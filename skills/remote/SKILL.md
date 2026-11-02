@@ -1,6 +1,6 @@
 ---
 name: remote
-description: Configure and verify a Gongga session whose shells run on another machine over SSH. Use for 远端 / 远程主机 / remote host / set_session --target / runner deployment. Covers installing the matching gongga distribution, writing [targets.<name>], checking the real SSH connection, and current remote-session limits. This is not a general-purpose SSH or PowerShell-remoting skill.
+description: Configure and verify a Gongga session whose shells run on another machine over SSH. Use for 远端 / 远程主机 / remote host / set_session --remote / runner deployment. Covers installing the matching gongga distribution, writing [remotes.<name>], checking the real SSH connection, and what a session with a remote can and cannot do. This is not a general-purpose SSH or PowerShell-remoting skill.
 ---
 
 # Gongga remote sessions
@@ -27,7 +27,7 @@ These examples use `R=/path/from/index_skill/remote`, not a command assumed to b
 `PATH`.
 
 0. **See what this server already has.** `list` reads the local config; `--check` also
-   greets each target's runner, which is the cheapest proof that a peer still answers:
+   greets each remote's runner, which is the cheapest proof that a peer still answers:
 
    ```bash
    "$R" list --check
@@ -40,7 +40,7 @@ These examples use `R=/path/from/index_skill/remote`, not a command assumed to b
    ```
 
    This builds `gongga-bundle` locally, installs a content-addressed distribution under
-   the peer's `~/.gongga/bin/`, proves the runner greeting, and prints the exact target
+   the peer's `~/.gongga/bin/`, proves the runner greeting, and prints the exact remote
    configuration. It needs no `gongga` entry on the peer's `PATH`.
 
    A Windows bundle cannot run on Linux, nor the reverse. For a different peer OS,
@@ -58,7 +58,7 @@ These examples use `R=/path/from/index_skill/remote`, not a command assumed to b
    ```
 
    `--home` defaults to `$GONGGA_HOME`, then `~/.gongga`. Without `--write`, the command
-   only prints TOML. An existing different target is never overwritten. The installer
+   only prints TOML. An existing different remote is never overwritten. The installer
    also reports `cwd`: use a `C:/...` path for a Windows peer and `/...` for a POSIX
    peer; do not use Git Bash's `/c/...` as the runner's cwd. Configuration
    is read at server startup, so restart that server afterwards. When changing server
@@ -67,7 +67,7 @@ These examples use `R=/path/from/index_skill/remote`, not a command assumed to b
    The equivalent manual configuration is:
 
    ```toml
-   [targets.build]
+   [remotes.build]
    host = "build@192.168.1.10"
    port = 22
    identity = "C:/keys/build_ed25519"
@@ -97,14 +97,15 @@ These examples use `R=/path/from/index_skill/remote`, not a command assumed to b
 
 ## Use the endpoint
 
-A target is fixed when the session is created. Use a new session to change machines;
-a model tool call cannot choose an endpoint.
+A session with a remote has shells on **two machines**: `bash` on this one and
+`remote_bash` on the peer. It has one directory, and that directory belongs to the
+peer. `--target` is the installer script's own flag; the server's is `--remote`.
 
 ```bash
-gongga-cli set_session --session build --target build \
+gongga-cli set_session --session build --remote build \
     --model provider/model --cwd /home/build/project
 gongga-cli send_message --session build --message \
-    'Run pwd, inspect the checkout, then run the focused tests.'
+    'Run pwd there with remote_bash, then read this machine with bash.'
 ```
 
 `--cwd` belongs to the **peer** and must already exist there; omit it to use the peer's
@@ -113,41 +114,45 @@ cwd. The server stores the endpoint-reported cwd after the shell connects. Use a
 Windows path for a Windows peer and a POSIX path for a POSIX peer. A relative remote
 path is relative to the runner's starting directory, so an absolute path is clearer.
 
+`--remote none` moves a session back to this machine; omitting the flag leaves the
+machine as it is. Both end every shell on the machine being left, so they are refused
+while a turn runs and applied when it ends.
+
 The project is not synchronised. Clone/copy it on the peer first, using ordinary SSH,
 SFTP or Git from a local shell. Keep remote sessions separate even when they name the
 same peer: each has its own shells and state. The install script uploads only the
 runner, not the checkout. If you need a local file on the peer, use `ssh`/`sftp`
 explicitly and verify its size, or ask the remote shell to `git clone` it.
 
-## What works, and what is still refused
+## What works, and what is refused
 
-Foreground `bash`, `check_bash`, `del_bash` and `list_bash` work. A command that exceeds
-its waiting timeout continues in its retired shell; deleting that name now ends both
-the retired and replacement shells. Transport loss never replays a command.
+Everything the harness does on this machine keeps working in a session with a remote,
+because `bash` still runs here: `gongga-cli`, the home's skills (`heir`, `subagent`,
+`evolve`, `image`), the roster and the key never leave this machine. `remote_bash` is
+the peer's shell for the peer's files.
 
-This milestone explicitly refuses operations that would otherwise touch the wrong
-machine:
+- `check_bash`, `del_bash` and `list_bash` take a name, not a machine: a name is one
+  shell, and the answer says which machine holds it. `default` is the directory-owning
+  machine's, so a session with a remote has `default` on the peer.
+- A reference is read on the machine that printed it, so `@image:` and `@file:` in
+  a `remote_bash` result are the peer's, and the same reference in a `bash` result is
+  this machine's. The prompt's index reads the peer's `AGENTS.md`.
+- Refused, with advice: `background` and `detached` on `remote_bash` (the scratch file
+  and the completion watcher are this machine's), and a capped remote output is not
+  spilled to a path.
 
-- `background: true` and `detached: true`;
-- `index_skill`, and `@skill:` or `@image:` in messages to a remote session;
-- attaching an image printed by a remote tool;
-- spilling capped output to a readable file (the output is capped without a path).
-
-Consequently, do not ask a remote session to use `evolve`, `heir`, `subagent`, `image`,
-or other skills that need local harness files or `gongga-cli`. The local setup session
-can use those skills itself. `@file:` remains a literal peer-side path, not a promise
-that a local file was uploaded. Remote harness callback, remote file/skills/images,
-background jobs and Windows-peer production hardening are not silently emulated.
+The project is not synchronised either way: a file on the peer is not here, and a
+checkout is not copied for you.
 
 ## Inspect and remove
 
 `get_messages` reads the local transcript as usual. `list_bash` only shows live named
 shells; a retired command reports through its completion message. `list --check` was
-in step 0: it changes nothing and answers whether each target still answers. If setup fails,
+in step 0: it changes nothing and answers whether each remote still answers. If setup fails,
 read the command's error and the local server log rather than falling back to a local
 shell.
 
-Remove only the distribution and target you named:
+Remove only the distribution and remote you named:
 
 ```bash
 "$R" remove --distribution '/home/build/.gongga/bin/gongga-HASH' \
@@ -155,5 +160,5 @@ Remove only the distribution and target you named:
 "$R" configure --target build --remove --write
 ```
 
-Close sessions using that target first. Do not remove a distribution while its runner
-is still serving another target.
+Close sessions using that remote first. Do not remove a distribution while its runner
+is still serving another remote.
