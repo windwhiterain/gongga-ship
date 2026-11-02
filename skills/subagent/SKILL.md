@@ -15,8 +15,10 @@ transcript、自己的上下文与压缩阈值、自己的 turn，跑在同一�
 （`SessionHandle::gate`），不是全局。
 
 ```bash
-S=~/.agents/skills/model_pool/model_pool
 G=gongga-cli
+# model_pool 在另一个桶里，它的路径不是本 skill 能算出来的：用名字调它。
+# 当然，不在 gongga 里就没有这个快捷方式：读 `@skill: model_pool`，按它正文的 SKILL_DIR 跑它自己的入口。
+S="$G skill model_pool"
 SKILL_DIR=<本 SKILL.md 所在目录>      # `@skill:` 展开里 `SKILL.md: <path>` 的父目录
 $G set_session --session sub1 --cwd /path/to/its/checkout \
     --model "$($S pick)" --context_limit 20%
