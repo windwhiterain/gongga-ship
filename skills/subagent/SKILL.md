@@ -72,11 +72,13 @@ $G subscribe main/impl '^turn_end:main/impl$' --persistant true
 ```
 subscribe `^turn_end:main/impl$` matched `turn_end` about main/impl.
 
-log row 96858: {"elapsed_ms":1424,"outcome":"done","steps":0}
+log row 96858: {"elapsed_ms":1424,"outcome":"done","steps":0,"answer":"……它这一轮说的话……"}
 ```
 
-`outcome` 是这一轮真正的结论（`done` / `cancelled` / 失败），`steps` 是它走了几步。模式两端
-锚死（`^…$`），所以 `main/impl` 不会听见 `main/impl/2` 的回合——那正是 `spawn` 替你拼的东西。
+`outcome` 是这一轮真正的结论（`done` / `cancelled` / 失败），`steps` 是它走了几步，`answer`
+是**它这一轮自己的话**——服务端把它写进 `turn_end` 那一行，所以汇报直接到通知里，不必再
+`get_messages` 跑一趟。答案太长时这一行只带开头（32k 字符封顶），剩下的在 transcript 里。
+模式两端锚死（`^…$`），所以 `main/impl` 不会听见 `main/impl/2` 的回合——那正是 `spawn` 替你拼的东西。
 
 它是**通知，不是结果**：它停了，不等于它说的话已经在你手里。要读，用 `get_messages`。
 
@@ -223,13 +225,17 @@ probe 的后一条 = "Now also look at @file: late.md and @skill: late, then sto
 3. **它的上下文记在它自己账上。** 父会话不会因为它干活而变大，这就是它的价值：一个会话承载
    全部工作时，上下文会一路涨到阈值以上几倍。反过来，它收到 `Context notice` 时也要立刻
    开始培养继承人，和你没有区别。
-4. **通知只说它停了，不替它汇报。** 一条 `turn_end` 到手里之后，读 `get_messages` 才算知道
-   它说了什么、改了什么。别把"outcome: done"当成"活干对了"。
+4. **通知带着它这一轮的答案，不替它担保。** `turn_end` 那一行里有 `answer`：它说了什么，
+   通知里就有，不必再 `get_messages`。但那是**它的话**，不是**它做对了**——要看它改了什么、
+   走了哪条路，读 transcript；别把"outcome: done"当成"活干对了"。
 5. **它和你抢同一个 provider 配额。** 并发越多，单个请求越慢；开到你自己读得过来的数量，
    并用 model_pool 把它们摊到不同 provider 上。
-6. **收尾是你的活。** `del_session` 会连它的 transcript 和 detached 作业一起删。留着不管，
-   它就一直是一个占着上下文的空会话。删掉的如果是 `main/impl`，它名下的会话
-   `main/impl/review` 不会跟着走——它们按名字挂着，树只要还有一层在就仍然画得出来——但
-   `main/impl` 名下的**订阅**会跟着走，所以 `review` 之后没人再听见。
+6. **它先留着，删不删你说了算。** 子 agent 的 transcript 是**返工时唯一能读的东西**：活没干好，
+   你要读它走过的路、把它叫醒重做，或者换个角色再来一遍，都靠这份 transcript。所以**不要在
+   收工时顺手 `del_session`**——它连 transcript 和 detached 作业一起删，删了就没了。
+   什么时候删由你决定：确认交付、不再需要它了，再删。
+   删掉的如果是 `main/impl`，它名下的会话 `main/impl/review` 不会跟着走——它们按名字挂着，
+   树只要还有一层在就仍然画得出来——但 `main/impl` 名下的**订阅**会跟着走，所以 `review`
+   之后没人再听见。
 7. **它是普通会话，不是过程。** 不用新进程、新服务端、新 home 或新端口；`set_session`、
    `interrupt_session`、`del_session`、`set_render_session` 对它都和对你自己一样。
