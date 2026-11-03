@@ -32,6 +32,13 @@ name="$("$SKILL_DIR/spawn.py" impl --cwd /path/to/its/checkout \
 echo "$name"          # main/impl，或者 main/impl/2
 ```
 
+**它在哪儿干活，默认跟你一样。** `--remote` 和 `--cwd` 都不给时，子会话落在**调用者自己**的机器和目录上：
+`spawn` 回头读调用者那一行（不带参数的 `set_session <调用者>` 是一次读，不搬动任何东西），再照着落。
+所以在远端会话里派活，子会话默认也在那台远端、同一个目录；不用再手写一遍 `--remote`/`--cwd`。
+
+两个参数都能改：`--remote <名字>` 换机器（`--remote none` 是服务端自己这台），`--cwd <路径>` 换目录。
+**换了机器就不继承目录**——调用者的目录在那台机器上才有意义；只换目录时机器照旧。
+
 gongga 里更短的一层是 `gongga-cli skill subagent`：它按名字找到入口、把后面的参数原样传过去，
 退出码就是入口的，所以 `name="$(gongga-cli skill subagent impl --cwd …)"` 是同一件事。
 

@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """Start a subagent: a session under the caller's name, whose turns the caller hears about.
 
-    spawn <role> [--cwd PATH] [--model M] [--context-limit N%]
+    spawn <role> [--remote R] [--cwd PATH] [--model M] [--context-limit N%]
+
+The child lands where the caller works: its remote and its working directory are
+the caller's own, read back from the server (a flagless `set_session <caller>` is
+a read -- it answers the row the server already has and moves nothing), and
+`--remote`/`--cwd` override them.
 
 SPEC's `## Skill: subagent` names four steps. Two of them are one command here,
 because the second is worthless when it is a step somebody has to remember:
@@ -61,7 +66,7 @@ def program():
 
 
 def command(args):
-    """Runs one command, returning (accepted, the message it answered with).
+    """Runs one command, returning (accepted, the message, the `data` it answered).
 
     A server's refusal is the caller's answer too: `gongga-cli` leaves non-zero and
     prints the same sentence to stderr, so the two are one fact and are read as one.
@@ -77,18 +82,20 @@ def command(args):
         except json.JSONDecodeError:
             continue
     message = ""
+    data = None
     for event in events:
         if event.get("t") == "cmd_result":
             message = event.get("message") or ""
+            data = event.get("data")
     if done.returncode != 0 and not message:
         why = (done.stderr or done.stdout).strip().splitlines()
         die(f"{args[0]} left with {done.returncode}: {why[-1] if why else 'no answer'}")
-    return done.returncode == 0, message
+    return done.returncode == 0, message, data
 
 
 def create(args):
     """One `set_session <name> --must_create`, returning (taken, what the server said)."""
-    accepted, message = command(["set_session", *args])
+    accepted, message, _data = command(["set_session", *args])
     if TAKEN in message:
         return True, message
     if not accepted or not message.startswith("session is now"):
@@ -107,7 +114,7 @@ def subscribe(name):
     The name is a session's, not a regex's, so it is escaped before it is a pattern.
     """
     pattern = f"^turn_end:{re.escape(name)}$"
-    accepted, message = command(
+    accepted, message, _data = command(
         ["subscribe", name, pattern, "--persistant", "true"]
     )
     if not accepted:
@@ -115,10 +122,33 @@ def subscribe(name):
     return pattern, message
 
 
+def caller_place(parent):
+    """The caller session's own `remote` and `cwd`, as the server has them.
+
+    # Invariant
+
+    A flagless `set_session <session>` asks where a session already is: `remote`
+    and `cwd` are `Keep`, so no shell is ended and no directory is written, and
+    the answer carries the row. That is what makes a child inherit its parent's
+    machine without the parent having to state it, and what keeps this from
+    guessing: a wrong guess would start the child in a directory that does not
+    exist on the machine it lands on.
+    """
+    accepted, said, data = command(["set_session", parent])
+    if not accepted or not isinstance(data, dict):
+        die(f"could not read {parent}'s own place from the server: {said}")
+    return data
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("role", help="one segment: what this subagent is for")
-    parser.add_argument("--cwd", help="its working directory; defaults to the server's")
+    parser.add_argument(
+        "--remote", help="the machine its shells run on; defaults to the caller's own"
+    )
+    parser.add_argument(
+        "--cwd", help="its working directory; defaults to the caller's own"
+    )
     parser.add_argument(
         "--model", help="<provider>/<model id>; omitted leaves it to the server"
     )
@@ -142,9 +172,27 @@ def main():
             'session it belongs to (check with: echo "$GONGGA_SESSION")'
         )
 
+    # Where the caller works is where the child starts: the caller's own row is
+    # the only place that knows its machine and its directory.
+    place = caller_place(parent)
+    # A remote names a machine; `none` names the server's own.
+    recorded = (place.get("remote") or "").strip()
+    recorded = None if recorded.lower() in ("", "none") else recorded
+    # No `--remote` means the caller's own machine; `--remote none` names the
+    # server's own, which is a different machine and says so.
+    stated = (args.remote or "").strip()
+    wanted = recorded if args.remote is None else (
+        None if stated.lower() in ("", "none") else stated
+    )
+    # A directory is the caller's to give away only on the caller's own machine.
+    same_machine = wanted == recorded
+    cwd = args.cwd if args.cwd is not None else (place.get("cwd") if same_machine else None)
+
     extra = []
-    if args.cwd:
-        extra += ["--cwd", args.cwd]
+    if wanted:
+        extra += ["--remote", wanted]
+    if cwd:
+        extra += ["--cwd", cwd]
     # SPEC: `set_session <session> <model>` -- the model is the second word.
     if args.context_limit:
         extra += ["--context_limit", args.context_limit]
@@ -161,7 +209,7 @@ def main():
             # A child nobody hears from is worse than no child: it runs work the
             # parent will never be told is finished. Undo it, and say what is left
             # behind if the undo fails too.
-            _, undone = command(["del_session", name])
+            _, undone, _data = command(["del_session", name])
             die(
                 f"could not subscribe {parent} to {name}'s turn ends ({said}); "
                 + (
