@@ -1,188 +1,209 @@
 ---
 name: subagent
-description: 把一块独立的工作交给另一个会话并行做——子 agent 不是一个工具，而是一个普通会话：自己的 transcript、自己的上下文与阈值、自己的 turn。当你要并行推进两条互不相干的实现、要把一个大的验证/探查丢给别人而自己不涨上下文、或者要一个只读的侦察兵时，读这个。用 gongga-cli set_session / send_message / get_messages / del_session 操作它；会话的模型自己指定（`--model` 是 sticky，设一次就一直带上），从 `@skill:model_pool` 按档抽一个能跑的（`pick --tier <flash|pro|sota>`，档由派的活决定）。brief 就是这个会话的第一条消息，所以写文件/技能一律用 `@file:`/`@skill:`（`@skill:prefix-cache`）。**不要手写会话名**：用本 skill 的 `spawn`，名字是路径 `<父会话>/<角色>`，撞了就加 `/2`，靠 `set_session --must_create` 保证不会选中别人的会话。
-compatibility: 需要 Python 3、sqlite3，以及一个在 PATH 里的 gongga-cli（spawn / wait_turn）
+description: 把一块独立的工作交给另一个会话并行做——子 agent 不是一个工具，而是一个普通会话：自己的 transcript、自己的上下文与阈值、自己的 turn。本 skill 的 `spawn` 一次做完两件必须做的事：在调用者名下起一个撞不上、也不会选中别人的名字（`<父会话>/<角色>`，`set_session --must_create`），并替调用者订阅它的 `turn_end`，所以父会话不必轮询。派活用 `send_message`，等它用一个可选的 `wait`（工具，不是一个睡眠的 shell）。当你要并行推进两条互不相干的实现、把大块验证/探查丢出去而不涨自己的上下文、或者要一个只读的侦察兵时读这个。
+compatibility: 需要 Python 3 和一个在 PATH 里的 gongga-cli（spawn 是入口）
 metadata:
-  entry: run
+  entry: spawn.py
 ---
 
 # 子 agent
 
-这里没有"subagent 工具"，也不需要：**一个子 agent 就是一个普通会话**——它有自己的
-transcript、自己的上下文与压缩阈值、自己的 turn，跑在同一个服务端上。2026-10-30 实测：
-给 `main` 和 `main/impl` 各发一条消息，两行 `turn start` 相隔 8 ms 出现，两个模型请求并行发出，
-两次 `turn end` 同时回来。并发是真的——turn 的互斥锁是**每个会话一把**
-（`SessionHandle::gate`），不是全局。
+**一个子 agent 就是一个普通会话**：跟你在同一台服务端上，有自己的 transcript、自己的
+上下文与压缩阈值、自己的 turn。turn 的互斥锁是**每个会话一把**（`SessionHandle::gate`），
+不是全局，所以两个会话的模型请求是真的同时在路上。
 
-## 起一个：名字是路径，撞了自动加段
+SPEC 把这个 skill 的事写成四步。动手的只有 `spawn`：它把前两步做成一条命令，因为第二步
+一旦要人记得做，父会话就会退回去轮询。
 
-**不要手写会话名。** `set_session` 是"没有就建、有就选中"，两种情况答的都是
-`session is now X`——所以两个人、或者同一个人两次，都写 `sub1`，第二个 brief 会**静默注进
-第一个的 transcript**：两个 agent 共用一个上下文、互相打断，而且事后看不出来。
+| 步骤 | 谁做 | 为什么不是随手一条命令 |
+| --- | --- | --- |
+| 在调用者名下建一个会话 | `spawn <角色>` | 名字会撞，而 `set_session` 撞名**不报错** |
+| 订阅它的 `turn_end` | `spawn` 顺手做 | 父会话要的是"它停了叫我"，不是"我每十秒问一次" |
+| 派活：`send_message` | 你 | 命令行本来就够 |
+| 等它：`wait`（可选） | 你 | 等是回合里的一件事，不是一个睡着的进程 |
 
-名字由 `spawn` 决定，规则是一条路径：
+## 起一个：`spawn` = 建会话 + 订阅
+
+```bash
+G=gongga-cli
+SKILL_DIR=<本 SKILL.md 所在目录>          # `@skill:` 展开里的 `SKILL.md: <path>` 的父目录
+name="$("$SKILL_DIR/spawn.py" impl --cwd /path/to/its/checkout \
+        --model "$($G skill model_pool pick --tier flash)")"
+echo "$name"          # main/impl，或者 main/impl/2
+```
+
+gongga 里更短的一层是 `gongga-cli skill subagent`：它按名字找到入口、把后面的参数原样传过去，
+退出码就是入口的，所以 `name="$(gongga-cli skill subagent impl --cwd …)"` 是同一件事。
+
+stdout 只有一行名字（给 `$(…)` 用）；哪个名字被占了、订阅了几号，都走 stderr。
+
+**名字是路径**，父会话是 `$GONGGA_SESSION`（服务端给每个会话的每个 shell 注入的那个）：
 
 ```
 <父会话>/<角色>          例：main/impl、main/scan
 <父会话>/<角色>/<n>      那个名字已被占：main/impl/2、main/impl/3
 ```
 
-父会话就是调用者自己的会话（服务端注入的 `$GONGGA_SESSION`），所以从 `main` 起的子 agent 叫
-`main/impl`，它自己再起的叫 `main/impl/review`。
-不同父会话的路径天然不同，**跨父撞名不可能**；同一个父下面重名，
-段往上加。名字就是它在会话列表树里的位置。
+从 `main` 起的子 agent 叫 `main/impl`，它自己再起的叫 `main/impl/review`；跨父撞名不可能。
+名字就是它在会话列表树里的位置。**没有 `--parent`**：能自己指定父会话的调用方，就能把工作
+塞进别人的子树里、谎报出身。`--must_create true` 让服务端在同名已存在时**拒绝**这条命令，
+所以"选名字"和"占住名字"是一步，不存在"探测完、创建前"被别人抢走的窗口。
+
+自己用 `set_session` 建的会话也能当子 agent 用，只是没有订阅——那就自己补一条（见下一节）。
+
+## 它每一轮结束，你会收到一条消息
+
+`spawn` 替你发的就是这一条：
 
 ```bash
-G=gongga-cli
-SKILL_DIR=<本 SKILL.md 所在目录>
-S="$G skill model_pool"
-
-name="$("$SKILL_DIR/spawn" impl --cwd /path/to/its/checkout \
-        --model "$($S pick --tier flash)" --context-limit 20%)"
-echo "$name"          # main/impl，或者 main/impl/2
-
-$G send_message --session "$name" --message '<自足的 brief>'
-$G get_messages --session "$name" --range -20:     # 它说到哪了
-$G interrupt_session --session "$name"            # 别干了，丢掉这一轮
-$G del_session --session "$name"                  # 它在你名下，收尾是你的活
+$G subscribe --event '^turn_end:main/impl$' --persistant true
 ```
 
-`spawn` 只把最终名字打印到 stdout（一行，方便 `$(…)`），撞名跳过了哪几个、模型抽到哪个
-都走 stderr。它靠 `set_session --must_create true` 一次完成"选名字 + 建会话"：服务端在
-同名已存在时**拒绝**这条命令，所以不存在"探测完、创建前"被别人抢走的窗口，也不可能
-选中别人的会话。名字用完了就再加一段，**永远不会共用**。
+**登记完立刻返回**，不睡眠。匹配时服务端把一条消息投给**发起它的会话**（不是模式里写的那
+个名字），也就是你的 transcript，作为一条普通的 user 消息：
 
-**父会话没有参数。** 会话是谁，`spawn` 从 `GONGGA_SESSION` 读——那是服务端给每个会话的每个 shell 注入的。能自己指定父会话的调用方，就能把工作塞进别人的子树里、谎报出身，所以这个参数不存在；取不到变量就拒绝。可选参数只有 `--cwd`、`--model`、`--context-limit 20%`。
+```
+subscribe `^turn_end:main/impl$` matched `turn_end` about main/impl.
 
-## 派完要等它做完：`wait_turn`
+log row 96858: {"elapsed_ms":1424,"outcome":"done","steps":0}
+```
 
-`send_message` 在**回合被接收时就返回**（实测 ~70 ms），不等回合跑完。所以"派出去然后接着
-做别的"很容易变成"在它还写文件的时候就去读结果"。`wait_turn` 是那个"等"：
+`outcome` 是这一轮真正的结论（`done` / `cancelled` / 失败），`steps` 是它走了几步。模式两端
+锚死（`^…$`），所以 `main/impl` 不会听见 `main/impl/2` 的回合——那正是 `spawn` 替你拼的东西。
+
+它是**通知，不是结果**：它停了，不等于它说的话已经在你手里。要读，用 `get_messages`。
+
+`--persistant true` 是"以后每一轮都告诉我"；不给就只有下一轮。订阅挂在**订阅者的名字**上：
+`del_session` 删掉的如果是子会话，走的是子会话自己名下的订阅，你那条还在（它挂在你的名字
+上）——而名字不会被重用，所以它不会再响，只有有人手写同一个名字建会话时才会。
+
+## 派活：`send_message`
 
 ```bash
-$G send_message --session "$name" --message '<brief>'
-"$SKILL_DIR/wait_turn" "$name"                  # 阻塞到它这一轮结束；gongga 里是 `gongga-cli skill subagent wait_turn <name>`
+$G send_message --session "$name" --message "$(cat <<'BRIEF'
+实现 @file: docs/notes/plan.md 里的第一步。约定见 @skill: whiting-dev。
+验收：cargo test -p gongga-server 绿。不要动 docs/。
+BRIEF
+)"
 ```
 
-输出一行 JSON，退出码说明状态：
+brief 里有引号、反引号、多行，所以用 heredoc，不要单引号。`send_message` 在**回合被接收时
+就返回**，不等回合跑完：它忙的时候拿到的是排队的一条消息，下一个 step 边界读到；
+空闲时这一条直接把回合拉起来。
 
-```json
-{"session": "main/impl", "status": "idle", "turn": "done"}
+## 等它：`wait`（可选）
+
+派完就接着干别的，那条通知会自己找上门。如果你这一刻**只想等这一轮**，用 `wait` 工具：
+
+```
+wait {timeout_ms: 600000}
 ```
 
-| 退出码 | 意思 |
-|---|---|
-| `0` | 会话空闲了；`turn` 是这一轮真正的结果（`done` / `cancelled` / 失败时看 `failed`）|
-| `1` | 会话停在 `error` |
-| `2` | 连状态都问不到：会话名打错、CLI 拒绝（版本不一致等）|
-| `124` | 到了 `--timeout`（默认 1800 秒）还在跑 |
+任何东西落到本会话它都返回（后台任务报告、订阅命中、人来消息），并且**什么都不消费**：
+消息仍然在下一个 step 边界按原路进 transcript。超时不是错误，只是"还没到"。
 
-`--interval`（默认 15 秒）是"一次等待最多多久，然后重新读一次状态"。它存在的唯一原因：
-服务端的事件只送往**连接之后**发生的事，所以一个刚好在两次命令之间结束的回合没有任何事件
-可等。用重读兜住这个空档，比让它挂到超时诚实。
+**shell 里没有阻塞的等了。** 原先的 `wait --kind turn_end` 已经退役：一个睡在 socket 上的
+进程既不进 transcript，也不会随回合取消。脚本想知道一轮什么时候结束就去问日志——
+`events --kind turn_end --session <name> --since <id>`，那些行正是上面通知的正文。
 
-**它为什么是脚本而不是 CLI 的一条命令。** CLI 的 `wait` 是个 primitive：
+## 读它：`get_messages`
 
 ```bash
-$G wait --kind turn_end --session <name>   # 打印下一条这样的日志行就退出
+$G get_messages --session "$name" --range -20:     # 它最后 20 行（负数是倒数，闭区间）
+$G get_messages --session "$name" --range -1:      # 顺带看 data.status
+$G interrupt_session --session "$name"             # 别干了，丢掉这一轮
+$G del_session --session "$name"                   # 收尾：transcript、detached 作业一起走
 ```
 
-它不知道一轮是不是早就完了、多长算太久、失败意味着什么——这些都是**关于活儿的判断**，
-而关于活儿的判断应该待在干这件活的脚本里，改了不用重编译。`wait_turn` 就是那层判断：
-先读状态（已经空了就直接返回）、再等、再读。
-
-同理，`wait --session` 是个**文本过滤器**：名字写错不是错误，是一个永远匹配不上的过滤条件，
-和 `grep` 一样。要不要把它当错误，由调用方决定。
-
-**模型是会话自己的，而且记性跟着你。** SPEC 把 `--model` 写成 `(sticky)`：`set_session`
-成功一次之后，那个模型就存进客户端的 sticky，之后每条不点 `--model` 的 `set_session`
-自动带上它。所以正常用法是**开工前给这个会话抽一次**，而不是每条命令都写：
-
-```bash
-name="$("$SKILL_DIR/spawn" review --cwd <它的工作树> --model "$($S pick --tier sota)")"
-```
-
-（`spawn` 的 `--model` 只是转给 `set_session`，sticky 因此照样生效。）
-
-不给 `--model` 也不是错误：会话落到服务端的默认模型（`DEFAULT_SESSION_MODEL`，这台机器
-是 `deepseek-official/deepseek-flash`），或者落到你上次 sticky 住的那个。配置里的
-`[model]` 是服务端自己想事情用的，永远不是任何会话的模型——别指望在那儿写默认值。
-
-模型从 **model_pool skill** 拿：它在你点的那一档里、按各 provider 当前额度抽一个
-这台机器现在真能跑的模型，输出的就是 `<provider>/<model id>`，可以直接喂给 `--model`。
-**档是派的活决定的，不是抽出来的**，所以每次都点 `--tier`：
-
-```bash
-$S pick --tier flash             # 便宜活：读文件、跑测试、搬代码
-$S pick --tier pro               # 要判断：疑难实现、review 别人的改动
-$S pick --tier sota              # 一次错就全错：设计、核心 review
-$S pick --tier flash --provider kimi-coding   # 还要指定 provider（比如只有它还有额度）
-$S status                        # 每个模型：档位、能不能用、剩多少
-```
-
-要点：`flash` 是**价格档不是能力档**——这台机器上最聪明的模型可能就在 flash 里；
-`sota` 买的是贵的前沿，不是"最划算的答案"。档内抽到哪个由额度决定，所以两条并行的
-子 agent 一般落在两个不同的 provider 上，正好不互相抢配额。子 agent 死在额度上时：
-`$S mark <provider>/<model>` 把它挡一会儿，再抽一个。
-
-**它忙不忙、上下文多大**：`get_messages` 看内容；只读查库看状态（服务端在跑时也安全）：
+`status` 在 `cmd_result` 的 `data` 里，所以"它还忙不忙"不必查库。想一次看所有子会话
+（只读打开，服务端在跑时也安全）：
 
 ```bash
 python - <<'EOF'
-import sqlite3, os
-c = sqlite3.connect(f"file:{os.path.expanduser('~/.gongga/gongga.db')}?mode=ro", uri=True)
-print(c.execute("select name,status,context_tokens,context_limit from sessions").fetchall())
+import os, sqlite3
+home = os.environ.get("GONGGA_HOME") or "~/.gongga"
+db = sqlite3.connect(f"file:{os.path.join(os.path.expanduser(home), 'gongga.db')}?mode=ro", uri=True)
+for name, status, tokens in db.execute("select name,status,context_tokens from sessions order by name"):
+    print(f"{status:8} {tokens:>8}  {name}")
 EOF
 ```
 
-## brief 是这个会话的第一句话，把引用写进去
+## 模型：会话自己的，抽一次就记住
 
-`send_message --message` 就是子 agent 的**第一条** user 消息，所以 brief 里写的
-`@file:`/`@skill:` 会进它的 index、跟着系统提示走前缀缓存：**一次**付费，之后它每一轮
-都是命中。写成路径（`plan.md`）或直接让它 `cat`，那份正文就躺在 transcript 中间，
-之后每次请求都重新计费，而且它后面的一切都跟着一起重算。
+`--model` 是 **sticky**：`set_session` 成功一次之后那个模型就存进客户端的 sticky，之后每条
+不点 `--model` 的 `set_session` 自动带上。所以正常用法是**开工前给这个会话抽一次**，而不是
+每条命令都写。
+
+模型从 **model_pool** skill 拿：它在你点的那一档里、按各 provider 当前额度抽一个这台机器
+真能跑、真有额度的，输出的就是 `<provider>/<model id>`：
 
 ```bash
-$G send_message --session <name> --message "实现 @file: docs/notes/plan.md 里的第一步。
-约定见 @skill: whiting-dev。验收：cargo test -p gongga-server 绿。不要动 docs/。"
+$G skill model_pool pick --tier flash   # 便宜活：读文件、跑测试、搬代码
+$G skill model_pool pick --tier pro     # 要判断：疑难实现、review 别人的改动
+$G skill model_pool pick --tier sota    # 一次错就全错：设计、核心 review
+$G skill model_pool status              # 每个模型：档位、能不能用、剩多少
 ```
 
-两条必须遵守的：
+**档是派的活决定的，不是抽出来的**；`flash` 是价格档不是能力档。档内抽到哪个由额度决定，
+所以两条并行的子 agent 一般落在两个不同的 provider 上，正好不互相抢配额。它死在额度上时
+（transcript 里一行 403/429）：`$G skill model_pool mark <provider>/<model>` 挡一会儿再抽，
+不要自己编一个模型名。
 
-- **值是一个词，后面要有空白。** `@file: docs/notes/plan.md` 对；在它后面直接接中文标点
+不给 `--model` 也不是错：会话落到服务端的默认模型（`DEFAULT_SESSION_MODEL`，这台机器是
+`deepseek-official/deepseek-flash`）。配置里的 `[model]` 是服务端自己想事情用的，永远不是
+任何会话的模型。
+
+换模型就是一次 `set_session --model`：它的 transcript 还在，下一轮就换过去了。
+
+## brief 是它的第一句话：引用写进去
+
+`send_message --message` 就是子 agent 的**第一条** user 消息，而它的 index 就是**那一次**写下的：
+brief 里写的 `@file:` / `@skill:` 的正文进系统提示的 index，一次付费，之后每一轮都是命中，
+消息里留着字面拼写。
+
+**head 只写一次**（`prompt_in_force`：有行就再也不渲染），所以 index 里永远只有 brief 点名
+的那些。之后的消息再写引用**不会**补进 index：`@file:` 就只是一个路径字面，
+`@skill: <名字>` 被就地换成 `@skill: <名字> (<它 SKILL.md 的路径>)`，正文没有进去——它得
+自己去读。实测（`agent::index_of` 只在那一次跑）：
+
+```
+probe 的第一条 = "Start here with @file: early.md please."
+  -> prompt row rooted = ['@file:early.md']，index 里有 EARLY 正文
+probe 的后一条 = "Now also look at @file: late.md and @skill: late, then stop."
+  -> 存下的行：@file: late.md 原样；@skill: late (…\late\SKILL.md)
+  -> 同一轮请求的 instructions 里没有 LATE 正文
+```
+
+所以：**要它读什么，在 brief 里一次写完。** 写成路径（`plan.md`）或者让它自己 `cat`，
+那份正文就躺在 transcript 中间，每一轮都跟着前缀一起重发——这就是 brief 比"到时候再说"便宜
+的全部原因。拼写规则与写错的后果见 `@skill:prefix-cache`。
+
+两条最容易踩的：
+
+- **值是一个词，后面要有空白。** `@file: docs/notes/plan.md` 对；直接接中文标点
   （`@file: docs/notes/plan.md，然后`）是错的——中文标点不是分隔符，值会变成
-  `docs/notes/plan.md，然后`，读不到，而且**静默**。路径有空格就换一个没空格的路径，
-  引用不吃引号也不吃转义。
-- **技能要在 brief 里点名。** `@skill:` 只有第一句话里的会被索引；第二轮再补一条
-  `@skill: foo` 不会进 index（它被就地换成一行 metadata），那份正文每轮都要重发。
-
-派完再补的消息同样有效，但更贵：`@file:` 会在下一次重建时进 index（写一行新 prompt 行），
-`@skill:` 则永远不进。所以**要它读什么，就在 brief 里写完**。细则与拼写表见
-`@skill:prefix-cache`。
+  `docs/notes/plan.md，然后`，读不到，而且**静默**。路径有空格就换一个没空格的路径。
+- **读不出来的引用不报错**：消息照发，index 里没有它，日志里没有一行。写错时唯一的信号是
+  "模型还是自己去读了那个文件"。
 
 ## 规矩
 
-1. **brief 必须自足。** 它看不到你的 transcript，只有你发的那条消息和它自己的 cwd：
-   要它做什么、验收标准、不许动什么，都写进去。上面那条"把引用写进去"是同一件事的
-   省钱版本：不是叫你把文件内容贴进 brief，而是让 index 替你贴。
-2. **一份工作树只有一个写者。** 两个会话同时改同一份文件会互相覆盖：给它
-   `git worktree add` 一份自己的，或者让它只读。名字也一样：**不要手写会话名**，
-   用 `spawn`——`set_session` 撞名不会报错，会把你的 brief 注进别人的会话。
-3. **它的上下文记在它自己账上。** 父会话不会因为它干活而变大——这就是它的价值：一个
-   会话承载全部工作时，上下文会一路涨到阈值以上几倍；把两条独立的实现分出去，父会话
-   就能一直待在阈值以下。反过来说，它收到 `Context notice` 时也要立即开始培养继承人，和你没有区别。
-4. **没有完成通知。** turn 结束只意味着它 idle；你要自己去读（`get_messages` 或上面那张
-   表）。别指望一条消息回来。
-5. **它和你抢同一个 provider 配额。** 并发越多，单个请求越慢；开到你自己读得过来的数量。
-   用 `model_pool` 把它们摊到不同 provider 上，是这里唯一有效的缓解：抽到同一个就
-   `--provider` 换个再抽，**档不变**（档是活决定的，不是抽出来的）。
-   某一轮真的死在额度上（子 agent 的 transcript 里会有一行 403/429），`model_pool mark`
-   那个路由，然后重抽——不要自己编一个模型名。
-6. **收尾**：`del_session` 会连它的 transcript 和 detached 作业一起删。留着不管，它就一直是
-   一个占着上下文的空会话。删掉的如果是 `main/impl`，它的子会话（`main/impl/review`）
-   不会跟着走——它们是按名字挂着的独立会话，上层的树只要还有一层在就仍然画得出来。
-7. **换模型就是一次 `set_session --model`。** 同一个子 agent 换个模型重试用的是它的
-   transcript：`set_session --session <name> --model "$($S pick --tier <档>)"`，下一轮就换过去了，
-   历史还在。它跑的那段路不值得留，就 `del_session` 重开一个。
-
-它不是新进程、不是新服务端，也不用新 home 或新端口。
+1. **brief 必须自足。** 它看不到你的 transcript，只有你发的那条消息和它自己的 cwd：要它做
+   什么、验收标准、不许动什么，都写进去。把引用写进去是同一件事的省钱版本：不是把文件内容
+   贴进 brief，而是让 index 替你贴。
+2. **一份工作树只有一个写者。** 两个会话同时改同一份文件会互相覆盖：给它 `git worktree add`
+   一份自己的，或者让它只读。名字也一样：**不要手写会话名**，用 `spawn`——`set_session`
+   撞名不会报错，会把你的 brief 注进别人的会话。
+3. **它的上下文记在它自己账上。** 父会话不会因为它干活而变大，这就是它的价值：一个会话承载
+   全部工作时，上下文会一路涨到阈值以上几倍。反过来，它收到 `Context notice` 时也要立刻
+   开始培养继承人，和你没有区别。
+4. **通知只说它停了，不替它汇报。** 一条 `turn_end` 到手里之后，读 `get_messages` 才算知道
+   它说了什么、改了什么。别把"outcome: done"当成"活干对了"。
+5. **它和你抢同一个 provider 配额。** 并发越多，单个请求越慢；开到你自己读得过来的数量，
+   并用 model_pool 把它们摊到不同 provider 上。
+6. **收尾是你的活。** `del_session` 会连它的 transcript 和 detached 作业一起删。留着不管，
+   它就一直是一个占着上下文的空会话。删掉的如果是 `main/impl`，它名下的会话
+   `main/impl/review` 不会跟着走——它们按名字挂着，树只要还有一层在就仍然画得出来——但
+   `main/impl` 名下的**订阅**会跟着走，所以 `review` 之后没人再听见。
+7. **它是普通会话，不是过程。** 不用新进程、新服务端、新 home 或新端口；`set_session`、
+   `interrupt_session`、`del_session`、`set_render_session` 对它都和对你自己一样。
