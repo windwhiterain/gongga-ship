@@ -15,7 +15,7 @@ case "$verb" in
   spawn)     shift; exec "$here/spawn" "$@" ;;
   wait_turn) shift; exec "$here/wait_turn" "$@" ;;
   "" | -h | --help | help)
-    echo "usage: run spawn <role> [--cwd PATH] [--model M] [--context-limit N%] [--parent P]" >&2
+    echo "usage: run spawn <role> [--cwd PATH] [--model M] [--context-limit N%]" >&2
     echo "       run wait_turn <session> [--timeout S] [--interval S] [--quiet]" >&2
     [ -n "$verb" ] && exit 0
     exit 2 ;;

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Start a subagent session under a name that cannot be someone else's.
 
-    spawn <role> [--cwd PATH] [--model M] [--context-limit N%] [--parent P]
+    spawn <role> [--cwd PATH] [--model M] [--context-limit N%]
 
 The name is a path: `<parent>/<role>`, with `/2`, `/3`, ... added when that name is
-taken. `--parent` defaults to `$GONGGA_SESSION`, so a subagent started from `main`
-is `main/impl`, and one started from *that* is `main/impl/review` -- a name says
-where in the delegation tree it came from, and two different parents can never
-collide.
+taken. The parent is `GONGGA_SESSION`, which the server exports to every shell it
+starts -- never an argument, so a subagent started from `main` is `main/impl`, one
+started from *that* is `main/impl/review`, and the name cannot be made to claim a
+parent it did not come from.
 
 Two guarantees, and they are why this is a script rather than a line of advice:
 
@@ -17,6 +17,9 @@ Two guarantees, and they are why this is a script rather than a line of advice:
   and the loser would silently join the winner's transcript.
 - **A collision is a new segment, never a share.** Two callers asking for
   `main/impl` get `main/impl` and `main/impl/2`; neither gets the other's context.
+- **The parent is the caller's own session.** There is no `--parent`: a session
+  that could name its parent could plant work in somebody else's subtree, which is
+  the same lie `set_session` was fixed to refuse.
 
 The name goes to stdout on one line, so `name=$(spawn impl --cwd .)` is the whole
 interface. Everything a human wants to know -- which name was skipped, which model
@@ -88,20 +91,19 @@ def main():
         dest="context_limit",
         help="the share of its context window at which it gets a `Context notice`, e.g. `20%%`",
     )
-    parser.add_argument(
-        "--parent",
-        help="the session this one works under; defaults to $GONGGA_SESSION",
-    )
     args = parser.parse_args()
 
     role = args.role.strip().strip("/")
     if not role or "/" in role:
         die(f"a role is one segment, not {args.role!r}: the path is built from it")
-    parent = args.parent or os.environ.get("GONGGA_SESSION", "")
+    # The parent is the session whose shell this is, and the server says so. A name
+    # typed here would be a claim about where this work came from, and the whole
+    # point of the path is that the claim cannot be made.
+    parent = os.environ.get("GONGGA_SESSION", "")
     if not parent:
         die(
-            "no --parent, and GONGGA_SESSION is not set: name the parent session, or run "
-            "this from a shell the server started"
+            "GONGGA_SESSION is not set: only a shell the server started knows which "
+            'session it belongs to (check with: echo "$GONGGA_SESSION")'
         )
 
     extra = []
