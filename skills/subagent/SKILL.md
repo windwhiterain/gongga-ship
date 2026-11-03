@@ -56,7 +56,7 @@ stdout 只有一行名字（给 `$(…)` 用）；哪个名字被占了、订阅
 `spawn` 替你发的就是这一条：
 
 ```bash
-$G subscribe --event '^turn_end:main/impl$' --persistant true
+$G subscribe main/impl '^turn_end:main/impl$' --persistant true
 ```
 
 **登记完立刻返回**，不睡眠。匹配时服务端把一条消息投给**发起它的会话**（不是模式里写的那
@@ -80,7 +80,7 @@ log row 96858: {"elapsed_ms":1424,"outcome":"done","steps":0}
 ## 派活：`send_message`
 
 ```bash
-$G send_message --session "$name" --message "$(cat <<'BRIEF'
+$G send_message "$name" "$(cat <<'BRIEF'
 实现 @file: docs/notes/plan.md 里的第一步。约定见 @skill: whiting-dev。
 验收：cargo test -p gongga-server 绿。不要动 docs/。
 BRIEF
@@ -117,7 +117,7 @@ wait {timeout_ms: 600000}
 没有回执，`wait` 就只会坐到超时。自己搭的子会话要么补订阅、要么别 `wait`，直接看状态：
 
 ```bash
-$G get_messages --session "$name" --range -1:     # data.status 是 idle 就已经结束
+$G get_messages "$name" -1:     # data.status 是 idle 就已经结束
 $G events --kind turn_end --session "$name" --since <派活前的 last_id>
 ```
 
@@ -128,10 +128,10 @@ $G events --kind turn_end --session "$name" --since <派活前的 last_id>
 ## 读它：`get_messages`
 
 ```bash
-$G get_messages --session "$name" --range -20:     # 它最后 20 行（负数是倒数，闭区间）
-$G get_messages --session "$name" --range -1:      # 顺带看 data.status
-$G interrupt_session --session "$name"             # 别干了，丢掉这一轮
-$G del_session --session "$name"                   # 收尾：transcript、detached 作业一起走
+$G get_messages "$name" -20:     # 它最后 20 行（负数是倒数，闭区间）
+$G get_messages "$name" -1:      # 顺带看 data.status
+$G interrupt_session "$name"              # 别干了，丢掉这一轮
+$G del_session "$name"                    # 收尾：transcript、detached 作业一起走
 ```
 
 `status` 在 `cmd_result` 的 `data` 里，所以"它还忙不忙"不必查库。想一次看所有子会话
@@ -176,7 +176,7 @@ $G skill model_pool status              # 每个模型：档位、能不能用�
 
 ## brief 是它的第一句话：引用写进去
 
-`send_message --message` 就是子 agent 的**第一条** user 消息，而它的 index 就是**那一次**写下的：
+`send_message <name> <brief>` 的 brief 就是子 agent 的**第一条** user 消息，而它的 index 就是**那一次**写下的：
 brief 里写的 `@file:` / `@skill:` 的正文进系统提示的 index，一次付费，之后每一轮都是命中，
 消息里留着字面拼写。
 

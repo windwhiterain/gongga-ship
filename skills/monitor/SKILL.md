@@ -19,7 +19,7 @@ cause, and fix it」——三个动词，中间那个决定了你要不要动源
 | 层 | 长什么样 | 谁修 |
 | --- | --- | --- |
 | 供应商 | HTTP 4xx/5xx、`401` 鉴权、`429` 限流、`402`/欠费、`403 Unpurchased`、上游 5xx | 换模型 / 换账号 / 等；harness 不改 |
-| 配置 | 模型不在 roster、没有 key、`--model` 写错、context 没声明 | `set_session` / `config.toml` / roster |
+| 配置 | 模型不在 roster、没有 key、模型名写错、context 没声明 | `set_session` / `config.toml` / roster |
 | harness | panic、状态机走错、迁移失败、watchdog 反复重启、请求体构造错 | 改源码，然后重启 |
 
 **别猜，复现。** 一个 4xx 是不是 harness 的锅，取决于同一份请求在 harness 之外是否也失败：
@@ -82,7 +82,7 @@ print(c.execute('select name,status,model,monitor_seq,monitor_attempts from sess
 读 transcript 用命令层，别手写 SQL（`--range` 是闭区间，负数从尾部数）：
 
 ```bash
-gongga-cli get_messages --session <名> --range -40:-1
+gongga-cli get_messages <名> -40:-1
 gongga-cli events --session <名> --limit 40
 gongga-cli events --kind turn_failed --limit 20
 gongga-cli            # 不带参数 = 这台服务端此刻的命令目录
@@ -108,7 +108,7 @@ sed -e 's/\(key[^=]*=\s*"\)\(.\{6\}\).*/\1\2…(redacted)"/' ~/.agents/keys.toml
 
 ## 4. 修：从最便宜的动起
 
-1. **换模型**（最常见，一行）：`gongga-cli set_session --session <名> --model <provider>/<model>`
+1. **换模型**（最常见，一行）：`gongga-cli set_session <名> <provider>/<model>`
    候选从 roster 里挑一个这台机器现在真能用的（有 key、不是欠费那个）。
 2. **改配置**：`$GONGGA_HOME/config.toml` 是合并结果，改它；改完下一个 turn 就生效（多数键每步重读）。
 3. **改源码**：只有 §0 证明是 harness 的锅时才做。改完需要让新二进制接管 home——

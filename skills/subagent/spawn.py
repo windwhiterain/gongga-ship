@@ -6,8 +6,8 @@
 SPEC's `## Skill: subagent` names four steps. Two of them are one command here,
 because the second is worthless when it is a step somebody has to remember:
 
-1. **A new session under the caller session's name.** `set_session --must_create
-   true` takes the name and refuses a name that already exists, so choosing and
+1. **A new session under the caller session's name.** `set_session <name>
+   --must_create true` takes the name and refuses a name that already exists, so choosing and
    claiming are one step: a probe followed by a create leaves a window in which
    another caller takes the name, and the loser silently joins the winner's
    transcript.
@@ -87,7 +87,7 @@ def command(args):
 
 
 def create(args):
-    """One `set_session --must_create`, returning (taken, what the server said)."""
+    """One `set_session <name> --must_create`, returning (taken, what the server said)."""
     accepted, message = command(["set_session", *args])
     if TAKEN in message:
         return True, message
@@ -108,7 +108,7 @@ def subscribe(name):
     """
     pattern = f"^turn_end:{re.escape(name)}$"
     accepted, message = command(
-        ["subscribe", "--event", pattern, "--persistant", "true"]
+        ["subscribe", name, pattern, "--persistant", "true"]
     )
     if not accepted:
         return None, message
@@ -145,14 +145,14 @@ def main():
     extra = []
     if args.cwd:
         extra += ["--cwd", args.cwd]
-    if args.model:
-        extra += ["--model", args.model]
+    # SPEC: `set_session <session> <model>` -- the model is the second word.
     if args.context_limit:
         extra += ["--context_limit", args.context_limit]
 
     for attempt in range(ATTEMPTS):
         name = f"{parent}/{role}" if attempt == 0 else f"{parent}/{role}/{attempt + 1}"
-        taken, _ = create(["--session", name, "--must_create", "true", *extra])
+        model = [args.model] if args.model else []
+        taken, _ = create([name, *model, "--must_create", "true", *extra])
         if taken:
             print(f"spawn: {name} is taken; trying the next segment", file=sys.stderr)
             continue
@@ -161,7 +161,7 @@ def main():
             # A child nobody hears from is worse than no child: it runs work the
             # parent will never be told is finished. Undo it, and say what is left
             # behind if the undo fails too.
-            _, undone = command(["del_session", "--session", name])
+            _, undone = command(["del_session", name])
             die(
                 f"could not subscribe {parent} to {name}'s turn ends ({said}); "
                 + (

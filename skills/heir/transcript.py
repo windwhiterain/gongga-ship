@@ -180,7 +180,7 @@ def send_lesson(session, lesson):
     else:
         try:
             sent = subprocess.run(
-                [cli, "send_message", "--session", session, "--message", lesson],
+                [cli, "send_message", session, lesson],
                 capture_output=True,
                 text=True,
             )

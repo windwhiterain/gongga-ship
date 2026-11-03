@@ -75,7 +75,7 @@ shell 函数、导出的东西都留着，第一次调用就已经在会话的�
 
 | 动作 | 语义 | transcript | `pending_tasks` 行 | detached 作业 | 谁接着干 |
 |---|---|---|---|---|---|
-| `interrupt_session --session <n>` | 别干了，丢掉 | 停在断点 | **删** | 不动 | 没人 |
+| `interrupt_session <n>` | 别干了，丢掉 | 停在断点 | **删** | 不动 | 没人 |
 | `cancel`（服务端命令） | 停，剩下的下次接着干 | 停在断点 | **留** | 不动 | 下一个启动的服务端 |
 | 从外面 `taskkill` / 杀进程 | 硬死 | 停在断点 | 留 | 不动 | 下一个启动的服务端 |
 
@@ -181,7 +181,7 @@ EOF
 放进你 shell 的 `PATH` 最前面：
 
 ```
-gongga-cli send_message --session test1 --message "SELF-NOTE: ..."
+gongga-cli send_message test1 "SELF-NOTE: ..."
 ```
 
 回执「message queued for test1; it will be read at the next step」，下一个 step 就以
@@ -195,7 +195,7 @@ gongga-cli send_message --session test1 --message "SELF-NOTE: ..."
 - 想让长命令早点放手 → 从别处发一条消息，不用干等。
 - 小心：你自己发的消息同样会打断自己正在等的东西，别在关键写入中途插自己。
   而"叫醒自己正在等的那条前台命令"现在是**做得到**的 —— 把要等的东西放进后台，再发那条消息：
-  `sleep 8 & gongga send_message --session $GONGGA_SESSION --message "醒一下"`。
+  `sleep 8 & gongga send_message $GONGGA_SESSION "醒一下"`。
   实测：这条 `bash` 0.4 秒返回，日志写着「handed a command to the background: a message is
   waiting」，八秒后它的输出作为完成通知自己回来。工具时代做不到 —— 一个 turn 一次只能调一个工具。
 
@@ -227,7 +227,7 @@ gongga-cli send_message --session test1 --message "SELF-NOTE: ..."
 
 | 动作 | 不可逆的部分 |
 |---|---|
-| `del_session --session <n>` | 删 transcript、删 pending，**并停掉该会话的 detached 作业**（`cancel` 不这么干） |
+| `del_session <n>` | 删 transcript、删 pending，**并停掉该会话的 detached 作业**（`cancel` 不这么干） |
 | 从外面杀服务端 | 本回合没人接，等于丢了一次未落盘的判断 |
 | 没有继任者就 `cancel` | home 空着，直到有人手动起服务端才 `resume_pending` |
 | `del_bash` | 进程没了；日志文件还在，但状态没了 |
@@ -241,7 +241,7 @@ gongga-cli send_message --session test1 --message "SELF-NOTE: ..."
 |---|---|
 | 我有几个 shell、谁还有没读的输出、有哪些 detached | `list_bash`（`unread_bytes`、`background_jobs`、`detached[]`） |
 | 后台作业跑到哪了 | `check_bash --name <shell>`，**读即清空**，同一段不会给两次 |
-| 我刚才到底做了什么、上一条命令的原文 | `get_messages --session <s> --range <a>:<b>`（1 基、两端含，`-1` 最新一条，如 `-5:` 取最后五条） |
+| 我刚才到底做了什么、上一条命令的原文 | `get_messages <s> <a>:<b>`（1 基、两端含，`-1` 最新一条，如 `-5:` 取最后五条；省略范围是全部） |
 | 会话状态 / 模型 / 压缩阈值 / 消息数 | 只读查库（下面） |
 | 我哪些工具调用在失败 | `tool_calls` 表按 `name,status` 汇总 |
 

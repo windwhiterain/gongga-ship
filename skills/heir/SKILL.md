@@ -39,7 +39,7 @@ $T heir --note "<继承人的第一课>"
 
 `--mentor` 省略就是 **`<你的会话名>/mentor`**，而且**必须**在你自己的路径下（`<你的会话名>/…`），否则拒绝。所以：
 
-- `main` 的第一份档案在 `main/mentor`，第二份在 `main/mentor/2`——**不会**续进同一份 archive。理由是继承人要用 `get_messages --range 1:` 读回全部原文，两代档案串在一个会话里，它分不出哪一段是自己的过去、哪一段是上一代的。
+- `main` 的第一份档案在 `main/mentor`，第二份在 `main/mentor/2`——**不会**续进同一份 archive。理由是继承人要用 `get_messages <mentor> 1:` 读回全部原文，两代档案串在一个会话里，它分不出哪一段是自己的过去、哪一段是上一代的。
 - `heir --mentor @monitor` 或 `--mentor other/x` 一律拒绝：档案是"造它的那个会话的子节点"，这条规则是结构性的，不需要脚本知道哪些名字是保留的。`@monitor` 自己被叫去培养继承人时，档案落在 `@monitor/mentor`，仍然是它自己名下。
 
 mentor 不存在就用当前的 model 和 cwd 建一个；它是普通会话，之后能用 `get_messages` 读、用 `send_message` 问。
@@ -60,8 +60,8 @@ mentor 不存在就用当前的 model 和 cwd 建一个；它是普通会话，�
 第一课走 `send_message` 而不是写进数据库，有两个原因：一，它现在就在这条 call 里跑，直接插一行会落在 call 和它的结果之间，那是 provider 不收的形状；二，一条普通消息才会被当作**空会话的首条 user 消息**处理——它命名的 `@file:`/`@skill:` 因此进 index、随前缀缓存只收一次费（机制、拼法和写错的后果见 `@skill:prefix-cache`）。别把它改回某种"笔记列"，那正是这条路原来的样子。
 
 ```bash
-gongga-cli get_messages --session <你的会话名>/mentor --range 1:
-gongga-cli send_message --session <你的会话名>/mentor --message "…"
+gongga-cli get_messages <你的会话名>/mentor 1:
+gongga-cli send_message <你的会话名>/mentor "…"
 ```
 
 **先读。** 做过什么、决定过什么、哪次失败为什么失败都在原文里；`get_messages` 不走模型、不花额度。
