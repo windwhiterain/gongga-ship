@@ -1,6 +1,6 @@
 ---
 name: heir
-description: 立即开始培养继承人——把当前目标、试过什么、成败与失败原因、文件状态和下一步写成继承人的第一课；脚本把 transcript 整份存进 mentor 会话、清空当前会话，再把第一课作为一条消息发给它，继承人从那句话继续当前工作。收到「Context notice」就先运行 heir，不要求任务完成、commit、git clean 或测试全绿。入口是本 skill 目录下的 `transcript`（read / heir）；删行之前会逐行校验 mentor 的完整副本。会话名与 Mentor 名都按路径：`--session` 默认 `$GONGGA_SESSION`，`--mentor` 默认 `<你的会话>/mentor`，已被占就加 `/2`——一代档案一份会话，绝不续进上一代。
+description: 立即开始培养继承人——把当前目标、试过什么、成败与失败原因、文件状态和下一步写成继承人的第一课；脚本把 transcript 整份存进 mentor 会话、清空当前会话，再把第一课作为一条消息发给它，继承人从那句话继续当前工作。收到「Context notice」就先运行 heir，不要求任务完成、commit、git clean 或测试全绿。入口是本 skill 目录下的 `transcript`（read / heir）；删行之前会逐行校验 mentor 的完整副本。没有 `--session`：会话名取自 `$GONGGA_SESSION`。`--mentor` 默认 `<你的会话>/mentor`，且必须在你自己的路径下；已被占就加 `/2`——一代档案一份会话，绝不续进上一代。
 compatibility: 需要 Python 3 与 sqlite3（入口脚本自己挑一个能用的解释器）
 metadata:
   entry: transcript
@@ -35,9 +35,14 @@ $T read
 $T heir --note "<继承人的第一课>"
 ```
 
-`--session` 省略就是 `$GONGGA_SESSION`；`--mentor` 省略就是 **`<你的会话名>/mentor`**。archive 也按路径挂：`main` 的第一份在 `main/mentor`，第二份在 `main/mentor/2`——**不会**续进同一份 archive。理由是继承人要用 `get_messages --range 1:` 读回全部原文，两代档案串在一个会话里，它分不出哪一段是自己的过去、哪一段是上一代的。
+**没有 `--session`。** 会话是谁，脚本从 `GONGGA_SESSION` 读——那是服务端给每个会话的每个 shell 注入的。一条会删行的命令不该接受"我清的是谁"这种说法：能自己指定会话名的调用方，就能清空别人的 transcript，再多的名字检查都不如把这个参数去掉。
 
-`--mentor` 也可以给任意别的名字，同一套规则：已被占就加 `/2`。mentor 不存在就用当前的 model 和 cwd 建一个；它是普通会话，之后能用 `get_messages` 读、用 `send_message` 问。
+`--mentor` 省略就是 **`<你的会话名>/mentor`**，而且**必须**在你自己的路径下（`<你的会话名>/…`），否则拒绝。所以：
+
+- `main` 的第一份档案在 `main/mentor`，第二份在 `main/mentor/2`——**不会**续进同一份 archive。理由是继承人要用 `get_messages --range 1:` 读回全部原文，两代档案串在一个会话里，它分不出哪一段是自己的过去、哪一段是上一代的。
+- `heir --mentor @monitor` 或 `--mentor other/x` 一律拒绝：档案是"造它的那个会话的子节点"，这条规则是结构性的，不需要脚本知道哪些名字是保留的。`@monitor` 自己被叫去培养继承人时，档案落在 `@monitor/mentor`，仍然是它自己名下。
+
+mentor 不存在就用当前的 model 和 cwd 建一个；它是普通会话，之后能用 `get_messages` 读、用 `send_message` 问。
 
 `read` 读的是**对话本身**：模型说的话和注入的消息。每条带 `seq`、`role`、`chars`、`text`；工具调用、工具结果、reasoning 被过滤。默认读最后 40 条、给全文。需要回顾时才用它，不要为了形式上的完整推迟培养继承人。
 

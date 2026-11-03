@@ -171,10 +171,19 @@ class Home:
         self.c.close()
 
 
-def run(home, *args, cli=True):
+def run(home, *args, cli=True, session="main"):
+    """Runs the script as the shell of `session` would.
+
+    The caller's name is not an argument any more: it is what the server exports to
+    the shell it started, so a test says which shell by setting the same variable --
+    and `session=None` is a shell that lost it, which must be refused.
+    """
     env = dict(os.environ, GONGGA_HOME=home.path)
     # Unset on purpose, to reach the failure path a shell that lost it would.
     env.pop("GONGGA_CLI", None)
+    env.pop("GONGGA_SESSION", None)
+    if session is not None:
+        env["GONGGA_SESSION"] = session
     if cli:
         env["GONGGA_CLI"] = home.cli
     return subprocess.run(
@@ -196,22 +205,30 @@ def test_guards():
         sid = h.session("main")
         h.add(sid, "text", {"role": "user", "text": "hi"})
 
-        p = run(h, "heir", "--session", "main", "--mentor", "m", "--note", "   ")
+        p = run(h, "heir", "--mentor", "main/m", "--note", "   ")
         assert p.returncode != 0 and "empty lesson" in p.stderr, p.stderr
         assert len(h.rows(sid)) == 1, "a refused heir must not delete"
 
-        # A mentor named after the session itself is moved out of the way rather
-        # than refused: `main` already holds a transcript, so the archive goes to
-        # `main/2` and the session is emptied into it.
-        p = run(h, "heir", "--session", "main", "--mentor", "main", "--note", "note")
-        assert p.returncode == 0, p.stderr
-        assert json.loads(p.stdout)["mentor"] == "main/2", p.stdout
+        # The caller is the shell's session and nothing else: a shell that lost the
+        # variable cannot say whose transcript it is, so it is refused rather than
+        # guessed at.
+        p = run(h, "heir", "--note", "note", session=None)
+        assert p.returncode != 0 and "GONGGA_SESSION" in p.stderr, p.stderr
+        assert len(h.rows(sid)) == 1, "a refused heir must not delete"
 
-        p = run(h, "heir", "--session", "unknown", "--mentor", "m", "--note", "note")
+        # An archive is a child of the session that made it: a name outside that
+        # subtree is refused, which is what keeps a handover from being aimed at
+        # somebody else's transcript -- `@monitor` included.
+        for outside in ("md", "main2/m", "@monitor", "@monitor/mentor", "main"):
+            p = run(h, "heir", "--mentor", outside, "--note", "note")
+            assert p.returncode != 0 and "is not under" in p.stderr, (outside, p.stderr)
+            assert len(h.rows(sid)) == 1, f"{outside} must not delete anything"
+
+        p = run(h, "heir", "--mentor", "unknown/m", "--note", "note", session="unknown")
         assert p.returncode != 0 and "no session named" in p.stderr, p.stderr
 
         empty = h.session("empty")
-        p = run(h, "heir", "--session", "empty", "--mentor", "m", "--note", "note")
+        p = run(h, "heir", "--mentor", "empty/m", "--note", "note", session="empty")
         assert p.returncode != 0 and "no transcript" in p.stderr, p.stderr
         h.close()
 
@@ -229,12 +246,12 @@ def test_heir_moves_every_row_then_empties():
         for kind, payload in source:
             h.add(sid, kind, payload)
         note = "用户要 A；B 失败因为 C；现在在 D"
-        p = run(h, "heir", "--session", "main", "--mentor", "mentor-main", "--note", note)
+        p = run(h, "heir", "--mentor", "main/mentor-main", "--note", note)
         assert p.returncode == 0, p.stderr
         report = json.loads(p.stdout)
         assert report["mentor_created"] is True and report["rows_copied"] == 4, report
 
-        mid = h.c.execute("select id from sessions where name='mentor-main'").fetchone()["id"]
+        mid = h.c.execute("select id from sessions where name='main/mentor-main'").fetchone()["id"]
         mentor = h.rows(mid)
         assert len(mentor) == 5, [dict(r) for r in mentor]
         assert "started training an heir" in json.loads(mentor[0]["display"])["text"]
@@ -270,14 +287,14 @@ def test_heir_moves_every_row_then_empties():
         keep = h.add(mid, "text", {"role": "user", "text": "mentor 自己的旧行"}, seq=900)
         h.add(sid, "text", {"role": "user", "text": "第二轮"})
         before = len(h.rows(mid))
-        p = run(h, "heir", "--session", "main", "--mentor", "mentor-main", "--note", "第二份")
+        p = run(h, "heir", "--mentor", "main/mentor-main", "--note", "第二份")
         assert p.returncode == 0, p.stderr
         second = json.loads(p.stdout)
         # Two rows this time: what the emptied session woke up to, and what came
         # after it. No call was in flight, so the archive takes both and the
         # session starts from seq 1 again.
         assert second["rows_copied"] == 2 and second["kept_call"] is None, second
-        assert second["mentor"] == "mentor-main/2", second
+        assert second["mentor"] == "main/mentor-main/2", second
         assert second["mentor_created"] is True, second
         assert [sent[0] for sent in h.sent()] == ["send_message"] * 2, h.sent()
         assert h.sent()[-1][-1] == "第二份", h.sent()
@@ -288,7 +305,7 @@ def test_heir_moves_every_row_then_empties():
         assert "mentor 自己的旧行" in again["content"], "the old archive must not be rewritten"
         assert keep == 900
         # And the second archive holds the second handover, names in the report.
-        second_mid = h.c.execute("select id from sessions where name='mentor-main/2'").fetchone()["id"]
+        second_mid = h.c.execute("select id from sessions where name='main/mentor-main/2'").fetchone()["id"]
         assert len(h.rows(second_mid)) == 1 + 2, len(h.rows(second_mid))
         h.close()
 
@@ -303,7 +320,7 @@ def test_heir_keeps_the_call_in_flight():
         h.add(sid, "text", {"role": "user", "text": "清空你自己"})
         h.add(sid, "tool_call", {"call_id": "c-live", "name": "bash", "arguments": "{\"command\":\"transcript heir\"}"})
 
-        p = run(h, "heir", "--session", "main", "--mentor", "archive", "--note", "要做 X；Y 失败因为 Z")
+        p = run(h, "heir", "--mentor", "main/archive", "--note", "要做 X；Y 失败因为 Z")
         assert p.returncode == 0, p.stderr
         report = json.loads(p.stdout)
         assert report["kept_call"] == "c-live", report
@@ -321,7 +338,7 @@ def test_heir_keeps_the_call_in_flight():
 
         # The archive holds the whole exchange, and the copied call is answered
         # there: a mentor reads its own transcript back as a valid request.
-        mid = h.c.execute("select id from sessions where name='archive'").fetchone()["id"]
+        mid = h.c.execute("select id from sessions where name='main/archive'").fetchone()["id"]
         mentor = h.rows(mid)
         assert [r["kind"] for r in mentor] == ["text", "text", "tool_call", "tool_result"], [dict(r) for r in mentor]
         closing = json.loads(mentor[-1]["content"])
@@ -341,13 +358,13 @@ def test_a_bad_copy_rolls_everything_back():
         sid = h.session("main")
         h.add(sid, "text", {"role": "user", "text": "如果被篡改就别删"})
         h.add(sid, "text", {"role": "assistant", "text": "这行不该消失"})
-        run(h, "heir", "--session", "main", "--mentor", "m1", "--note", "第一轮")
-        mid = h.c.execute("select id from sessions where name='m1'").fetchone()["id"]
+        run(h, "heir", "--mentor", "main/m1", "--note", "第一轮")
+        mid = h.c.execute("select id from sessions where name='main/m1'").fetchone()["id"]
         # The next handover asks for the same mentor and is given `m1/2`: the
         # tampering below has to follow the name the script will really use.
         target = h.c.execute(
             """insert into sessions (name, status, model_name, model, cwd, created_at, updated_at)
-                values ('m1/2', 'idle', 'm1', 'p/m1', 'C:/work', 0, 0)"""
+                values ('main/m1/2', 'idle', 'm1', 'p/m1', 'C:/work', 0, 0)"""
         ).lastrowid
         h.c.commit()
         mid = target
@@ -365,7 +382,7 @@ def test_a_bad_copy_rolls_everything_back():
         h.c.commit()
         mentor_before = len(h.rows(mid))
         mine_before = len(h.rows(sid))
-        p = run(h, "heir", "--session", "main", "--mentor", "m1", "--note", "第三份")
+        p = run(h, "heir", "--mentor", "main/m1", "--note", "第三份")
         assert p.returncode != 0 and "the copy differs" in p.stderr, p.stderr
         assert len(h.rows(sid)) == mine_before, "the learner kept every row"
         assert len(h.rows(mid)) == mentor_before, "the mentor gained nothing"
@@ -384,14 +401,14 @@ def test_read_shows_every_row_that_is_actually_sent():
         h.add(sid, "tool_result", {"call_id": "c", "output": "ok", "images": []})
         h.add(sid, "text", {"role": "assistant", "text": "第二句"})
 
-        out = json.loads(run(h, "read", "--session", "main").stdout)
+        out = json.loads(run(h, "read").stdout)
         assert out["live_messages"] == 2 and out["shown_messages"] == 2, out
         assert [message["text"] for message in out["messages"]] == ["第一句", "第二句"], out
         assert out["last_seq"] == 4, out
 
         # A lesson is a message like any other, so reading has nothing to add to it.
         h.add(sid, "text", {"role": "user", "text": "第一课"})
-        out = json.loads(run(h, "read", "--session", "main").stdout)
+        out = json.loads(run(h, "read").stdout)
         assert [message["text"] for message in out["messages"]][-1] == "第一课", out
         assert "handover" not in out, out
         h.close()
@@ -409,7 +426,7 @@ def test_a_lesson_that_cannot_be_sent_is_printed():
         h.add(sid, "text", {"role": "user", "text": "清空你自己"})
 
         note = "用户要 A；下一步读 docs/notes/x.md"
-        p = run(h, "heir", "--session", "main", "--mentor", "m", "--note", note, cli=False)
+        p = run(h, "heir", "--mentor", "main/m", "--note", note, cli=False)
         assert p.returncode != 0, p.stdout
         assert "GONGGA_CLI" in p.stderr, p.stderr
         assert note in p.stderr, "the lesson has to survive in the result"

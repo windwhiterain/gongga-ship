@@ -5,8 +5,13 @@ Training an heir is a decision about work only the agent has seen, so the server
 does not take it: it measures the context and says so (`Context notice`), and
 this script is how the agent starts immediately.
 
-    transcript.py read     [--session S] [--after SEQ] [--limit N] [--preview]
-    transcript.py heir     --session S [--mentor M] --note TEXT
+    transcript.py read     [--after SEQ] [--limit N] [--preview]
+    transcript.py heir     [--mentor M] --note TEXT
+
+Both read the caller's own session from `GONGGA_SESSION`, which the server exports
+to every shell it starts. There is no `--session`: a caller that may name any
+session is a caller that can empty someone else's transcript, and no check on the
+name is as strong as not having the parameter.
 
 `heir` empties the current session so it continues as the heir: it copies the
 whole transcript into a mentor session, verifies the copy, deletes the original
@@ -285,14 +290,10 @@ def cmd_heir(args):
         )
     conn = connect()
     # The mentor a handover makes room for: the asked-for name when nothing holds it,
-    # otherwise the next one under it. Never the session being emptied, and never an
-    # archive an earlier handover left behind.
+    # otherwise the next one under it. Never the session being emptied -- `--mentor`
+    # is held under this session's own path, which cannot be the session itself --
+    # and never an archive an earlier handover left behind.
     mentor = free_name(conn, args.mentor)
-    if mentor == args.session:
-        die(
-            "the mentor has to be another session: copying a transcript into itself and "
-            "then deleting it would delete the archive with the original"
-        )
     sid = session_id(conn, args.session)
     source = conn.execute(
         "select model, cwd, context_tokens, context_limit from sessions where id = ?",
@@ -489,7 +490,6 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
 
     read = sub.add_parser("read", help="show the messages that are actually sent")
-    read.add_argument("--session", help="defaults to $GONGGA_SESSION")
     read.add_argument("--after", type=int, help="defaults to the beginning of the transcript")
     read.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     read.add_argument("--preview", action="store_true", help="one line per message")
@@ -499,7 +499,6 @@ def main():
         "heir",
         help="start training an heir: save the transcript with --mentor, verify it, and empty this session",
     )
-    heir.add_argument("--session", help="defaults to $GONGGA_SESSION")
     heir.add_argument(
         "--mentor",
         help="where the archive goes: `<your session>/mentor` when omitted. A name that "
@@ -510,19 +509,32 @@ def main():
     heir.set_defaults(func=cmd_heir)
 
     args = parser.parse_args()
-    # Both names default to the session the caller is already in: the server exports
-    # it to every shell it starts, so nothing has to be typed twice or guessed.
-    if args.session is None:
-        args.session = os.environ.get("GONGGA_SESSION", "")
-        if not args.session:
-            die(
-                "no --session, and GONGGA_SESSION is not set: name the session, or run "
-                "this from a shell the server started"
-            )
+    # The caller is the session whose shell this is, and the server says so: a name
+    # typed here would be a claim, and the one command that must never be able to
+    # empty a transcript has no business accepting claims about whose it is.
+    args.session = os.environ.get("GONGGA_SESSION", "")
+    if not args.session:
+        die(
+            "GONGGA_SESSION is not set: only a shell the server started knows which "
+            'session it belongs to (check with: echo "$GONGGA_SESSION")'
+        )
     if getattr(args, "mentor", None) is None:
         # A segment, not a prefix: the archive hangs under the session it came from,
         # where the session list already draws it as a child.
         args.mentor = f"{args.session}/mentor"
+    else:
+        # An archive is written where the caller can see it and nowhere else. The
+        # rule is structural -- under this session's path -- so it needs no list of
+        # reserved names: `@monitor` training an heir gets `@monitor/mentor`, which
+        # is its own child, and nobody can make it write outside its own subtree.
+        under = f"{args.session}/"
+        if not args.mentor.startswith(under) or args.mentor == under:
+            die(
+                f"--mentor {args.mentor!r} is not under {args.session!r}: an archive is "
+                f"a child of the session that made it, e.g. {args.session}/mentor. "
+                "Writing one anywhere else would put this transcript in a session "
+                "nobody asked for."
+            )
     args.func(args)
 
 
