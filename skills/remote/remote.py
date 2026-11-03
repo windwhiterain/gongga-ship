@@ -666,6 +666,22 @@ def server_verdict(name: str, timeout: float = 30) -> dict:
     return {"asked": True, "usable": None, "reason": "the server refused for another reason", "message": message}
 
 
+def server_started_before(path: Path) -> bool:
+    """Whether the server on this machine started before the remotes file changed.
+
+    # Invariant
+
+    The file is read at server startup, so a server older than the file answers
+    about the configuration it started with. Saying so is the difference between
+    a verdict and a stale one.
+    """
+    home = Path(os.environ.get("GONGGA_HOME") or (Path.home() / ".gongga"))
+    lock = home / "server.lock"
+    if not lock.is_file() or not path.is_file():
+        return False
+    return lock.stat().st_mtime < path.stat().st_mtime
+
+
 def reach(table: dict, timeout: float = 20) -> dict:
     """Whether one configured remote answers, answered as data rather than raised."""
     host = str(table.get("host") or "")
@@ -705,7 +721,13 @@ def list_remotes(args: argparse.Namespace) -> None:
         if args.check:
             row.update(reach(table))
             if row.get("connected"):
-                row["server"] = server_verdict(name)
+                verdict = server_verdict(name)
+                if server_started_before(path):
+                    verdict["stale_config"] = True
+                    verdict["note"] = (
+                        "the server reads the remotes file at startup; restart it to see this one"
+                    )
+                row["server"] = verdict
         rows.append(row)
     emit("remotes", config=str(path), remotes=rows)
 
