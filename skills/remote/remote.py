@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shlex
 import shutil
@@ -20,7 +21,6 @@ import tomllib
 
 # Never let an SSH login profile inject frames into a runner or probe.
 BASH = "bash --norc --noprofile"
-PROTOCOL = 1
 
 
 class Failure(RuntimeError):
@@ -135,6 +135,21 @@ def runner_command(runner: str) -> str:
     return " ".join(shlex.quote(word) for word in words)
 
 
+def hello(frame: dict) -> dict:
+    """The greeting a runner sends before anything else.
+
+    # Invariant
+
+    The protocol number is read here, never judged: the server is the one that
+    speaks it and the one that refuses a peer it cannot talk to, so a second
+    copy of that number in this script is exactly what drifts. What is read is
+    reported; the verdict belongs to the server.
+    """
+    if frame.get("event") != "hello" or type(frame.get("protocol")) is not int:
+        raise Failure(f"unexpected runner greeting: {frame}")
+    return frame
+
+
 def probe(peer: Peer, runner: str, timeout: float = 30):
     # A runner is intentionally long-lived: greeting, not EOF, is readiness.
     # Read one frame, then terminate only this test process.
@@ -162,9 +177,7 @@ def probe(peer: Peer, runner: str, timeout: float = 30):
         greeting = json.loads(line)
     except json.JSONDecodeError as error:
         raise Failure(f"runner did not return JSON greeting: {line!r} {text(errors)}") from error
-    if greeting.get("event") != "hello" or greeting.get("protocol") != PROTOCOL:
-        raise Failure(f"unexpected runner greeting: {greeting}")
-    return greeting
+    return hello(greeting)
 
 
 def source_size(peer: Peer, destination: str) -> int | None:
@@ -214,6 +227,67 @@ def home_posix(peer: Peer) -> str:
     return peer_home(peer)[0]
 
 
+def write_runner(path: Path, name: str, args: argparse.Namespace, runner: str) -> str:
+    """Point one remote's runner at a distribution, leaving the rest of it alone.
+
+    # Invariant
+
+    Only the runner line changes. A host, a port and a key are the operator's
+    decisions, so a remote that names another machine is refused rather than
+    rewritten: an install that moved a remote would be a different operation
+    wearing this one's name.
+
+    The file is read at server startup, so a runner written here is not in use
+    until that server is restarted. The caller says so.
+    """
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    lines = text.splitlines(keepends=True)
+    headers = {f"[remotes.{name}]", f"[targets.{name}]"}
+    start = None
+    end = len(lines)
+    for index, line in enumerate(lines):
+        if line.strip() in headers:
+            start = index
+            for follower in range(index + 1, len(lines)):
+                if lines[follower].lstrip().startswith("["):
+                    end = follower
+                    break
+            break
+    host = f"{args.user}@{args.host}" if args.user else args.host
+    identity = os.path.expanduser(args.identity) if args.identity else None
+    if start is None:
+        body = remote_toml(name, args, runner).splitlines(keepends=True)
+        if lines and lines[-1].strip():
+            body.insert(0, "\n")
+        lines.extend(body)
+    else:
+        table = {}
+        for line in lines[start + 1:end]:
+            key, _, value = line.partition("=")
+            table[key.strip()] = value.strip().strip('"')
+        if table.get("host", host) != host:
+            raise Failure(
+                f"remote {name!r} names {table.get('host')!r}, not {host!r}; edit it deliberately"
+            )
+        if table.get("identity", identity) != identity:
+            raise Failure(
+                f"remote {name!r} names another key; edit it deliberately"
+            )
+        replaced = False
+        for index in range(start + 1, end):
+            if lines[index].split("=", 1)[0].strip() == "runner":
+                lines[index] = f"runner = {toml_string(runner)}\n"
+                replaced = True
+                break
+        if not replaced:
+            lines.insert(end, f"runner = {toml_string(runner)}\n")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".toml.remote.tmp")
+    temporary.write_text("".join(lines), encoding="utf-8", newline="\n")
+    temporary.replace(path)
+    return str(path)
+
+
 def install(args: argparse.Namespace) -> None:
     require_program("ssh")
     require_program("sftp")
@@ -253,6 +327,11 @@ def install(args: argparse.Namespace) -> None:
     runner = f"{shell_final} runner"
     note("greeting the runner")
     greeting = probe(peer, runner, timeout=45)
+    written = None
+    if args.write:
+        if not args.remote:
+            raise Failure("--write needs --remote: the name of the remote to point at this distribution")
+        written = write_runner(remotes_path(args.remotes), args.remote, args, runner)
     emit(
         "installed",
         peer=peer.destination,
@@ -263,6 +342,8 @@ def install(args: argparse.Namespace) -> None:
         protocol=greeting["protocol"],
         cwd=peer_home(peer)[1],
         config=remote_toml(args.remote or "build", args, runner),
+        remotes=written,
+        restart_required=bool(written),
     )
 
 
@@ -462,8 +543,7 @@ def runner_verify(peer: Peer, runner: str, timeout: float = 45) -> None:
 
     try:
         first = frame()
-        if first.get("event") != "hello" or first.get("protocol") != PROTOCOL:
-            raise Failure(f"unexpected greeting {first}")
+        hello(first)
         _, cwd = peer_home(peer)
         if not (cwd.startswith("/") or (len(cwd) > 2 and cwd[1] == ":")):
             raise Failure(f"peer did not report a usable cwd: {cwd!r}")
@@ -513,6 +593,79 @@ def check(args: argparse.Namespace) -> None:
     emit("connected", peer=peer.destination, runner=runner, protocol=greeting["protocol"])
 
 
+def cli_command() -> list[str] | None:
+    """The command layer of this machine, if it has one.
+
+    # Invariant
+
+    The home's own copy comes first: it is the build whose server answers, and
+    the build that knows the protocol this machine speaks.
+    """
+    home = Path(os.environ.get("GONGGA_HOME") or (Path.home() / ".gongga"))
+    name = "gongga-cli.exe" if os.name == "nt" else "gongga-cli"
+    beside = home / "bin" / name
+    if beside.is_file():
+        return [str(beside)]
+    found = shutil.which("gongga-cli")
+    return [found] if found else None
+
+
+def server_verdict(name: str, timeout: float = 30) -> dict:
+    """What the running server says about one remote.
+
+    # Invariant
+
+    The server speaks the protocol, so its answer is the answer; this script
+    only carries it. Only a refusal to speak to the peer is read as "not
+    usable": a server that is not there, a key it will not take, or a peer with
+    no directory to list are not verdicts about compatibility, so they leave the
+    question open.
+
+    The vehicle is `list_paths`, because that is the command that opens an
+    endpoint today. A command of its own would answer the same thing without
+    the listing.
+    """
+    command = cli_command()
+    if command is None:
+        return {"asked": False, "reason": "this machine has no command layer"}
+    try:
+        result = run(command + ["list_paths", "--remote", name], timeout=timeout)
+    except Failure as error:
+        return {"asked": True, "usable": None, "reason": str(error)}
+    answer = None
+    for line in result.stdout.decode("utf-8", "replace").splitlines():
+        try:
+            frame = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(frame, dict) and frame.get("t") == "cmd_result":
+            answer = frame
+    if answer is None:
+        return {"asked": True, "usable": None, "reason": "the server did not answer"}
+    if answer.get("ok"):
+        return {"asked": True, "usable": True}
+    message = str(answer.get("message") or "")
+    if "no remote named" in message:
+        return {
+            "asked": True,
+            "usable": None,
+            "reason": "the server does not know this remote; it reads the remotes file at startup",
+            "message": message,
+        }
+    numbers = re.findall(r"speaks protocol (\d+), and this server speaks protocol (\d+)", message)
+    if numbers:
+        peer, local = numbers[0]
+        return {
+            "asked": True,
+            "usable": False,
+            "reason": "protocol",
+            "peer_protocol": int(peer),
+            "server_protocol": int(local),
+            "message": message,
+        }
+    return {"asked": True, "usable": None, "reason": "the server refused for another reason", "message": message}
+
+
 def reach(table: dict, timeout: float = 20) -> dict:
     """Whether one configured remote answers, answered as data rather than raised."""
     host = str(table.get("host") or "")
@@ -529,7 +682,7 @@ def reach(table: dict, timeout: float = 20) -> dict:
         greeting = probe(Peer(chosen), str(table.get("runner") or "gongga runner"), timeout=timeout)
     except Failure as error:
         return {"connected": False, "error": str(error)}
-    return {"connected": True, "protocol": greeting["protocol"]}
+    return {"connected": True, "greeting": True, "protocol": greeting["protocol"]}
 
 
 def list_remotes(args: argparse.Namespace) -> None:
@@ -551,6 +704,8 @@ def list_remotes(args: argparse.Namespace) -> None:
         }
         if args.check:
             row.update(reach(table))
+            if row.get("connected"):
+                row["server"] = server_verdict(name)
         rows.append(row)
     emit("remotes", config=str(path), remotes=rows)
 
@@ -589,6 +744,7 @@ def parser() -> argparse.ArgumentParser:
     install_parser.add_argument("--build-from", default=".")
     install_parser.add_argument("--artifact")
     install_parser.add_argument("--release", action="store_true")
+    install_parser.add_argument("--write", action="store_true")
     install_parser.set_defaults(action=install)
 
     config_parser = sub.add_parser("configure", help="print or update [remotes.<name>]")

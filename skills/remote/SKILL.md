@@ -36,29 +36,43 @@ R="$SKILL_DIR/remote"
 ```
 
 0. **See what this server already has.** `list` reads the local config; `--check` also
-   greets each remote's runner, which is the cheapest proof that a peer still answers:
+   greets each remote's runner and asks the running server what it makes of that peer.
+   Two answers, never one: the greeting says the peer answers, and the server's
+   verdict says whether *this* server can speak to it -- the server is the one that
+   speaks the protocol, so it is the one that decides.
 
    ```bash
    "$R" list --check
    ```
 
+   A remote is usable when `server.usable` is true. `usable` false with
+   `reason: "protocol"` names both versions: the peer speaks one, this server speaks
+   another, and the peer needs the matching distribution installed again. `usable` is
+   null when the question could not be answered -- no server running, a server that has
+   not read the file yet, or a refusal that is not about the protocol -- and a null is
+   not a verdict.
+
 1. **Build and install the distribution.** Run from the Gongga checkout:
 
    ```bash
-   "$R" install --host 192.168.1.10 --user build --identity ~/.ssh/id_ed25519
+   "$R" install --host 192.168.1.10 --user build --identity ~/.ssh/id_ed25519 \
+       --remote build --write
    ```
 
    This builds `gongga-bundle` locally, installs a content-addressed distribution under
-   the peer's `~/.gongga/bin/`, proves the runner greeting, and prints the exact remote
-   configuration. It needs no `gongga` entry on the peer's `PATH`.
+   the peer's `~/.gongga/bin/`, proves the runner greeting, and -- with `--write` --
+   points this machine's remote at the new distribution, changing nothing but that
+   remote's `runner` line. A remote that names another machine is refused, not
+   rewritten. It needs no `gongga` entry on the peer's `PATH`.
 
    A Windows bundle cannot run on Linux, nor the reverse. For a different peer OS,
    build for that OS and pass `--artifact /path/to/gongga`; the script does not pretend
    to cross-compile. `--artifact` is also the way to test an existing build. Read the
    reported peer OS in the result and do not call a Windows/Git Bash check a POSIX one.
 
-2. **Write the endpoint into this machine's remotes file.** Use the `runner` printed by
-   `install`:
+2. **Write the endpoint into this machine's remotes file.** `install --write` has
+   already done this; to write it by hand, or to change one field of a remote that
+   exists, use the `runner` printed by `install`:
 
    ```bash
    "$R" configure --remote build --host 192.168.1.10 --user build \
@@ -111,6 +125,19 @@ R="$SKILL_DIR/remote"
    a busy shell through the runner protocol. It closes its test shells and leaves no
    scratch directory. Do not treat a successful SSH login or a `discarded` message alone as proof
    that the peer's process is gone.
+
+### When the peer is behind
+
+The protocol number belongs to the server: it speaks it, and it refuses a peer it
+cannot talk to before any shell is opened -- "the endpoint's runner speaks protocol 1,
+and this server speaks protocol 2". The runner installed on the peer carries that
+number, so a server that moved on leaves the peer behind. Nothing in this script
+judges the number: it reads what the runner says and asks the server for the verdict,
+so the script and the server cannot disagree about it.
+
+The repair is a new distribution on the peer and a new `runner` line here. `install
+--write` does both and reports that the server must be restarted, because the remotes
+file is read at startup.
 
 ## Use the endpoint
 
