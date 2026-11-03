@@ -1,6 +1,6 @@
 ---
 name: subagent
-description: 把一块独立的工作交给另一个会话并行做——子 agent 不是一个工具，而是一个普通会话：自己的 transcript、自己的上下文与阈值、自己的 turn。当你要并行推进两条互不相干的实现、要把一个大的验证/探查丢给别人而自己不涨上下文、或者要一个只读的侦察兵时，读这个。用 gongga-cli set_session / send_message / get_messages / del_session 操作它；会话的模型自己指定（`--model` 是 sticky，设一次就一直带上），从 `@skill:model_pool` 抽一个能跑的。brief 就是这个会话的第一条消息，所以写文件/技能一律用 `@file:`/`@skill:`（`@skill:prefix-cache`）。**不要手写会话名**：用本 skill 的 `spawn`，名字是路径 `<父会话>/<角色>`，撞了就加 `/2`，靠 `set_session --must_create` 保证不会选中别人的会话。
+description: 把一块独立的工作交给另一个会话并行做——子 agent 不是一个工具，而是一个普通会话：自己的 transcript、自己的上下文与阈值、自己的 turn。当你要并行推进两条互不相干的实现、要把一个大的验证/探查丢给别人而自己不涨上下文、或者要一个只读的侦察兵时，读这个。用 gongga-cli set_session / send_message / get_messages / del_session 操作它；会话的模型自己指定（`--model` 是 sticky，设一次就一直带上），从 `@skill:model_pool` 按档抽一个能跑的（`pick --tier <flash|pro|sota>`，档由派的活决定）。brief 就是这个会话的第一条消息，所以写文件/技能一律用 `@file:`/`@skill:`（`@skill:prefix-cache`）。**不要手写会话名**：用本 skill 的 `spawn`，名字是路径 `<父会话>/<角色>`，撞了就加 `/2`，靠 `set_session --must_create` 保证不会选中别人的会话。
 compatibility: 需要 Python 3、sqlite3，以及一个在 PATH 里的 gongga-cli（spawn / wait_turn）
 metadata:
   entry: run
@@ -37,7 +37,7 @@ SKILL_DIR=<本 SKILL.md 所在目录>
 S="$G skill model_pool"
 
 name="$("$SKILL_DIR/spawn" impl --cwd /path/to/its/checkout \
-        --model "$($S pick)" --context-limit 20%)"
+        --model "$($S pick --tier flash)" --context-limit 20%)"
 echo "$name"          # main/impl，或者 main/impl/2
 
 $G send_message --session "$name" --message '<自足的 brief>'
@@ -108,20 +108,20 @@ name="$("$SKILL_DIR/spawn" review --cwd <它的工作树> --model "$($S pick --t
 是 `deepseek-official/deepseek-flash`），或者落到你上次 sticky 住的那个。配置里的
 `[model]` 是服务端自己想事情用的，永远不是任何会话的模型——别指望在那儿写默认值。
 
-模型从 **model_pool skill** 拿：它按 flash / pro / sota 三档、按各 provider 当前
-额度抽一个这台机器现在真能跑的模型，输出的就是 `<provider>/<model id>`，可以直接
-喂给 `--model`：
+模型从 **model_pool skill** 拿：它在你点的那一档里、按各 provider 当前额度抽一个
+这台机器现在真能跑的模型，输出的就是 `<provider>/<model id>`，可以直接喂给 `--model`。
+**档是派的活决定的，不是抽出来的**，所以每次都点 `--tier`：
 
 ```bash
-$S pick                          # 随便抽一个能的
 $S pick --tier flash             # 便宜活：读文件、跑测试、搬代码
-$S pick --tier sota              # 硬活：设计、疑难定位
-$S pick --provider kimi-coding   # 只从某个 provider 里抽（比如只有它还有额度）
+$S pick --tier pro               # 要判断：疑难实现、review 别人的改动
+$S pick --tier sota              # 一次错就全错：设计、核心 review
+$S pick --tier flash --provider kimi-coding   # 还要指定 provider（比如只有它还有额度）
 $S status                        # 每个模型：档位、能不能用、剩多少
 ```
 
 要点：`flash` 是**价格档不是能力档**——这台机器上最聪明的模型可能就在 flash 里；
-`sota` 买的是贵的前沿，不是"最划算的答案"。抽到哪个由额度决定，所以两条并行的
+`sota` 买的是贵的前沿，不是"最划算的答案"。档内抽到哪个由额度决定，所以两条并行的
 子 agent 一般落在两个不同的 provider 上，正好不互相抢配额。子 agent 死在额度上时：
 `$S mark <provider>/<model>` 把它挡一会儿，再抽一个。
 
@@ -174,14 +174,15 @@ $G send_message --session <name> --message "实现 @file: docs/notes/plan.md 里
 4. **没有完成通知。** turn 结束只意味着它 idle；你要自己去读（`get_messages` 或上面那张
    表）。别指望一条消息回来。
 5. **它和你抢同一个 provider 配额。** 并发越多，单个请求越慢；开到你自己读得过来的数量。
-   用 `model_pool` 把它们摊到不同 provider 上，是这里唯一有效的缓解：抽到同一个就再抽。
+   用 `model_pool` 把它们摊到不同 provider 上，是这里唯一有效的缓解：抽到同一个就
+   `--provider` 换个再抽，**档不变**（档是活决定的，不是抽出来的）。
    某一轮真的死在额度上（子 agent 的 transcript 里会有一行 403/429），`model_pool mark`
    那个路由，然后重抽——不要自己编一个模型名。
 6. **收尾**：`del_session` 会连它的 transcript 和 detached 作业一起删。留着不管，它就一直是
    一个占着上下文的空会话。删掉的如果是 `main/impl`，它的子会话（`main/impl/review`）
    不会跟着走——它们是按名字挂着的独立会话，上层的树只要还有一层在就仍然画得出来。
 7. **换模型就是一次 `set_session --model`。** 同一个子 agent 换个模型重试用的是它的
-   transcript：`set_session --session <name> --model "$($S pick)"`，下一轮就换过去了，
+   transcript：`set_session --session <name> --model "$($S pick --tier <档>)"`，下一轮就换过去了，
    历史还在。它跑的那段路不值得留，就 `del_session` 重开一个。
 
 它不是新进程、不是新服务端，也不用新 home 或新端口。
