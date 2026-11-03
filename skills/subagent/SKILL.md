@@ -102,6 +102,25 @@ wait {timeout_ms: 600000}
 任何东西落到本会话它都返回（后台任务报告、订阅命中、人来消息），并且**什么都不消费**：
 消息仍然在下一个 step 边界按原路进 transcript。超时不是错误，只是"还没到"。
 
+**它会不会等空？不会，因为通知是回执。** `spawn` 在派活**之前**订阅，所以每一轮 `turn_end`
+都必然落成一条消息：你忙，它作为一条排队的 inject 打断你正在等的 `wait`（实测：父会话在
+`wait` 里，子会话 20 ms 跑完，工具当时就回 `1 row(s) arrived … (a subscribe match)`）；
+你闲，它就是把你叫起来的那条 user 消息。所以"它早就结束了"不是 `wait` 能漏掉的事。
+
+**但回执已经在你眼前时不要 `wait`。** `wait` 等的是"下一件"，不是"上一件"：那条通知如果已经
+是这一轮的输入（它把你叫起来的，或上一步边界已经投递的），`wait` 里什么都等不到，只会坐满
+超时——实测 2.5 s 的 `wait` 正是这样坐满的，而回执就在同一段上下文里。看一眼再等：它已经
+说过 `turn_end`，就去 `get_messages` 读结果。
+
+会等空的只有一种**写法**：订阅挂在事件之后。手写 `set_session` 建的会话没有订阅，事后补一条
+`subscribe` 也只覆盖补上之后的回合（`--persistant false` 更只覆盖一轮）；那一条 `turn_end`
+没有回执，`wait` 就只会坐到超时。自己搭的子会话要么补订阅、要么别 `wait`，直接看状态：
+
+```bash
+$G get_messages --session "$name" --range -1:     # data.status 是 idle 就已经结束
+$G events --kind turn_end --session "$name" --since <派活前的 last_id>
+```
+
 **shell 里没有阻塞的等了。** 原先的 `wait --kind turn_end` 已经退役：一个睡在 socket 上的
 进程既不进 transcript，也不会随回合取消。脚本想知道一轮什么时候结束就去问日志——
 `events --kind turn_end --session <name> --since <id>`，那些行正是上面通知的正文。
