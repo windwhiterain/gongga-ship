@@ -89,7 +89,7 @@ log row 96858: {"elapsed_ms":1424,"outcome":"done","steps":0,"answer":"……它
 ## 派活：`send_message`
 
 ```bash
-$G send_message "$name" "$(cat <<'BRIEF'
+$G send_message --name "$name" "$(cat <<'BRIEF'
 实现 @file: docs/notes/plan.md 里的第一步。约定见 @skill: whiting-dev。
 验收：cargo test -p gongga-server 绿。不要动 docs/。
 BRIEF
@@ -185,7 +185,7 @@ $G skill model_pool status              # 每个模型：档位、能不能用�
 
 ## brief 是它的第一句话：引用写进去
 
-`send_message <name> <brief>` 的 brief 就是子 agent 的**第一条** user 消息，而它的 index 就是**那一次**写下的：
+`send_message --name <name> <brief>` 的 brief 就是子 agent 的**第一条** user 消息，而它的 index 就是**那一次**写下的：
 brief 里写的 `@file:` / `@skill:` 的正文进系统提示的 index，一次付费，之后每一轮都是命中；
 消息里 `@file:` 保持字面，`@skill:` 留成带路径的指针。
 

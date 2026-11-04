@@ -273,7 +273,7 @@ def test_heir_moves_every_row_then_empties():
         # The lesson went out as the message an operator would send, to this
         # session, and the measurement of a transcript that no longer exists is
         # zeroed so the next step does not remind about it.
-        assert h.sent() == [["send_message", "main", note]], h.sent()
+        assert h.sent() == [["send_message", "--name", "main", note]], h.sent()
         s = h.c.execute("select context_tokens from sessions where id=?", (sid,)).fetchone()
         assert s["context_tokens"] == 0, dict(s)
         h.add(sid, "text", {"role": "user", "text": "醒来第一句"})
@@ -334,7 +334,7 @@ def test_heir_keeps_the_call_in_flight():
         mine = h.rows(sid)
         assert [r["kind"] for r in mine] == ["tool_call"], [dict(r) for r in mine]
         assert mine[0]["seq"] == 2, dict(mine)
-        assert h.sent() == [["send_message", "main", "要做 X；Y 失败因为 Z"]], h.sent()
+        assert h.sent() == [["send_message", "--name", "main", "要做 X；Y 失败因为 Z"]], h.sent()
 
         # The archive holds the whole exchange, and the copied call is answered
         # there: a mentor reads its own transcript back as a valid request.
@@ -387,7 +387,7 @@ def test_a_bad_copy_rolls_everything_back():
         assert len(h.rows(sid)) == mine_before, "the learner kept every row"
         assert len(h.rows(mid)) == mentor_before, "the mentor gained nothing"
         # Only the first, successful handover reached the command layer.
-        assert h.sent() == [["send_message", "main", "第一轮"]], h.sent()
+        assert h.sent() == [["send_message", "--name", "main", "第一轮"]], h.sent()
         h.close()
 
 

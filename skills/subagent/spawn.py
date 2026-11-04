@@ -202,7 +202,10 @@ def main():
         name = f"{parent}/{role}" if attempt == 0 else f"{parent}/{role}/{attempt + 1}"
         # The model is the caller's own unless one is named: stated, a sticky
         # entry cannot silently swap it for another project's.
-        model = [args.model or env_model] if (args.model or env_model) else []
+        # Optional arguments keep their flags (SPEC: order-omission is the
+        # non-optional arguments' to give), so the model is named, not positional.
+        stated = args.model or env_model
+        model = ["--model", stated] if stated else []
         taken, _ = create([name, *model, "--must_create", "true", *extra])
         if taken:
             print(f"spawn: {name} is taken; trying the next segment", file=sys.stderr)

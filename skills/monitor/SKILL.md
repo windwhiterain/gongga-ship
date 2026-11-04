@@ -108,7 +108,7 @@ sed -e 's/\(key[^=]*=\s*"\)\(.\{6\}\).*/\1\2…(redacted)"/' ~/.agents/keys.toml
 
 ## 4. 修：从最便宜的动起
 
-1. **换模型**（最常见，一行）：`gongga-cli set_session <名> <provider>/<model>`
+1. **换模型**（最常见，一行）：`gongga-cli set_session <名> --model <provider>/<model>`
    候选从 roster 里挑一个这台机器现在真能用的（有 key、不是欠费那个）。
 2. **改配置**：`$GONGGA_HOME/config.toml` 是合并结果，改它；改完下一个 turn 就生效（多数键每步重读）。
 3. **改源码**：只有 §0 证明是 harness 的锅时才做。改完需要让新二进制接管 home——

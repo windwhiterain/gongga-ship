@@ -72,7 +72,7 @@ index，也不会追加新 prompt 行——index 里永远是第一句话那一�
 
 这两处是整轮工作里最值钱的消息，值得把它们要读的东西都写清楚：
 
-- **spawn 一个子 agent**：`send_message <子会话> <brief>` 的 brief 就是它的第一条 user 消息。
+- **spawn 一个子 agent**：`send_message --name <子会话> <brief>` 的 brief 就是它的第一条 user 消息。
   把 brief 要它读的文件、要用的技能都写成引用（见 `@skill:subagent`）。
 - **`heir` 的第一课**：`--note` 由脚本用 `send_message` 发给刚清空的会话，所以它也是
   第一条 user 消息。第一课里写 `@file: <路径>`，继承人下一次请求就带着正文，不必再读一遍。
