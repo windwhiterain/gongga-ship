@@ -3,10 +3,12 @@
 
     spawn <role> [--remote R] [--cwd PATH] [--model M] [--context-limit N%]
 
-The child lands where the caller works: its remote and its working directory are
-the caller's own, read back from the server (a flagless `set_session <caller>` is
-a read -- it answers the row the server already has and moves nothing), and
-`--remote`/`--cwd` override them.
+The child lands where the caller works: its model, its remote and its working
+directory are the caller's own -- the server exports `GONGGA_MODEL` and
+`GONGGA_REMOTE` to every shell it starts, and the shell's own directory is the
+session's -- and `--remote`/`--cwd` override them. A flagless `set_session` is
+no read any more: sticky-filled arguments would turn it from a read into a
+move, which is why these facts come from the environment instead.
 
 SPEC's `## Skill: subagent` names four steps. Two of them are one command here,
 because the second is worthless when it is a step somebody has to remember:
@@ -123,21 +125,18 @@ def subscribe(name):
 
 
 def caller_place(parent):
-    """The caller session's own `remote` and `cwd`, as the server has them.
+    """The caller session's own `remote` and `cwd`, as the shell's own facts.
 
     # Invariant
 
-    A flagless `set_session <session>` asks where a session already is: `remote`
-    and `cwd` are `Keep`, so no shell is ended and no directory is written, and
-    the answer carries the row. That is what makes a child inherit its parent's
-    machine without the parent having to state it, and what keeps this from
-    guessing: a wrong guess would start the child in a directory that does not
-    exist on the machine it lands on.
+    The server exports a session's model and remote to every shell it starts,
+    and a shell's own directory is its session's: that is what makes a child
+    inherit its parent's machine without the parent having to state it, and
+    what keeps this from guessing -- a wrong guess would start the child in a
+    directory that does not exist on the machine it lands on.
     """
-    accepted, said, data = command(["set_session", parent])
-    if not accepted or not isinstance(data, dict):
-        die(f"could not read {parent}'s own place from the server: {said}")
-    return data
+    remote = os.environ.get("GONGGA_REMOTE", "").strip()
+    return {"remote": remote or None, "cwd": os.getcwd()}
 
 
 def main():
@@ -175,6 +174,7 @@ def main():
     # Where the caller works is where the child starts: the caller's own row is
     # the only place that knows its machine and its directory.
     place = caller_place(parent)
+    env_model = os.environ.get("GONGGA_MODEL", "").strip()
     # A remote names a machine; `none` names the server's own.
     recorded = (place.get("remote") or "").strip()
     recorded = None if recorded.lower() in ("", "none") else recorded
@@ -191,15 +191,18 @@ def main():
     extra = []
     if wanted:
         extra += ["--remote", wanted]
+    # The working directory is the shell's own, stated so a sticky `cwd` entry
+    # cannot land the child somewhere its caller never worked.
     if cwd:
         extra += ["--cwd", cwd]
-    # SPEC: `set_session <session> <model>` -- the model is the second word.
     if args.context_limit:
-        extra += ["--context_limit", args.context_limit]
+        extra += ["--ctx_limit", args.context_limit]
 
     for attempt in range(ATTEMPTS):
         name = f"{parent}/{role}" if attempt == 0 else f"{parent}/{role}/{attempt + 1}"
-        model = [args.model] if args.model else []
+        # The model is the caller's own unless one is named: stated, a sticky
+        # entry cannot silently swap it for another project's.
+        model = [args.model or env_model] if (args.model or env_model) else []
         taken, _ = create([name, *model, "--must_create", "true", *extra])
         if taken:
             print(f"spawn: {name} is taken; trying the next segment", file=sys.stderr)

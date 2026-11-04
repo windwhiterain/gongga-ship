@@ -82,7 +82,7 @@ print(c.execute('select name,status,model,monitor_seq,monitor_attempts from sess
 读 transcript 用命令层，别手写 SQL（`--range` 是闭区间，负数从尾部数）：
 
 ```bash
-gongga-cli get_messages <名> -40:-1
+gongga-cli get_messages --session <名> -40:-1
 gongga-cli events --session <名> --limit 40
 gongga-cli events --kind turn_failed --limit 20
 gongga-cli            # 不带参数 = 这台服务端此刻的命令目录

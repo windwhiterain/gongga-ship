@@ -154,7 +154,7 @@ EOF
 | `del_session` | 全删 | 删 | 全没 |
 
 压缩阈值默认是上下文窗口的 **70%**（本会话模型 `deepseek-flash` 窗口 1,000,000），
-`set_session --context_limit 30%` 可调，`0` 关闭；设百分比要求模型在 roster 里有
+`set_session --ctx_limit 30%` 可调，`0` 关闭；设百分比要求模型在 roster 里有
 `context`，否则命令当场报错而不是悄悄忽略。
 
 ### 记忆写在文件里，不写在上下文里
@@ -241,7 +241,7 @@ gongga-cli send_message test1 "SELF-NOTE: ..."
 |---|---|
 | 我有几个 shell、谁还有没读的输出、有哪些 detached | `list_bash`（`unread_bytes`、`background_jobs`、`detached[]`） |
 | 后台作业跑到哪了 | `check_bash --name <shell>`，**读即清空**，同一段不会给两次 |
-| 我刚才到底做了什么、上一条命令的原文 | `get_messages <s> <a>:<b>`（1 基、两端含，`-1` 最新一条，如 `-5:` 取最后五条；省略范围是全部） |
+| 我刚才到底做了什么、上一条命令的原文 | `get_messages --session <s> <a>:<b>`（1 基、两端含，`-1` 最新一条，如 `-5:` 取最后五条；省略范围是全部） |
 | 会话状态 / 模型 / 压缩阈值 / 消息数 | 只读查库（下面） |
 | 我哪些工具调用在失败 | `tool_calls` 表按 `name,status` 汇总 |
 

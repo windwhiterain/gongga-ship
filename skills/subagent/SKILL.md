@@ -33,7 +33,7 @@ echo "$name"          # main/impl，或者 main/impl/2
 ```
 
 **它在哪儿干活，默认跟你一样。** `--remote` 和 `--cwd` 都不给时，子会话落在**调用者自己**的机器和目录上：
-`spawn` 回头读调用者那一行（不带参数的 `set_session <调用者>` 是一次读，不搬动任何东西），再照着落。
+`spawn` 从 shell 自己的事实落：服务端给每个 shell 导出 `GONGGA_MODEL`/`GONGGA_REMOTE`，目录就是 shell 所在目录（不带参数的 `set_session` 不再是读——sticky 会把它变成一次搬动）。
 所以在远端会话里派活，子会话默认也在那台远端、同一个目录；不用再手写一遍 `--remote`/`--cwd`。
 
 两个参数都能改：`--remote <名字>` 换机器（`--remote none` 是服务端自己这台），`--cwd <路径>` 换目录。
@@ -126,7 +126,7 @@ wait {timeout_ms: 600000}
 没有回执，`wait` 就只会坐到超时。自己搭的子会话要么补订阅、要么别 `wait`，直接看状态：
 
 ```bash
-$G get_messages "$name" -1:     # data.status 是 idle 就已经结束
+$G get_messages --session "$name" -1:     # data.status 是 idle 就已经结束
 $G events --kind turn_end --session "$name" --since <派活前的 last_id>
 ```
 
@@ -137,8 +137,8 @@ $G events --kind turn_end --session "$name" --since <派活前的 last_id>
 ## 读它：`get_messages`
 
 ```bash
-$G get_messages "$name" -20:     # 它最后 20 行（负数是倒数，闭区间）
-$G get_messages "$name" -1:      # 顺带看 data.status
+$G get_messages --session "$name" -20:     # 它最后 20 行（负数是倒数，闭区间）
+$G get_messages --session "$name" -1:       # 顺带看 data.status
 $G interrupt_session "$name"              # 别干了，丢掉这一轮
 $G del_session "$name"                    # 收尾：transcript、detached 作业一起走
 ```
