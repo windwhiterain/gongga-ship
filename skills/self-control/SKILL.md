@@ -339,7 +339,7 @@ EOF
   `computer_use`、`latency`、`model_pool`、`polity`、`proxy`、`web-search` 在这个桶。
 
 **桶的路径不是调用方式。** 跑一个 skill 自己的脚本，一律从**它自己的目录**出发：
-`@skill:` 展开里 `SKILL.md: <path>` 的父目录就是那个目录（`index_skill` 的 `path` 列同源）。
+`@skill:` 展开里括号中的 `<path>` 的父目录就是那个目录（`index_skill` 的 `path` 列同源）。
 home 会搬、桶会变，把桶的路径写进正文，别的 harness 读到的就是一个不存在的命令。
 gongga 里更短的一层是 `gongga-cli skill <name> [args…]`，它按同样的三根优先级解析。
 

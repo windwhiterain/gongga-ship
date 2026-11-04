@@ -23,7 +23,7 @@ metadata:
 ## 开始培养
 
 ```bash
-# 从本 skill 的目录运行：`@skill:` 的展开里写着 `SKILL.md: <path>`，取它的父目录；
+# 从本 skill 的目录运行：`@skill:` 展开里是 `@skill: <名字> (<path>)`，取 `<path>` 的父目录；
 # gongga 里更短：`gongga-cli skill heir read`。
 SKILL_DIR=<本 SKILL.md 所在目录>
 T="$SKILL_DIR/transcript"

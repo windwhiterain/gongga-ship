@@ -16,7 +16,7 @@ Files API，然后作为 `input_image` 交给模型。**图是真的进到模型
 脚本都会白跑一趟：不报错，只是图永远不到。
 
 ```bash
-# 从本 skill 的目录运行：`@skill:` 展开里的 `SKILL.md: <path>` 的父目录就是它。
+# 从本 skill 的目录运行：`@skill:` 展开里括号中的 `<path>` 的父目录就是它。
 # gongga 里更短：`gongga-cli skill image show /path/to/shot.png`。
 SKILL_DIR=<本 SKILL.md 所在目录>
 "$SKILL_DIR/show" /path/to/shot.png                   # 打印 `@image:` 引用，harness 接手

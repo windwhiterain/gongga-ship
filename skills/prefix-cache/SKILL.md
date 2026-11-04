@@ -13,32 +13,33 @@ provider 按**字节前缀**缓存。一个请求的最前面永远是系统提�
 | 方式 | 文本落在哪 | 付费方式 |
 | --- | --- | --- |
 | `bash: cat plan.md` | 一条 tool_result，在 transcript 中间 | 它在 transcript 里，每一轮都跟着前缀一起重发，而且它在**上一条 index 之后**——改一次 index 就把它后面全冲掉 |
-| 消息里写 `@file: plan.md` | index，紧跟 instructions | 一次进系统提示，之后每轮都是缓存命中；文件改了只追加一行新 prompt |
+| 消息里写 `@file: plan.md` | index（只在会话的第一条消息里），紧跟 instructions | 一次进系统提示，之后每轮都是缓存命中；之后改文件不再重发 |
 
 所以：**你希望这一整轮工作里反复看到的东西，写进消息；只读一次的东西，用 bash。**
 
-## index 是什么，什么时候重建
+## index 是什么，什么时候写定
 
-`index` = 本次会话里所有消息命名的引用的正文 + 会话目录里 `AGENTS.md` 的正文（递归：
+`index` = 会话第一条 user 消息命名的引用的正文 + 会话目录里 `AGENTS.md` 的正文（递归：
 引用里再写引用也会进来），按 `prefix_cache` 算出的最省顺序拼成一段，接在 instructions 后面。
 
-它**每一步都重建**：文件改了 → 正文变了 → 追加一行 prompt 行（旧行不动，SPEC 的
-"已发送的不改"），provider 那边从改动处开始重算。没改则字节相同，一行都不写。
+它**只写一次**：第一个请求写下那行 prompt，之后 `prompt_in_force` 有行就再也不渲染
+（`agent::index_of` 只在那一次跑）。后来改了文件、后来消息里又点了新的引用，都不会补进
+index，也不会追加新 prompt 行——index 里永远是第一句话那一刻的根。
 
 ## 哪条消息能进 index
 
 | 消息 | `@file:` | `@skill:` |
 | --- | --- | --- |
-| 会话的**第一条** user 消息（新会话、刚被 `heir` 清空、刚 spawn 的 subagent 的 brief） | 进 index，消息里保持字面 | 进 index，消息里保持字面 |
-| 之后的普通消息 | 进 index（下一次重建时，会写一行新 prompt） | **被就地替换成一行 metadata，永远不进 index** |
+| 会话的**第一条** user 消息（新会话、刚被 `heir` 清空、刚 spawn 的 subagent 的 brief） | 进 index；消息里保持字面 | 进 index；消息里换成指针 `@skill: <名字> (<它 SKILL.md 的路径>)` |
+| 之后的普通消息 | 不进 index（已经写定）；消息里就是一个路径字面 | 不进 index；消息里换成同一个指针，正文得模型自己去读 |
 
 表格第二行是唯一容易踩的坑：`@skill:` 只认"第一句话"。所以**技能要在开场就点名**，
 不要等到第三轮才说"顺便看看 @skill:foo"。
 
 同一条规则也解释了两件常见的事：
 
-- 一条消息（比如 `Context notice`）里写的 `@skill:prefix-cache` 是**真的会被索引**的——
-  它是 user 消息，正文会进 index。
+- `heir` 的第一课、spawn 的 brief 都是第一条消息，所以它们点名的技能正文才进 index；
+  `Context notice` 是轮中注入的 user 消息，index 已经写定，它点名的技能只剩指针。
 - 一个已经进了 index 的 skill，它的正文里再写 `@skill:bar`，`bar` 的正文也跟着进——
   所以这份文件可以被别的 skill 引用一次，正文只存一遍。
 

@@ -26,7 +26,7 @@ SPEC 把这个 skill 的事写成四步。动手的只有 `spawn`：它把前两
 
 ```bash
 G=gongga-cli
-SKILL_DIR=<本 SKILL.md 所在目录>          # `@skill:` 展开里的 `SKILL.md: <path>` 的父目录
+SKILL_DIR=<本 SKILL.md 所在目录>          # `@skill:` 展开里括号中的 `<path>` 的父目录
 name="$("$SKILL_DIR/spawn.py" impl --cwd /path/to/its/checkout \
         --model "$($G skill model_pool pick --tier flash)")"
 echo "$name"          # main/impl，或者 main/impl/2
@@ -186,8 +186,8 @@ $G skill model_pool status              # 每个模型：档位、能不能用�
 ## brief 是它的第一句话：引用写进去
 
 `send_message <name> <brief>` 的 brief 就是子 agent 的**第一条** user 消息，而它的 index 就是**那一次**写下的：
-brief 里写的 `@file:` / `@skill:` 的正文进系统提示的 index，一次付费，之后每一轮都是命中，
-消息里留着字面拼写。
+brief 里写的 `@file:` / `@skill:` 的正文进系统提示的 index，一次付费，之后每一轮都是命中；
+消息里 `@file:` 保持字面，`@skill:` 留成带路径的指针。
 
 **head 只写一次**（`prompt_in_force`：有行就再也不渲染），所以 index 里永远只有 brief 点名
 的那些。之后的消息再写引用**不会**补进 index：`@file:` 就只是一个路径字面，

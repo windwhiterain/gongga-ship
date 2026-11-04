@@ -25,7 +25,7 @@ when that exact content-addressed distribution is already on the peer.
 
 ## Set up one endpoint
 
-Find this skill's own directory -- `@skill:`'s expansion names it after `SKILL.md: `,
+Find this skill's own directory -- `@skill:`'s expansion names it in parentheses,
 and so does the `path` column of `index_skill` -- then call its `remote` launcher.
 These examples use `R="$SKILL_DIR/remote"`, not a command assumed to be on `PATH`.
 In gongga, `gongga-cli skill remote <command>` is the same launcher, shorter.
