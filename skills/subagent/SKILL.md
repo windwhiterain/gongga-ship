@@ -122,7 +122,7 @@ $G events --kind subscription --session "$GONGGA_SESSION" --since <派活前的 
 
 ```bash
 $G send_message --name "$name" "$(cat <<'BRIEF'
-实现 @file: docs/notes/plan.md 里的第一步。约定见 @skill: whiting-dev。
+实现 @file(docs/notes/plan.md) 里的第一步。约定见 @skill(whiting-dev)。
 验收：cargo test -p gongga-server 绿。不要动 docs/。
 BRIEF
 )"
@@ -219,31 +219,31 @@ $G skill model_pool status              # 每个模型：档位、能不能用�
 ## brief 是它的第一句话：引用写进去
 
 `send_message --name <name> <brief>` 的 brief 就是子 agent 的**第一条** user 消息，而它的 index 就是**那一次**写下的：
-brief 里写的 `@file:` / `@skill:` 的正文进系统提示的 index，一次付费，之后每一轮都是命中；
-消息里 `@file:` 保持字面，`@skill:` 留成带路径的指针。
+brief 里写的 `@file(...)` / `@skill(...)` 的正文进系统提示的 index，一次付费，之后每一轮都是命中；
+消息里 `@file(...)` 保持字面，`@skill(...)` 留成带路径的指针。
 
 **head 只写一次**（`prompt_in_force`：有行就再也不渲染），所以 index 里永远只有 brief 点名
-的那些。之后的消息再写引用**不会**补进 index：`@file:` 就只是一个路径字面，
-`@skill: <名字>` 被就地换成 `@skill: <名字> (<它 SKILL.md 的路径>)`，正文没有进去——它得
+的那些。之后的消息再写引用**不会**补进 index：`@file(...)` 就只是一个路径字面，
+`@skill(<名字>)` 被就地换成 `@skill(<名字>) (<它 SKILL.md 的路径>)`，正文没有进去——它得
 自己去读。实测（`agent::index_of` 只在那一次跑）：
 
 ```
-probe 的第一条 = "Start here with @file: early.md please."
-  -> prompt row rooted = ['@file:early.md']，index 里有 EARLY 正文
-probe 的后一条 = "Now also look at @file: late.md and @skill: late, then stop."
-  -> 存下的行：@file: late.md 原样；@skill: late (…\late\SKILL.md)
+probe 的第一条 = "Start here with @file(early.md) please."
+  -> prompt row rooted = ['@file(early.md)']，index 里有 EARLY 正文
+probe 的后一条 = "Now also look at @file(late.md) and @skill(late), then stop."
+  -> 存下的行：@file(late.md) 原样；@skill(late) (…\late\SKILL.md)
   -> 同一轮请求的 instructions 里没有 LATE 正文
 ```
 
 所以：**要它读什么，在 brief 里一次写完。** 写成路径（`plan.md`）或者让它自己 `cat`，
 那份正文就躺在 transcript 中间，每一轮都跟着前缀一起重发——这就是 brief 比"到时候再说"便宜
-的全部原因。拼写规则与写错的后果见 `@skill:prefix-cache`。
+的全部原因。拼写规则与写错的后果见 `@skill(prefix-cache)`。
 
 两条最容易踩的：
 
-- **值是一个词，后面要有空白。** `@file: docs/notes/plan.md` 对；直接接中文标点
-  （`@file: docs/notes/plan.md，然后`）是错的——中文标点不是分隔符，值会变成
-  `docs/notes/plan.md，然后`，读不到，而且**静默**。路径有空格就换一个没空格的路径。
+- **括号写全。** `@file(docs/notes/plan.md)` 对；`@file: docs/notes/plan.md` 和
+  `@file(docs/notes/plan.md`（漏了右括号）都不认——它们只是一段文字。括号里的路径有空格、
+  有括号都没关系，解析器按配对读。
 - **读不出来的引用不报错**：消息照发，index 里没有它，日志里没有一行。写错时唯一的信号是
   "模型还是自己去读了那个文件"。
 

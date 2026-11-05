@@ -25,7 +25,7 @@ when that exact content-addressed distribution is already on the peer.
 
 ## Set up one endpoint
 
-Find this skill's own directory -- `@skill:`'s expansion names it in parentheses,
+Find this skill's own directory -- `@skill(...)`'s expansion names it in parentheses,
 and so does the `path` column of `skill` -- then call its `remote` launcher.
 These examples use `R="$SKILL_DIR/remote"`, not a command assumed to be on `PATH`.
 In gongga, `gongga-cli skill remote <command>` is the same launcher, shorter.
@@ -185,29 +185,10 @@ because `bash` still runs here: `gongga-cli`, the home's skills (`heir`, `subage
 `evolve`, `image`), the roster and the key never leave this machine. `remote_bash` is
 the peer's shell for the peer's files.
 
-**The two machines are told apart by the tool's name, and by nothing else.** A tool
-whose name starts with `remote_` drives the peer; every other tool drives the machine
-this server runs on. A tool's own instruction therefore says only what that tool is,
-and never how the two machines relate -- no shared name space, nothing about what is
-not offered, no advice about which machine to pick. That is this chapter's job, and it
-is the whole of it:
-
-- **One name space for both machines.** A name is one shell, and a name is one
-  interpreter: `bash` and `remote_bash` share the names, `python` and `remote_python`
-  share them, and a name the other machine already holds is refused rather than
-  becoming a second process. `check_bash`, `del_bash`, `list_bash` (and the Python
-  three) take a name, not a machine; the answer says which machine holds it. `default`
-  is the directory-owning machine's, so a session with a remote has `default` on the
-  peer -- a local shell of that session needs another name.
-- **A path belongs to the machine its tool names.** `read_file`, `write_file` and
-  `replace` run on this machine unless their `remote` argument names the session's
-  remote, which is the one way to edit a peer file with a typed tool; any other name
-  is refused, and the refusal is about the name and not about reaching the peer. This
-  argument is not offered to a session that has no remote.
-- **`target` changes nothing.** `remote_bash` runs on the session's remote whatever
-  `target` says; the name of that remote is accepted and any other is refused. Moving
-  the session is `set_session --remote`, a command, and not a tool argument.
-- A reference is read on the machine that printed it, so `@image:` and `@file:` in
+- `check_bash`, `del_bash` and `list_bash` take a name, not a machine: a name is one
+  shell, and the answer says which machine holds it. `default` is the directory-owning
+  machine's, so a session with a remote has `default` on the peer.
+- A reference is read on the machine that printed it, so `@image(...)` and `@file(...)` in
   a `remote_bash` result are the peer's, and the same reference in a `bash` result is
   this machine's. The prompt's index reads the peer's `AGENTS.md`.
 - Not offered, and refused with advice if written anyway: `background` and `detached`

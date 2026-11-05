@@ -181,7 +181,7 @@ EOF
 问一句是一个回合。
 
 ```bash
-SKILL_DIR=<本 SKILL.md 所在目录>          # `@skill:` 展开里括号中的 `<path>` 的父目录
+SKILL_DIR=<本 SKILL.md 所在目录>          # `@skill(...)` 展开里括号中的 `<path>` 的父目录
 "$SKILL_DIR/ask_session.py" <会话名> "<问题>"
 ```
 
@@ -246,15 +246,15 @@ gongga-cli send_message --name test1 "SELF-NOTE: ..."
 并发写同一份树，都在 **`subagent` skill**。
 
 一条和"自己"直接相关的：`send_message` 发出去的 brief 就是那个会话的**第一条** user 消息，
-所以 brief 里写的 `@file:`/`@skill:` 会进它的 index，随前缀缓存只收一次费——这也是
-"派活时把要读的东西一次说清"比"派完再补一条"便宜的原因（见 `@skill:prefix-cache`）。
+所以 brief 里写的 `@file(...)`/`@skill(...)` 会进它的 index，随前缀缓存只收一次费——这也是
+"派活时把要读的东西一次说清"比"派完再补一条"便宜的原因（见 `@skill(prefix-cache)`）。
 
 
 
 ## 6. 改源码不是用 harness
 
 换掉跑着自己的那个 exe、改它的源码、用它自己的开发环，都是另一件事，在 **`evolve` skill**
-（`@skill: evolve`）。这里的每一条都是**使用**这个 harness 的规矩；
+（`@skill(evolve)`）。这里的每一条都是**使用**这个 harness 的规矩；
 要动它的源码，先去读那个 skill。
 
 ## 7. 单向门：做之前先看范围
@@ -373,7 +373,7 @@ EOF
   `computer_use`、`latency`、`model_pool`、`polity`、`proxy`、`web-search` 在这个桶。
 
 **桶的路径不是调用方式。** 跑一个 skill 自己的脚本，一律从**它自己的目录**出发：
-`@skill:` 展开里括号中的 `<path>` 的父目录就是那个目录（`skill` 的 `path` 列同源）。
+`@skill(...)` 展开里括号中的 `<path>` 的父目录就是那个目录（`skill` 的 `path` 列同源）。
 home 会搬、桶会变，把桶的路径写进正文，别的 harness 读到的就是一个不存在的命令。
 gongga 里更短的一层是 `gongga-cli skill <name> [args…]`，它按同样的三根优先级解析。
 

@@ -112,7 +112,7 @@ sed -e 's/\(key[^=]*=\s*"\)\(.\{6\}\).*/\1\2…(redacted)"/' ~/.agents/keys.toml
    候选从 roster 里挑一个这台机器现在真能用的（有 key、不是欠费那个）。
 2. **改配置**：`$GONGGA_HOME/config.toml` 是合并结果，改它；改完下一个 turn 就生效（多数键每步重读）。
 3. **改源码**：只有 §0 证明是 harness 的锅时才做。改完需要让新二进制接管 home——
-   那是 `@skill: self-control` 讲的事（`cancel` 会保住正在跑的 turn），不要 `taskkill`。
+   那是 `@skill(self-control)` 讲的事（`cancel` 会保住正在跑的 turn），不要 `taskkill`。
 4. **别做**：不要为了"让它变绿"而删 transcript、删会话、清空 pending；不要改别人的未提交改动，
    发现别人的工作树脏了，报告它。
 5. **把出错的会话重新点着——这是你的活，不是留给用户的一句话。** 名字来自报告，一个报告一份；
