@@ -1,6 +1,6 @@
 ---
 name: monitor
-description: 服务端自己叫你来修一个出错的会话——你是 `@monitor`，带着 shell 和命令层，不是报告工具。当你的第一份报告说「a gongga session stopped with an error」、或者你要回答「这次失败是 harness 的锅还是供应商的锅/怎么证明/改了什么才算修好」时，读这个。它给的是这台机器上现成的地图与分诊表（home 里每个文件是什么、真相在哪张表、每一类失败先看什么），省掉从头探路；具体这次失败的名字、模型、行号、原因由报告给出。
+description: 服务端自己叫你来修一个出错的会话——你是 `@monitor/error`（另一个种类 `@monitor/disk` 管满盘清理，读的是 `clean-disk`），带着 shell 和命令层，不是报告工具。当你的第一份报告说「a gongga session stopped with an error」、或者你要回答「这次失败是 harness 的锅还是供应商的锅/怎么证明/改了什么才算修好」时，读这个。它给的是这台机器上现成的地图与分诊表（home 里每个文件是什么、真相在哪张表、每一类失败先看什么），省掉从头探路；具体这次失败的名字、模型、行号、原因由报告给出。
 ---
 
 # Monitor
