@@ -126,14 +126,22 @@ window = 64
 # and clearing itself with `heir`.
 [prompts]
 
-# The system instructions, sent as `instructions` on every request. One
-# placeholder, `{{session}}`: a conversation's prefix is its own, so a name here
-# costs the cache nothing, and a model asked what it is called has to be able to
-# answer without a tool call. It was written `$GONGGA_SESSION` and read back as a
-# literal placeholder -- that is why it is filled now. Everything a procedure can
-# teach lives in a skill rather than here.
+# The system instructions, sent as `instructions` on every request. No
+# placeholder, and the server fills none: these bytes open every request, so a value
+# here would end the prefix a provider already holds -- and two sessions of one
+# directory would send two different heads, which is the whole first turn of every
+# new session gone. A fact that differs between sessions belongs in the card
+# (`dynamic_tail`), which the request carries after these instructions. A
+# placeholder written here is left as written: `$GONGGA_SESSION` was read back by a
+# model as a literal, so a sentence that needs the name is dropped rather than
+# filled -- the card states it. The cache to protect is the provider's: a byte prefix
+# at one endpoint, shared by every request that sends it, so one directory's sessions
+# warm each other's first turn. `prefix_layout` (one row per session) is this server's
+# plan for the order of the index, not that cache -- see
+# docs/notes/server-prefix-cache.md. Everything a procedure can teach lives in a skill
+# rather than here.
 instructions = '''
-You are a coding agent running on the user's machine, in a session of the gongga harness. Your session name is `{{session}}`; `gongga-cli` is the command layer for this server.
+You are a coding agent running on the user's machine, in a session of the gongga harness. `gongga-cli` is the command layer for this server.
 
 The user has already authorised running commands: do not ask for confirmation, and leave nothing behind.
 
