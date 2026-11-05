@@ -19,9 +19,10 @@ because the second is worthless when it is a step somebody has to remember:
    another caller takes the name, and the loser silently joins the winner's
    transcript.
 2. **A subscription to that session's turn end.** Armed before this command
-   answers, and armed for the session that ran it -- `subscribe` notices its
-   caller, never the subject of its pattern. A parent left to arm this itself
-   would poll instead, which is the habit `subscribe` exists to replace.
+   answers, with the command that carries the news back: `subscribe` runs what
+   the row carries in the shell of the session it was run from, so the caller's
+   own `send_message` is what reaches the caller. A parent left to arm this
+   itself would poll instead, which is the habit `subscribe` exists to replace.
 
 The name is a path, `<parent>/<role>`, with `/2`, `/3`, ... added when it is taken:
 two callers asking for `main/impl` get `main/impl` and `main/impl/2`, and neither
@@ -105,6 +106,28 @@ def create(args):
     return False, message
 
 
+#: The shell the callback runs in. Its own: the same name is the same queue, and a
+#: callback behind the parent's long command is news that arrives minutes late.
+NOTICE_SHELL = "notice"
+
+
+def relay():
+    """The command a match runs: the event, sent back to the session that armed it.
+
+    # Invariant
+
+    The address is `$GONGGA_SESSION`, which the server exports into every shell of a
+    session, so the news goes to whoever armed this and never to the subject of the
+    pattern. The three `GONGGA_EVENT_*` names are the prefix the server puts on this
+    one command line; they are gone with it. Their values are expanded, never
+    re-parsed, so a payload full of quotes is carried as data.
+    """
+    return (
+        'gongga-cli send_message --name "$GONGGA_SESSION" '
+        '--message "$GONGGA_EVENT_KIND $GONGGA_EVENT_SESSION: $GONGGA_EVENT_PAYLOAD"'
+    )
+
+
 def subscribe(name):
     """Arms the caller's ears for `name`'s turn ends, returning what was armed.
 
@@ -114,10 +137,23 @@ def subscribe(name):
     `turn_end:main/impl` would also fire for `main/impl/2`: a parent with two
     children would hear about the wrong one and wait on the right one for nothing.
     The name is a session's, not a regex's, so it is escaped before it is a pattern.
+
+    The action is part of arming, not a second step: a subscription whose row
+    carries nothing fires and tells nobody, and the server refuses to write one.
     """
     pattern = f"^turn_end:{re.escape(name)}$"
     accepted, message, _data = command(
-        ["subscribe", name, pattern, "--persistant", "true"]
+        [
+            "subscribe",
+            name,
+            pattern,
+            "--persistant",
+            "true",
+            "--bash",
+            NOTICE_SHELL,
+            "--cmd",
+            relay(),
+        ]
     )
     if not accepted:
         return None, message
