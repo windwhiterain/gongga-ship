@@ -49,8 +49,8 @@ store = false
 # and 5/5 (19968 of 20013 tokens) with one; its `/chat/completions` face caches
 # anyway. Measured 2026-11-05: DeepSeek shares a prefix across sessions and keys (a
 # fresh session's first turn, 15360 of 15625); MiniMax `M3.1-Flash` shares one too,
-# but only in front of the request's final user message, and its pages document no
-# such field at all (automatic prefix caching, tools -> system -> messages). Every
+# and its pages document no such field at all (automatic prefix caching, tools ->
+# system -> user messages, 512 tokens minimum). Every
 # provider
 # this home reaches accepted the field when probed. A provider that rejects it fails
 # every request, so this is the one line to remove if a new endpoint answers 400
@@ -192,9 +192,9 @@ size_hint = '''
 The transcript no longer fits this model. Start training an heir now with `heir`'s `transcript heir` (`index_skill` prints its path). The heir continues the current work; no commit, clean tree, or green suite is required first.'''
 
 # The card: what the session's first user message carries in front of its text. Not a
-# message of its own, so it sits inside the turn the user asked for rather than in front
-# of it -- a provider serves the prefix up to the final user message, and a per-session
-# item in front of that prefix is the one byte two sessions cannot share.
+# message of its own, so the one byte two sessions differ in is as late as the request
+# allows -- a provider serves the longest common prefix, so per-session bytes belong at
+# the end of the stream and not in front of the messages.
 # Placeholders: {{session}}, {{build}}, {{now}}, {{cwd}}
 dynamic_tail = '''
 Session `{{session}}`, harness gongga at `{{build}}`, {{now}}, in `{{cwd}}`.'''
