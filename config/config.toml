@@ -253,3 +253,22 @@ output_omitted = '''
 
 
 [... {{omitted}} characters omitted ...]'''
+
+# ---------------------------------------------------------------- tool words
+#
+# What each tool says it is, and what each of its arguments is for. The code holds
+# a default for every one of them; a line here replaces it, so a wording change is
+# an edit to this file and not a build.
+#
+#   [tool_text.remote_bash]
+#   description = '''`bash` on the session's remote endpoint ...'''
+#
+#   [tool_text.remote_bash.arguments]
+#   name = '''Which shell this call is about ...'''
+#
+# Only sentences move: nothing here can add, remove or retype an argument, because
+# the shape of a schema is what the tool reads. A name the tool does not declare is
+# ignored and complained about once at startup. The section is `tool_text` and not
+# `tools`, which is a tool's runtime settings (`[tools.bash]` above) and must not be
+# read as prose.
+[tool_text]
