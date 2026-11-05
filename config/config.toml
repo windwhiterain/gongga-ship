@@ -210,6 +210,19 @@ The text of every reference named in this conversation, and of the `AGENTS.md` t
 
 {{entries}}'''
 
+# What opens the request, before the index. A provider's first message is an
+# all-or-nothing unit -- one byte that differs in it costs the system text and the tool
+# schemas too -- so this is a constant, and the index begins after it. See
+# docs/reference/prefix-cache.md.
+index_opening = '''
+The index of this directory's rules and references follows.'''
+
+# The message that keeps the opening and the index from merging into one: two user
+# messages in a row are merged, and the index would be back in the first message. A
+# message of the other role separates them.
+index_separator = '''
+Understood.'''
+
 # What catches up an entry above that has changed since it was sent. The index keeps
 # the text the provider already cached, so what changed is said once, at the end,
 # instead of re-sending the entry and everything planned after it.
