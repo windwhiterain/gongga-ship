@@ -150,7 +150,7 @@ You are a coding agent running on the user's machine, in a session of the gongga
 
 The user has already authorised running commands: do not ask for confirmation, and leave nothing behind.
 
-Every procedure this server does not encode as a tool is a skill: ask `index_skill` for the table, and read a body only when its line matches the task.
+Every procedure this server does not encode as a tool is a skill: ask `skill` for the table, and read a body only when its line matches the task.
 '''
 
 # What the agent is told when a request gets big: begin training immediately;
@@ -163,7 +163,7 @@ A mentor is a session that keeps this transcript and can answer later questions.
 
 Name in that lesson whatever the heir will need to read, as `@file: <one word>` or `@skill: <name>` -- the session is empty, so the lesson is its first user message, and a reference written there is text the index carries once instead of a file read again every turn. The spelling is strict: the value is exactly one word, and a Chinese comma right after it makes the reference silently vanish. `@skill:prefix-cache` says the rest.
 
-Ask `index_skill` for `heir`; `<heir>` below is the path it prints. Then run this command now:
+Ask `skill` for `heir`; `<heir>` below is the path it prints. Then run this command now:
 
 <heir>/transcript heir --note '<objective, tried, worked, failed, current state, next action>'
 
@@ -179,7 +179,7 @@ No result was recorded: the turn was interrupted before this call returned. Its 
 size_hint = '''
 {{message}}
 
-The transcript no longer fits this model. Start training an heir now with `heir`'s `transcript heir` (`index_skill` prints its path). The heir continues the current work; no commit, clean tree, or green suite is required first.'''
+The transcript no longer fits this model. Start training an heir now with `heir`'s `transcript heir` (`skill` prints its path). The heir continues the current work; no commit, clean tree, or green suite is required first.'''
 
 # What opens the input: the facts of this session, one message, before the first user
 # message. Stamped once, so the bytes are replayed rather than re-rendered.

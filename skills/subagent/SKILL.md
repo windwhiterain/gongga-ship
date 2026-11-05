@@ -1,9 +1,7 @@
 ---
 name: subagent
 description: 把一块独立的工作交给另一个会话并行做——子 agent 不是一个工具，而是一个普通会话：自己的 transcript、自己的上下文与阈值、自己的 turn。本 skill 的 `spawn` 一次做完两件必须做的事：在调用者名下起一个撞不上、也不会选中别人的名字（`<父会话>/<角色>`，`set_session --must_create`），并替调用者订阅它的 `turn_end`，所以父会话不必轮询。派活用 `send_message`，等它用一个可选的 `wait`（工具，不是一个睡眠的 shell）。当你要并行推进两条互不相干的实现、把大块验证/探查丢出去而不涨自己的上下文、或者要一个只读的侦察兵时读这个。
-compatibility: 需要 Python 3 和一个在 PATH 里的 gongga-cli（spawn 是入口）
-metadata:
-  entry: spawn.py
+compatibility: 需要 Python 3 和一个在 PATH 里的 gongga-cli（spawn 内部调它）
 ---
 
 # 子 agent
@@ -26,11 +24,15 @@ SPEC 把这个 skill 的事写成四步。动手的只有 `spawn`：它把前两
 
 ```bash
 G=gongga-cli
-SKILL_DIR=<本 SKILL.md 所在目录>          # `@skill:` 展开里括号中的 `<path>` 的父目录
-name="$("$SKILL_DIR/spawn.py" impl --cwd /path/to/its/checkout \
+name="$($G skill subagent spawn impl --cwd /path/to/its/checkout \
         --model "$($G skill model_pool pick --tier flash)")"
 echo "$name"          # main/impl，或者 main/impl/2
 ```
+
+它是个 Python 包，公开 API 就是 `spawn(role, remote=None, cwd=None, model=None,
+context_limit=None)`：命令行上第一个词是函数名，后面的词按参数名/顺序给它——所以
+`--context_limit 20%` 带下划线，就是那个参数名。Python 里直接
+`import subagent; name = subagent.spawn("impl", cwd="/path")`，同一个函数，不经命令行。
 
 **它在哪儿干活，默认跟你一样。** `--remote` 和 `--cwd` 都不给时，子会话落在**调用者自己**的机器和目录上：
 `spawn` 从 shell 自己的事实落：服务端给每个 shell 导出 `GONGGA_MODEL`/`GONGGA_REMOTE`，目录就是 shell 所在目录（不带参数的 `set_session` 不再是读——sticky 会把它变成一次搬动）。
@@ -39,8 +41,8 @@ echo "$name"          # main/impl，或者 main/impl/2
 两个参数都能改：`--remote <名字>` 换机器（`--remote none` 是服务端自己这台），`--cwd <路径>` 换目录。
 **换了机器就不继承目录**——调用者的目录在那台机器上才有意义；只换目录时机器照旧。
 
-gongga 里更短的一层是 `gongga-cli skill subagent`：它按名字找到入口、把后面的参数原样传过去，
-退出码就是入口的，所以 `name="$(gongga-cli skill subagent impl --cwd …)"` 是同一件事。
+gongga 里更短的一层是 `gongga-cli skill subagent spawn …`：它按名字找到这个包、把第一个词当函数、其余交给它，
+退出码就是入口的，所以 `name="$(gongga-cli skill subagent spawn impl --cwd …)"` 是同一件事。
 
 stdout 只有一行名字（给 `$(…)` 用）；哪个名字被占了、订阅了几号，都走 stderr。
 

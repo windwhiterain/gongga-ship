@@ -56,8 +56,8 @@ standing rule about this machine is a skill here too: the harness reads no rules
 file into a prompt, so prose that is always true is still prose somebody has to
 ask for.
 
-Skills are found by the `index_skill` tool, which lists name, description, path
-and bucket from both roots. Do not grep the directories: that re-implements the
+Skills are found by the `skill` tool with no `name`, which lists name, description,
+path and bucket from both roots. Do not grep the directories: that re-implements the
 tool in every session.
 
 ## Migrators

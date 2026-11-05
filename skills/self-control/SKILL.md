@@ -166,7 +166,7 @@ EOF
   第一个 root 进 `instructions`，随前缀缓存，所以写在那里的话每轮都算一次、改一次才重算；
   父目录的、`~/.agents/AGENTS.md` 都不读。机器自己的常驻规矩仍是
   `~/.agents/skills/whiting-dev`。别的约定要么放进 `instructions`，要么写成 skill 让
-  `index_skill` 列出来——否则新会话根本不会看见它。
+  `skill`（不带 `name`）列出来——否则新会话根本不会看见它。
 - WIP 按仓库约定写 `.agents/notes/<date>-<slug>.md`。
 - 长输出溢出的全文在 `~/.gongga/outputs/`，文件名是 `<session>-<shell>-<description>-<callid>`
   ——所以 `bash` 的 `description` 参数是给"未来的自己"和读 dump 的人的索引，不是装饰：
@@ -350,7 +350,7 @@ EOF
 
 ## 12. 技能本身是怎么被发现的
 
-发现机制是 **`index_skill` 工具**：一次调用返回一张表，每行是
+发现机制是 **`skill` 工具**（不带 `name`）：一次调用返回一张表，每行是
 `name` / `description` / `path` / `bucket`。先只看这张表，命中才读正文——
 这就是全部成本。别再 `grep` 目录：那等于让每个会话重新实现一遍这个工具。
 
@@ -373,7 +373,7 @@ EOF
   `computer_use`、`latency`、`model_pool`、`polity`、`proxy`、`web-search` 在这个桶。
 
 **桶的路径不是调用方式。** 跑一个 skill 自己的脚本，一律从**它自己的目录**出发：
-`@skill:` 展开里括号中的 `<path>` 的父目录就是那个目录（`index_skill` 的 `path` 列同源）。
+`@skill:` 展开里括号中的 `<path>` 的父目录就是那个目录（`skill` 的 `path` 列同源）。
 home 会搬、桶会变，把桶的路径写进正文，别的 harness 读到的就是一个不存在的命令。
 gongga 里更短的一层是 `gongga-cli skill <name> [args…]`，它按同样的三根优先级解析。
 
