@@ -275,7 +275,7 @@ output_omitted = '''
 background = '''Do not wait for this call: it runs as a job of this server and answers at once with the `job_id` of that job. `check_job` with that id collects what it answered, and this session is told when it ends. `bash` and `python` are the exception -- their background is a job of that shell or interpreter, which `check_bash` and `check_python` read. Defaults to false.'''
 detached = '''Do not wait for this call: it runs as a job of this server, which returns at once, and what it answers arrives later as a notice for this session -- `wait` is how you stay in this turn until that news lands. Defaults to false.'''
 max_output = '''In chars: when the output exceeds this, it is saved to a temp file and the call answers with the file's metadata {path, chars, line_count}.'''
-timeout_ms = '''How long to wait for this call before leaving it. No call waits longer than this machine's ceiling; one that needs to is refused and told how to run the work without waiting. On a reading call (`check_bash`, `check_python`, `check_job`) it is the same number for the same thing: how long the read waits for the work to end, and passing it answers with what is there and leaves the work running.'''
+timeout_ms = '''How long this call may hold the turn. Past it the call neither fails nor stops the work: it answers at once with the id of the `background` job that the work became, and `check_job` collects what it answered. `bash` and `python` turn a long wait into their own background job instead, which `check_bash` and `check_python` read. No call holds a turn longer than this machine's ceiling, however long it asks for.'''
 
 [tool_text.bash]
 description = '''Run a shell command in a persistent Git Bash on this machine -- the one the server runs on. Each `name` is a separate shell that keeps its own working directory, exports and shell functions between calls, and stays alive until you `del_bash` it; omit `name` to use `default`. So reusing one name is how state accumulates -- inventing a name per command leaves one idle process behind per command. A name is one shell: a name already held is refused rather than quietly becoming a second process. Output is streamed as it is produced. Use `cd` to move around instead of passing absolute paths every time. Very long output is capped: you get the beginning and the end, and the full text is written to a file named in the result -- read that file with `sed -n` or `grep`, do not cat it. With `background`, the command is started and the call returns immediately; collect what it printed later with `check_bash`.'''
@@ -316,12 +316,12 @@ description = '''What this call is for, in a few words -- it is read right after
 timeout_ms = '''How long to wait for the program before giving up on it. When it passes, the program is stopped and what it printed is what this call answers with.'''
 
 [tool_text.check_bash]
-description = '''What a shell printed that you have not read: everything its `background` commands wrote, plus anything it printed while nobody was reading. Reading clears it, so each chunk comes back once. Empty means nothing yet -- ask again, or set `timeout_ms` to wait for the running jobs.'''
+description = '''What a shell printed that you have not read: everything its `background` commands wrote, plus anything it printed while nobody was reading. Reading clears it, so each chunk comes back once. Empty means nothing yet -- ask again, or set `wait_ms` to wait for the running jobs.'''
 
 [tool_text.check_bash.arguments]
 description = '''What this call is for, in a few words: the log carries it as the call's title.'''
 name = '''Shell to read. Defaults to `default`.'''
-timeout_ms = '''If this shell has background jobs, wait up to this many milliseconds for them to finish before reading. Passing it returns the output so far and leaves the jobs running; it never stops them. Defaults to 0, which reads now.'''
+wait_ms = '''If this shell has background jobs, wait up to this many milliseconds for them to finish before reading. Passing it returns the output so far and leaves the jobs running; it never stops them. Defaults to 0, which reads now.'''
 
 [tool_text.check_job]
 description = '''What became of a call that did not wait for its answer: a `background` call, which answers at once with a `job_id`, and whose output waits here because nothing else collects it. The status is `running`, `ok`, `error` or `lost`, and `lost` means the server stopped before the job finished, so nothing can say what it printed. Reading an answer clears it, so it comes back once; a job that has not ended is not stopped by being asked about.'''
@@ -329,7 +329,7 @@ description = '''What became of a call that did not wait for its answer: a `back
 [tool_text.check_job.arguments]
 description = '''What this call is for, in a few words: the log carries it as the call's title.'''
 job_id = '''The id the `background` call answered with. A job belongs to the session that started it.'''
-timeout_ms = '''If the job is still running, wait up to this many milliseconds for it to end before answering. Passing it answers `running` and leaves the job going; it never stops it. Defaults to 0, which answers now.'''
+wait_ms = '''If the job is still running, wait up to this many milliseconds for it to end before answering. Passing it answers `running` and leaves the job going; it never stops it. Defaults to 0, which answers now.'''
 
 [tool_text.wait]
 description = '''Stay in this turn until something arrives for this session: the report of a background job that finished, the news of a `subscribe` whose pattern matched, or a message from a person. It consumes nothing -- whatever arrived is delivered at the next step boundary, the same way every other queued message is -- so this call is how an agent waits without giving up its turn, and without polling. With no `timeout_ms` it waits for the same ceiling a `bash` call gets; when that passes it says nothing arrived, which is not an error.'''
@@ -357,7 +357,7 @@ description = '''What `check_bash` is to a shell, for an interpreter: the output
 [tool_text.check_python.arguments]
 description = '''What this call is for, in a few words: the log carries it as the call's title.'''
 name = '''Interpreter to read. Defaults to `default`.'''
-timeout_ms = '''If this interpreter has background calls running, wait up to this many milliseconds for them to finish before reading. Passing it returns what is there and leaves them running. Defaults to 0.'''
+wait_ms = '''If this interpreter has background calls running, wait up to this many milliseconds for them to finish before reading. Passing it returns what is there and leaves them running. Defaults to 0.'''
 
 [tool_text.del_python]
 description = '''What `del_bash` is to a shell: the interpreters of this session whose name matches a regex are stopped, and naming one again starts fresh -- no variables, imports or open files from before, and any call it was running is gone with it.'''
