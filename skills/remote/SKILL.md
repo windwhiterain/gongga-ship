@@ -185,15 +185,40 @@ because `bash` still runs here: `gongga-cli`, the home's skills (`heir`, `subage
 `evolve`, `image`), the roster and the key never leave this machine. `remote_bash` is
 the peer's shell for the peer's files.
 
-- `check_bash`, `del_bash` and `list_bash` take a name, not a machine: a name is one
-  shell, and the answer says which machine holds it. `default` is the directory-owning
-  machine's, so a session with a remote has `default` on the peer.
+**The two machines are told apart by the tool's name, and by nothing else.** A tool
+whose name starts with `remote_` drives the peer; every other tool drives the machine
+this server runs on. So the tool instructions a session is given say nothing about
+remotes -- there is no `target` to pass and no argument that moves a call to the other
+machine -- and this chapter is where those facts live:
+
+- **One name space for both machines.** A name is one shell, and a name is one
+  interpreter: `bash` and `remote_bash` share the names, `python` and `remote_python`
+  share them, and a name the other machine already holds is refused rather than
+  becoming a second process. `check_bash`, `del_bash`, `list_bash` (and the Python
+  three) take a name, not a machine; the answer says which machine holds it. `default`
+  is the directory-owning machine's, so a session with a remote has `default` on the
+  peer -- a local shell of that session needs another name.
+- **A path belongs to the machine its tool names.** `read_file`, `write_file` and
+  `replace` run on this machine unless their `remote` argument names the session's
+  remote, which is the one way to edit a peer file with a typed tool; any other name
+  is refused and the refusal says which one to write. This argument is not offered to
+  a session that has no remote.
+- **`target` changes nothing.** `remote_bash` accepts `target` and ignores it: the peer
+  is the only machine it can run on. A different name is refused, and the refusal names
+  the one to write.
 - A reference is read on the machine that printed it, so `@image:` and `@file:` in
   a `remote_bash` result are the peer's, and the same reference in a `bash` result is
   this machine's. The prompt's index reads the peer's `AGENTS.md`.
 - Not offered, and refused with advice if written anyway: `background` and `detached`
   on `remote_bash` (the job's scratch file and its completion watcher are this
   machine's), and a capped remote output is not spilled to a path.
+
+Nothing in a local session's tool list mentions a remote: the `remote_*` tools are not
+offered there at all, and neither is any argument that names a machine. A local session
+that wants to work on another machine either moves there (`set_session --remote`, which
+is a command and takes effect when its turn ends, not in the turn that asked) or drives
+the peer through SSH from `bash`; this skill's own launcher only installs and verifies
+an endpoint, it runs nothing there.
 
 The project is not synchronised either way: a file on the peer is not here, and a
 checkout is not copied for you.
