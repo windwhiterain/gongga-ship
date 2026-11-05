@@ -342,6 +342,13 @@ description = '''Delete bash whose name matches a regex, either kind. A persiste
 description = '''What this call is for, in a few words: the log carries it as the call's title.'''
 name_regex = '''Pattern matched against shell names, unanchored: `qa` also takes `qa2`. Defaults to `^default$`.'''
 
+[tool_text.del_job]
+description = '''Delete a job by its id. A job still running is stopped: the work ends where it is, and what it had printed is not kept. A job that had already ended is only forgotten. Nothing about a deleted job is posted to this session afterwards, so this drops a job whose answer is no longer wanted as well as one that has to stop.'''
+
+[tool_text.del_job.arguments]
+description = '''What this call is for, in a few words: the log carries it as the call's title.'''
+job_id = '''The id the `background` call answered with, or the one a call became when it outlived its clock. A job belongs to the session that started it.'''
+
 [tool_text.list_bash]
 description = '''List the bash of this session: their names, their working directories, how much unread output they are holding, and how many background jobs are still running. Also lists the session's detached bashes, which are not any shell's and survive them all. `name_regex` narrows the answer to the names that match, which is how one name's state is asked about.'''
 
