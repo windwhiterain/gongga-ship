@@ -43,16 +43,17 @@ bind = "127.0.0.1:9700"
 store = false
 # Name every request (`prompt_cache_key`), which is what keeps a session's requests
 # on the node that holds its prefix. The value is the session's directory, never its
-# name: a provider keeps a prefix under the key that wrote it, so a key per
-# conversation hides every session's bytes from its siblings. Measured on this
-# machine 2026-11-04: LongCat's `/responses` face served 0/5 cached with no key and
-# 5/5 (19968 of 20013 tokens) with one; its `/chat/completions` face caches anyway.
-# Measured 2026-11-05 on MiniMax `M3.1-Flash`: two fresh sessions of one directory
-# with byte-identical heads got 128 cached of 14415 under two names, and 14336 of
-# 14471 when the same head was sent under one. Every provider this home reaches
-# accepted the field when probed. A provider that rejects it fails every request, so
-# this is the one line to remove if a new endpoint answers 400 about an unknown
-# field. See `docs/notes/server-prefix-cache.md`.
+# name: it should name the unit whose requests share a head, so a provider that
+# routes by key sends a directory's sessions to the node that holds it. Measured on
+# this machine 2026-11-04: LongCat's `/responses` face served 0/5 cached with no key
+# and 5/5 (19968 of 20013 tokens) with one; its `/chat/completions` face caches
+# anyway. Measured 2026-11-05: DeepSeek shares a prefix across sessions and keys (a
+# fresh session's first turn, 15360 of 15625), while MiniMax `M3.1-Flash` partitions
+# its store by this key and serves only a prompt it has already served under it, so
+# no value of the key gives two MiniMax sessions a shared first turn. Every provider
+# this home reaches accepted the field when probed. A provider that rejects it fails
+# every request, so this is the one line to remove if a new endpoint answers 400
+# about an unknown field. See `docs/notes/server-prefix-cache.md`.
 cache_affinity = true
 # A request that never answers used to park a turn forever. Two
 # timers bound it, each knowing what it bounds: the answer's
