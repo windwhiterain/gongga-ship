@@ -49,8 +49,9 @@ store = false
 # and 5/5 (19968 of 20013 tokens) with one; its `/chat/completions` face caches
 # anyway. Measured 2026-11-05: DeepSeek shares a prefix across sessions and keys (a
 # fresh session's first turn, 15360 of 15625); MiniMax `M3.1-Flash` shares one too,
-# but only in front of the request's final user message, and it partitions its store
-# by this key. Every provider
+# but only in front of the request's final user message, and its pages document no
+# such field at all (automatic prefix caching, tools -> system -> messages). Every
+# provider
 # this home reaches accepted the field when probed. A provider that rejects it fails
 # every request, so this is the one line to remove if a new endpoint answers 400
 # about an unknown field. See `docs/notes/server-prefix-cache.md`.
