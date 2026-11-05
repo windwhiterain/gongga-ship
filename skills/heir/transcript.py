@@ -212,11 +212,11 @@ def learner_message(session, mentor, kept):
         "Your first lesson is the message that follows this one: it carries the current objective, "
         "state, failed attempts, and next action. Everything else remains readable in the mentor.\n"
         f"  read it:  gongga-cli get_messages --session {mentor} 1:\n"
-        f"  ask it:   gongga-cli send_message --message \"<your question>\" --name {mentor}\n"
+        f"  ask it:   gongga-cli skill self-control {mentor} \"<your question>\"\n"
         "Ask before you redo. The mentor holds the earlier attempts, the failures and why they "
         "failed, so one question costs one turn where a repeated search costs the whole search "
-        "again. Its answer arrives in this session as a message: keep working and read it when "
-        "it lands.\n"
+        "again. The command waits for the answer and prints it; the mentor also sends it to "
+        "this session, so keep working and read it when it lands.\n"
         "Nothing about the task changed and no clean state is required: continue the current work "
         "from the lesson's next action."
     )
@@ -230,6 +230,8 @@ def mentor_message(learner):
         "continuing the current work there. Answer only what it asks, and answer it in one "
         f"message: read its questions with `gongga-cli get_messages --session {learner} 1:`, "
         f"reply with `gongga-cli send_message --message \"<your answer>\" --name {learner}`. "
+        "Put the whole answer in your own turn as well: that turn is what the heir's "
+        "`ask_session` reads, and a message alone leaves that reader with your receipt. "
         "Do not start work of your own here."
     )
 
