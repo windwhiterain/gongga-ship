@@ -211,9 +211,12 @@ def learner_message(session, mentor, kept):
         f"This session is empty {'down to the call you are reading this from' if kept else 'for your next request'}. "
         "Your first lesson is the message that follows this one: it carries the current objective, "
         "state, failed attempts, and next action. Everything else remains readable in the mentor.\n"
-        f"  read it:  harness {{command: \"get_messages\", arguments: {{session: \"{mentor}\", range: \"1:\"}}}}\n"
-        f"  ask it:   harness {{command: \"send_message\", arguments: {{session: \"{mentor}\", message: \"...\"}}}}\n"
-        "Read before you ask. Ask the mentor only when you need a judgement about the earlier work. "
+        f"  read it:  gongga-cli get_messages --session {mentor} 1:\n"
+        f"  ask it:   gongga-cli send_message --message \"<your question>\" --name {mentor}\n"
+        "Ask before you redo. The mentor holds the earlier attempts, the failures and why they "
+        "failed, so one question costs one turn where a repeated search costs the whole search "
+        "again. Its answer arrives in this session as a message: keep working and read it when "
+        "it lands.\n"
         "Nothing about the task changed and no clean state is required: continue the current work "
         "from the lesson's next action."
     )
@@ -224,8 +227,10 @@ def mentor_message(learner):
     return (
         f"You are the mentor of `{learner}`: its complete transcript was copied into "
         "this session row for row, and this row answers its last call. The heir is "
-        "continuing the current work there. Answer only what it asks, by `get_messages` "
-        "on this session or `send_message` to it; do not start work of your own here."
+        "continuing the current work there. Answer only what it asks, and answer it in one "
+        f"message: read its questions with `gongga-cli get_messages --session {learner} 1:`, "
+        f"reply with `gongga-cli send_message --message \"<your answer>\" --name {learner}`. "
+        "Do not start work of your own here."
     )
 
 

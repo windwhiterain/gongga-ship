@@ -165,7 +165,7 @@ Name in that lesson whatever the heir will need to read, as `@file: <one word>` 
 
 Ask `index_skill` for `heir`; `<heir>` below is the path it prints. Then run this command now:
 
-<heir>/transcript heir --session {{session}} --mentor <name> --note '<objective, tried, worked, failed, current state, next action>'
+<heir>/transcript heir --note '<objective, tried, worked, failed, current state, next action>'
 
 Uncommitted changes and failing tests are valid state: record them instead of fixing them first. Every request made before the heir starts is paid for at this size.'''
 
