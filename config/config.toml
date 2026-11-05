@@ -305,7 +305,6 @@ description = '''Run one program with its arguments, without a shell. The comman
 [tool_text.exec.arguments]
 command = '''The program and its arguments, one word each: the program first. No word is interpreted, so a word that holds a space, a quote, a `;` or a `$` needs no escaping and gets none.'''
 description = '''What this call is for, in a few words -- it is read right after the tool's name, so say what the run is for, not what the command is (`check the state`, not `exec`). Optional, and never executed: it also names the file that a too-long output is spilled to, so that later you (and whoever reads the dumps) can tell one run from another.'''
-timeout_ms = '''How long to wait for the program before giving up on it. When it passes, the program is stopped and what it printed is what this call answers with.'''
 
 [tool_text.remote_exec]
 description = '''`exec` on the session's remote endpoint -- one program with its arguments, with no shell between them, looked up on the peer's PATH. Same `command` as `exec`; the paths are that machine's.'''
@@ -313,7 +312,6 @@ description = '''`exec` on the session's remote endpoint -- one program with its
 [tool_text.remote_exec.arguments]
 command = '''The program and its arguments, one word each: the program first. No word is interpreted, so a word that holds a space, a quote, a `;` or a `$` needs no escaping and gets none.'''
 description = '''What this call is for, in a few words -- it is read right after the tool's name, so say what the run is for, not what the command is (`check the state`, not `exec`). Optional, and never executed: it also names the file that a too-long output is spilled to, so that later you (and whoever reads the dumps) can tell one run from another.'''
-timeout_ms = '''How long to wait for the program before giving up on it. When it passes, the program is stopped and what it printed is what this call answers with.'''
 
 [tool_text.check_bash]
 description = '''What a shell printed that you have not read: everything its `background` commands wrote, plus anything it printed while nobody was reading. Reading clears it, so each chunk comes back once. Empty means nothing yet -- ask again, or set `wait_ms` to wait for the running jobs.'''
