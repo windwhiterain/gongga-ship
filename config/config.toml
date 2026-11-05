@@ -400,6 +400,12 @@ name = '''Which interpreter this call is about. Omitted means `default`; a new n
 restart = '''Stop this name's current interpreter and start a fresh one for this call, discarding its namespace.'''
 timeout_ms = '''How long to wait for this call. On timeout the interpreter is stopped and the next call to that name starts with a fresh namespace.'''
 
+[tool_text.live_compact]
+description = '''Write the checkpoint summary requested by the server. Summarize everything since the previous checkpoint, including the latest ordinary tool-call round. The server retains that complete round separately and keeps every checkpoint summary.'''
+
+[tool_text.live_compact.arguments]
+summary = '''The agent-written summary of the segment since the previous checkpoint. File and skill references are embedded directly in the stored checkpoint.'''
+
 [tool_text.read_file]
 description = '''Read a UTF-8 file through the Python tool's interpreter. `offset` and `limit` are lines, zero-based; `limit = 0` reads to the end. The content is a tool result, so it never passes through shell quoting. Use it instead of `cat` when the file's bytes matter.'''
 
