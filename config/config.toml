@@ -273,7 +273,7 @@ output_omitted = '''
 
 [tool_text.general.arguments]
 background = '''Do not wait for this call: it runs as a job of this server and answers at once with the `job_id` of that job. `check_job` with that id collects what it answered, and this session is told when it ends. `bash` and `python` are the exception -- their background is a job of that shell or interpreter, which `check_bash` and `check_python` read. Defaults to false.'''
-detached = '''Do not wait for this call: it runs as a job of this server, which returns at once, and what it answers arrives later as a notice for this session -- `wait` is how you stay in this turn until that news lands. Defaults to false.'''
+detached = '''Run this call in a process of its own, which outlives this server and is picked up again when the server restarts: the call returns at once and the answer arrives later as a notice for this session. Only work that is a process can be detached -- `bash`, `exec`, `read_file`, `write_file`, `replace`, `skill` -- because a tool that acts on what this server holds has nothing of its own to run in. Defaults to false.'''
 max_output = '''In chars: when the output exceeds this, it is saved to a temp file and the call answers with the file's metadata {path, chars, line_count}.'''
 timeout_ms = '''How long this call may hold the turn. Past it the call neither fails nor stops the work: it answers at once with the id of the `background` job that the work became, and `check_job` collects what it answered. `bash` and `python` turn a long wait into their own background job instead, which `check_bash` and `check_python` read. No call holds a turn longer than this machine's ceiling, however long it asks for.'''
 
