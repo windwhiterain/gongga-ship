@@ -41,21 +41,11 @@ bind = "127.0.0.1:9700"
 #   # know fails every request of every turn.
 #   builtin_tools = ["web_search"]
 store = false
-# Name every request (`prompt_cache_key`), which is what keeps a session's requests
-# on the node that holds its prefix. The value is the session's directory, never its
-# name: it should name the unit whose requests share a head, so a provider that
-# routes by key sends a directory's sessions to the node that holds it. Measured on
-# this machine 2026-11-04: LongCat's `/responses` face served 0/5 cached with no key
-# and 5/5 (19968 of 20013 tokens) with one; its `/chat/completions` face caches
-# anyway. Measured 2026-11-05: DeepSeek shares a prefix across sessions and keys (a
-# fresh session's first turn, 15360 of 15625); MiniMax `M3.1-Flash` shares one too,
-# and its pages document no such field at all (automatic prefix caching, tools ->
-# system -> user messages, 512 tokens minimum). Every
-# provider
-# this home reaches accepted the field when probed. A provider that rejects it fails
-# every request, so this is the one line to remove if a new endpoint answers 400
-# about an unknown field. See `docs/notes/server-prefix-cache.md`.
-cache_affinity = true
+# `cache_affinity` is not set here: whether a request may carry `prompt_cache_key` is a
+# fact about the provider, so it lives in the roster's `[[provider]]` entry. LongCat
+# states it (measured: 0/5 cached without the key, 5/5 with it); MiniMax's pages
+# document no such field, so nothing is sent there. Setting it here overrides every
+# provider for this home, which is exactly what the roster entry avoids.
 # A request that never answers used to park a turn forever. Two
 # timers bound it, each knowing what it bounds: the answer's
 # headers must arrive within this long, and the model may not go
@@ -191,10 +181,8 @@ size_hint = '''
 
 The transcript no longer fits this model. Start training an heir now with `heir`'s `transcript heir` (`index_skill` prints its path). The heir continues the current work; no commit, clean tree, or green suite is required first.'''
 
-# The card: what the session's first user message carries in front of its text. Not a
-# message of its own, so the one byte two sessions differ in is as late as the request
-# allows -- a provider serves the longest common prefix, so per-session bytes belong at
-# the end of the stream and not in front of the messages.
+# What opens the input: the facts of this session, one message, before the first user
+# message. Stamped once, so the bytes are replayed rather than re-rendered.
 # Placeholders: {{session}}, {{build}}, {{now}}, {{cwd}}
 dynamic_tail = '''
 Session `{{session}}`, harness gongga at `{{build}}`, {{now}}, in `{{cwd}}`.'''
