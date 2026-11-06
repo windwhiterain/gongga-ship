@@ -404,6 +404,7 @@ timeout_ms = '''How long to wait for this call. On timeout the interpreter is st
 description = '''Write the checkpoint summary requested by the server. Summarize everything since the previous checkpoint, including the latest ordinary tool-call round. The server retains that complete round separately and keeps every checkpoint summary.'''
 
 [tool_text.live_compact.arguments]
+description = '''What this call is for, in a few words -- read after the tool name, never executed.'''
 summary = '''The agent-written summary of the segment since the previous checkpoint. File and skill references are embedded directly in the stored checkpoint.'''
 
 [tool_text.read_file]
