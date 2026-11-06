@@ -254,6 +254,70 @@ output_omitted = '''
 
 [... {{omitted}} characters omitted ...]'''
 
+# What the server hands a monitor session when a turn of another session ended in an
+# error. The facts vary; every rule the monitor works under is here, because a report
+# that leaves them out is a report whose reader invents them.
+#
+# Placeholders: {{session}}, {{model}}, {{rows}}, {{build}}, {{home}}, {{pid}},
+# {{cwd}}, {{mine}}, and {{noted}} -- the server's own last note for that session, or
+# nothing at all.
+monitor_error = '''
+@skill(monitor)
+
+A gongga session stopped with an error. Find the cause and fix it; the skill says how to tell a provider's refusal from a harness bug, and where the truth is on this machine.
+
+- session: {{session}}
+- its model: {{model}}
+- its rows: {{rows}}
+- harness build: {{build}}
+- home: {{home}}
+- server: pid {{pid}}, cwd {{cwd}}
+- this turn runs on: {{mine}}
+{{noted}}
+Read it back with:
+
+    gongga-cli get_messages --session {{session}} -40:-1
+
+Your authorization is this session's error and nothing else: find the cause and fix it. A session whose model cannot run may be moved to another model of the same tier -- the tier is the setup's choice, never yours, so do not change it -- and nothing else about the session, its records or the file tree is yours to change. When that tier has nothing able to run, say so and stop instead of reaching for another one. If it is a harness bug, `@skill(self-control)` says how to restart the server without losing a turn. Report what you found and what you changed in one message.'''
+
+# The same report, handed to the next model after the monitor itself failed: what it
+# was given, unchanged. Re-deriving it would lose what the first attempt was told.
+#
+# Placeholders: {{model}}, {{failure}}, {{again}}
+monitor_error_again = '''
+The monitor failed on {{model}}. This is the report it was given, unchanged; the failure is in this conversation.
+
+What the server recorded for that turn:
+
+{{failure}}
+
+---
+
+{{again}}'''
+
+# What the server hands a cleaner session when a disk is under the floor this machine
+# declared. Nothing has failed yet, so the report says what is full, not what broke.
+#
+# Placeholders: {{skills}}, {{machine}}, {{home}}, {{volumes}}, {{threshold}}, {{tool}},
+# {{session}}, {{ok}}, {{cwd}}, {{build}}, {{pid}}, {{server_cwd}}, {{read_back}} and
+# {{reach}}, each of the last two empty when it does not apply.
+monitor_disk = '''
+{{skills}}
+
+A gongga server has less disk room left on {{machine}} than this machine declared it must have. Nothing has failed yet; find what is filling the disk, clean it with the skill, and say what you freed.
+
+- home: {{home}}
+- the machine that is low: {{machine}}
+- volumes as they stood then:
+{{volumes}}
+- the threshold this machine declared: {{threshold}}
+- the tool that was running: {{tool}} (in session {{session}}, {{ok}})
+- its directory: {{cwd}}
+- harness build: {{build}}
+- server: pid {{pid}}, cwd {{server_cwd}}
+{{read_back}}{{reach}}
+The skill surveys every volume first and reports what it freed per volume; start there. This server said this once for the whole time the disk stays this low: answer in one message with what was full, what you freed, and what is left.'''
+
 # ---------------------------------------------------------------- tool words
 #
 # What each tool says it is, and what each of its arguments is for. The code holds

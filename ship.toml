@@ -12,7 +12,7 @@
 # let the last commit of the old protocol serve the machines that have not
 # upgraded yet -- they keep getting it, because a server walks back through the
 # first-parent history until it finds the protocol it reads.
-protocol = 2
+protocol = 3
 
 # Which path in this repository is the home's config.
 config = "config/config.toml"
