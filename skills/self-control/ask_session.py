@@ -113,24 +113,68 @@ def _command_layer():
     )
 
 
+def _unwrapped(row):
+    """The event one printed line carries.
+
+    The command layer prints one JSON value a line, and an event travels wrapped
+    as `{"t": "event", "v": {"seq": n, "event": {...}}}` -- `python/gongga.py`
+    is the contract. A bare row is already the event, the shape an older layer
+    printed and another harness may.
+    """
+    if row.get("t") == "event":
+        payload = row.get("v")
+        if isinstance(payload, dict) and isinstance(payload.get("event"), dict):
+            return payload["event"]
+    return row
+
+
+def _events_of(text):
+    """The events in a command layer's stdout: one JSON value a line, each bare
+    or wrapped (see `_unwrapped`); a line that is not JSON is not an event."""
+    events = []
+    for line in text.splitlines():
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict):
+            events.append(_unwrapped(row))
+    return events
+
+
 def _run(cli, args):
     """Runs the command layer and returns its events."""
     try:
         done = subprocess.run([cli] + args, capture_output=True, text=True)
     except OSError as e:
         _die(f"cannot run {cli}: {e}")
-    events = []
-    for line in done.stdout.splitlines():
-        try:
-            row = json.loads(line)
-        except ValueError:
-            continue
-        if isinstance(row, dict):
-            events.append(row)
+    events = _events_of(done.stdout)
     if done.returncode != 0:
         detail = (done.stderr or "").strip() or (done.stdout or "").strip()
         _die(f"{' '.join(args)} failed: {detail[:400]}")
     return events
+
+
+def _command(args):
+    """One command, answered as (accepted, the cmd_result message).
+
+    A server's refusal is the caller's answer too, and its message is the
+    caller's verbatim: rc != 0 is not an exception on this path, and the
+    message wins over whatever else the process printed.
+    """
+    cli = _command_layer()
+    try:
+        done = subprocess.run([cli, *args], capture_output=True, text=True)
+    except OSError as e:
+        _die(f"cannot run {cli}: {e}")
+    message = ""
+    for row in reversed(_events_of(done.stdout)):
+        if row.get("t") == "cmd_result":
+            message = row.get("message") or ""
+            break
+    if done.returncode != 0 and not message:
+        message = (done.stderr or "").strip()
+    return done.returncode == 0, message
 
 
 def _outcome(events):
@@ -168,11 +212,18 @@ def _deliver(cli, session, question):
         _die(message or f"the question did not reach {session}")
 
 
-def _answer_in(events):
-    """What the session said since the question, as its own words."""
+def _answer_in(events, session):
+    """What the session said since the question, as its own words.
+
+    The answer stream carries other sessions' rows too -- a busy server prints
+    what every session does -- so the session name is the filter, not a
+    detail: a row without it, or with another one, is somebody else's words.
+    """
     said = []
     for row in events:
         if row.get("t") != "response":
+            continue
+        if row.get("session") != session:
             continue
         if row.get("part") != "output":
             continue
@@ -187,7 +238,7 @@ def _wait_for_answer(cli, session, since, timeout):
     deadline = time.time() + timeout
     while time.time() < deadline:
         events, last, status = _read(cli, session, since)
-        said = _answer_in(events)
+        said = _answer_in(events, session)
         if said and status != "running":
             return said[-1]
         time.sleep(POLL_SECONDS)

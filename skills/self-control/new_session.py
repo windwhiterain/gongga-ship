@@ -153,11 +153,7 @@ def new_session(name, source=None, model=None, thinking=None, ctx_limit=None,
                     remote=remote, cwd=cwd)
     if dry_run:
         return "set_session " + shlex.join(words)
-    try:
-        events = ask_session._run(ask_session._command_layer(), ["set_session", *words])
-    except ask_session._Refused as refused:
-        raise RuntimeError(str(refused))
-    ok, message = ask_session._outcome(events)
-    if not ok:
+    accepted, message = ask_session._command(["set_session", *words])
+    if not accepted:
         raise RuntimeError(message or "set_session was refused without a message")
     return name
