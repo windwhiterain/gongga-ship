@@ -150,8 +150,15 @@ def _run(cli, args):
         _die(f"cannot run {cli}: {e}")
     events = _events_of(done.stdout)
     if done.returncode != 0:
+        # The refusal is answered with the server's own sentence: the cmd_result
+        # row's message, the same words on every command layer. The raw output
+        # is only the fallback when there is no such row -- the echoed command
+        # eats the 400-character budget and leaves the sentence unreadable.
+        ok, message = _outcome(events)
+        if ok:
+            return events
         detail = (done.stderr or "").strip() or (done.stdout or "").strip()
-        _die(f"{' '.join(args)} failed: {detail[:400]}")
+        _die(message or f"{' '.join(args)} failed: {detail[:400]}")
     return events
 
 
