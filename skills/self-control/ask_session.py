@@ -13,6 +13,11 @@ and a name remembered wrong is a question sent to the wrong session -- or, with
 the positional form of `send_message`, the session name read as the question.
 The session is a positional argument here, and the question is what follows it.
 
+This file is also the package's internal module: every top-level name carries a
+leading `_`, so `gongga_skill`'s discovery publishes nothing from it. The
+package's public `ask` is this file's `_ask` re-published by `__init__.py`;
+running this file directly keeps the `ask_session` command working.
+
 Nothing is invented: the answer is the other session's own words.
 
 Exit: 0 the answer was received, 2 the question could not be asked or no
@@ -37,12 +42,19 @@ TIMEOUT_SECONDS = 900
 POLL_SECONDS = 1.0
 
 
-def die(message):
-    print(f"ask_session: {message}", file=sys.stderr)
-    raise SystemExit(2)
+class _Refused(Exception):
+    """A refusal whose message is the user's: the form that caught it prints it.
+
+    The script form writes it to stderr and leaves with 2; the package form
+    re-raises it as RuntimeError, which the package runner prints the same way.
+    """
 
 
-def which(name):
+def _die(message):
+    raise _Refused(message)
+
+
+def _which(name):
     """`shutil.which` without the import: this file must run on a bare Python."""
     for directory in os.environ.get("PATH", "").split(os.pathsep):
         candidate = os.path.join(directory, name)
@@ -52,27 +64,27 @@ def which(name):
     return None
 
 
-def command_layer():
+def _command_layer():
     """The program that talks to this server, by name or by the path the server gave."""
     named = os.environ.get("GONGGA_CLI")
     if named and os.path.isfile(named):
         return named
     for candidate in CANDIDATES:
-        found = which(candidate)
+        found = _which(candidate)
         if found:
             return found
-    die(
+    _die(
         "no command layer found: this needs `gongga-cli` on PATH, or $GONGGA_CLI "
         "pointing at it (a shell the server started has both)"
     )
 
 
-def run(cli, args):
+def _run(cli, args):
     """Runs the command layer and returns its events."""
     try:
         done = subprocess.run([cli] + args, capture_output=True, text=True)
     except OSError as e:
-        die(f"cannot run {cli}: {e}")
+        _die(f"cannot run {cli}: {e}")
     events = []
     for line in done.stdout.splitlines():
         try:
@@ -83,11 +95,11 @@ def run(cli, args):
             events.append(row)
     if done.returncode != 0:
         detail = (done.stderr or "").strip() or (done.stdout or "").strip()
-        die(f"{' '.join(args)} failed: {detail[:400]}")
+        _die(f"{' '.join(args)} failed: {detail[:400]}")
     return events
 
 
-def outcome(events):
+def _outcome(events):
     """The one line the command layer ends with: ok or not, and what it said."""
     for row in reversed(events):
         if row.get("t") == "cmd_result":
@@ -95,12 +107,12 @@ def outcome(events):
     return None, ""
 
 
-def read(cli, session, since):
+def _read(cli, session, since):
     """The transcript of `session` after `since`, and where it ends."""
-    events = run(cli, ["get_messages", f"{since + 1}:", "--session", session])
-    ok, message = outcome(events)
+    events = _run(cli, ["get_messages", f"{since + 1}:", "--session", session])
+    ok, message = _outcome(events)
     if not ok:
-        die(message or f"cannot read the transcript of {session}")
+        _die(message or f"cannot read the transcript of {session}")
     last = since
     status = "idle"
     for row in events:
@@ -114,15 +126,15 @@ def read(cli, session, since):
     return events, last, status
 
 
-def ask(cli, session, question):
+def _deliver(cli, session, question):
     """Puts the question into the session's hands."""
-    events = run(cli, ["send_message", "--name", session, "--message", question])
-    ok, message = outcome(events)
+    events = _run(cli, ["send_message", "--name", session, "--message", question])
+    ok, message = _outcome(events)
     if not ok:
-        die(message or f"the question did not reach {session}")
+        _die(message or f"the question did not reach {session}")
 
 
-def answer_in(events):
+def _answer_in(events):
     """What the session said since the question, as its own words."""
     said = []
     for row in events:
@@ -136,19 +148,40 @@ def answer_in(events):
     return said
 
 
-def wait_for_answer(cli, session, since, timeout):
+def _wait_for_answer(cli, session, since, timeout):
     """The session's turn ends, and what it said is in the transcript."""
     deadline = time.time() + timeout
     while time.time() < deadline:
-        events, last, status = read(cli, session, since)
-        said = answer_in(events)
+        events, last, status = _read(cli, session, since)
+        said = _answer_in(events)
         if said and status != "running":
             return said[-1]
         time.sleep(POLL_SECONDS)
     return None
 
 
-def main():
+def _ask(session, question, timeout=TIMEOUT_SECONDS):
+    """The question delivered and the answer waited for; the answer, or a refusal.
+
+    The cursor is taken before the question is sent, so the answer must be a
+    turn that ends after the question, not one that ended before it.
+    """
+    session = (session or "").strip()
+    question = (question or "").strip()
+    if not session:
+        _die("name the session to ask")
+    if not question:
+        _die("ask something: the question is the rest of the command")
+    cli = _command_layer()
+    _, since, _ = _read(cli, session, 0)
+    _deliver(cli, session, question)
+    answer = _wait_for_answer(cli, session, since, timeout)
+    if answer is None:
+        _die(f"{session} did not answer within {timeout:g}s")
+    return answer
+
+
+def _main():
     parser = argparse.ArgumentParser(
         prog="ask_session",
         description="Ask another session a question and wait for its answer.",
@@ -162,26 +195,13 @@ def main():
         help="seconds to wait for the answer",
     )
     args = parser.parse_args()
-
-    session = args.session.strip()
-    question = args.question.strip()
-    if not session:
-        die("name the session to ask")
-    if not question:
-        die("ask something: the question is the rest of the command")
-
-    cli = command_layer()
-    # The cursor first: the answer must be a turn that ends after the question
-    # was asked, not one that ended before it.
-    _, since, _ = read(cli, session, 0)
-
-    ask(cli, session, question)
-    answer = wait_for_answer(cli, session, since, args.timeout)
-    if answer is None:
-        die(f"{session} did not answer within {args.timeout:g}s")
-    print(answer)
+    try:
+        print(_ask(args.session, args.question, args.timeout))
+    except _Refused as refused:
+        print(f"ask_session: {refused}", file=sys.stderr)
+        return 2
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(_main())
