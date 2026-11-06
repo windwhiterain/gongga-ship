@@ -44,17 +44,17 @@ shell 函数、导出的东西都留着，第一次调用就已经在会话的�
 
 同一个 `bash` 工具，`background` 改的不是"等不等"，是**所有权**。
 
-| 模式 | 谁拥有 | 输出去哪 | 谁结束它 | 本回合 `cancel` 时 |
+| 模式 | 谁拥有 | 输出去哪 | 谁结束它 | 服务端停时 |
 |---|---|---|---|---|
 | 默认（前台） | 本回合 | 工具结果，流式 | 命令结束 / 回合取消（连进程树一起杀） | 被中断，shell 换新 |
-| `background` | 那个 shell | shell 的未读缓冲，`check_bash` 取走 | `del_bash` 随 shell 一起消失 | 看取消点：卡在那条 shell 的前台命令里就一起被杀，否则活着 |
-| `background` | **没人** | 只有它自己的日志文件 | **只有 `del_bash`** | **活着** |
+| `background`（remote） | 那个 shell | shell 的未读缓冲，`check_bash` 取走 | `del_bash` 随 shell 一起消失 | 随服务端死：它是 shell 的 job，不是独立进程 |
+| `background`（本机） | **没人** | 只有它自己的日志文件 | **只有 `del_bash`** | **`cancel` 放生并被下次启动 adopt；signal / 关窗 / kill 都杀死** |
 
 实测（本会话）：
 
 - `background` 起了个每 1s 追加一行的循环 → `del_bash` 之后行数还在涨（13→15）；
-  `list_bash` 把它单列在 `detached[]` 里，带 `pid` / `log` / `running`。
-- `del_bash --name_regex '^demo-detached$'` → 行数 15→15 停住，`detached[]` 变空。
+  `list_bash` 把它单列在 `background[]` 里，带 `pid` / `log` / `running`。
+- `del_bash --name_regex '^demo-detached$'` → 行数 15→15 停住，`background[]` 变空。
 - `del_bash` 的回执会明说：「1 background job(s) from them are still running and were not
   stopped」——它不会假装帮你停。
 
