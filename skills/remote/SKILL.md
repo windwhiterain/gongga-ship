@@ -191,7 +191,7 @@ the peer's shell for the peer's files.
 - A reference is read on the machine that printed it, so `@image(...)` and `@file(...)` in
   a `remote_bash` result are the peer's, and the same reference in a `bash` result is
   this machine's. The prompt's index reads the peer's `AGENTS.md`.
-- Not offered, and refused with advice if written anyway: `background` and `detached`
+- Not offered, and refused with advice if written anyway: `background`
   on `remote_bash` (the job's scratch file and its completion watcher are this
   machine's), and a capped remote output is not spilled to a path.
 

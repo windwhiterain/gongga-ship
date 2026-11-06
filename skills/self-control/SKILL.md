@@ -42,20 +42,20 @@ shell 函数、导出的东西都留着，第一次调用就已经在会话的�
 
 ## 1. 进程：三种 ownership
 
-同一个 `bash` 工具，`background` / `detached` 改的不是"等不等"，是**所有权**。
+同一个 `bash` 工具，`background` 改的不是"等不等"，是**所有权**。
 
 | 模式 | 谁拥有 | 输出去哪 | 谁结束它 | 本回合 `cancel` 时 |
 |---|---|---|---|---|
 | 默认（前台） | 本回合 | 工具结果，流式 | 命令结束 / 回合取消（连进程树一起杀） | 被中断，shell 换新 |
 | `background` | 那个 shell | shell 的未读缓冲，`check_bash` 取走 | `del_bash` 随 shell 一起消失 | 看取消点：卡在那条 shell 的前台命令里就一起被杀，否则活着 |
-| `detached` | **没人** | 只有它自己的日志文件 | **只有 `del_bash`** | **活着** |
+| `background` | **没人** | 只有它自己的日志文件 | **只有 `del_bash`** | **活着** |
 
 实测（本会话）：
 
-- `detached` 起了个每 1s 追加一行的循环 → `del_bash` 之后行数还在涨（13→15）；
+- `background` 起了个每 1s 追加一行的循环 → `del_bash` 之后行数还在涨（13→15）；
   `list_bash` 把它单列在 `detached[]` 里，带 `pid` / `log` / `running`。
 - `del_bash --name_regex '^demo-detached$'` → 行数 15→15 停住，`detached[]` 变空。
-- `del_bash` 的回执会明说：「1 detached job(s) from them are still running and were not
+- `del_bash` 的回执会明说：「1 background job(s) from them are still running and were not
   stopped」——它不会假装帮你停。
 
 推论：
@@ -64,11 +64,11 @@ shell 函数、导出的东西都留着，第一次调用就已经在会话的�
   服务端退出、或"取消时正卡在这条 shell 的前台命令里"（那条命令连同整棵进程树被杀）
   才会带走它。
 - 想"后台跑、但我一收工就死" → `background`，然后别再 `del_bash` 那个 shell。
-- 想"活得比我久"（守护进程、替身服务端、长跑基准）→ `detached`，然后**记下 job 号或 pid**，
+- 想"活得比我久"（守护进程、替身服务端、长跑基准）→ `background`，然后**记下 job 号或 pid**，
   否则下一任的你会看到一个孤儿。
 - 想"卡住就回来" → 前台 + `timeout_ms`（见 §3），不要自己 `&` 加轮询。
 
-`detached` 的内部约束（读码）：独立进程组、`kill_on_drop(false)`、pid 写进 `detached_jobs` 表；
+`background` 的内部约束（读码）：独立进程组、`kill_on_drop(false)`、pid 写进 `detached_jobs` 表；
 新服务端启动时 `adopt()`，但**绝不**接管 pid 等于自己或自己祖先的行——否则 `del_bash`
 就成了服务端自杀按钮。
 
@@ -76,7 +76,7 @@ shell 函数、导出的东西都留着，第一次调用就已经在会话的�
 
 ## 2. 回合：三种"停"，区别全在"谁记得这活"
 
-| 动作 | 语义 | transcript | `pending_tasks` 行 | detached 作业 | 谁接着干 |
+| 动作 | 语义 | transcript | `pending_tasks` 行 | background 作业 | 谁接着干 |
 |---|---|---|---|---|---|
 | `interrupt_session <n>` | 别干了，丢掉 | 停在断点 | **删** | 不动 | 没人 |
 | `cancel`（服务端命令） | 停，剩下的下次接着干 | 停在断点 | **留** | 不动 | 下一个启动的服务端 |
@@ -128,7 +128,7 @@ EOF
 | `timeout_ms` 到（默认 120s） | `still running after <n>ms, so the wait ended` | 你自己设的期限 |
 | **有人给本会话发消息** | `a message arrived for this session, so the wait ended and it was handed to the background` | 不是你能预知的 |
 
-第二种是 2026-10-24 加的，也是更常见的那个。实测：先让一个 detached 作业 5 秒后
+第二种是 2026-10-24 加的，也是更常见的那个。实测：先让一个 background 作业 5 秒后
 `send_message` 给我，同时前台跑 `sleep 40` —— 调用 **3 秒就返回了**，40 秒的命令自己跑满，
 输出（`done after 40s`）之后作为 inbox 消息投回来。
 
@@ -140,7 +140,7 @@ EOF
 
 由此：
 
-- 等待不是预算，也不是 kill。要真停就在前台等它被杀（取消），或 `del_bash`（detached）。
+- 等待不是预算，也不是 kill。要真停就在前台等它被杀（取消），或 `del_bash`（background）。
 - 默认 `timeout_ms` 是 120s；`background` 忽略它。
 - **没有步数上限**：一个 turn 跑到活干完。所以"我会不会失控"这件事上，harness 不给你预算，
   自我控制只能来自你：小步验证、及时落盘、别开无法收尾的长链。
@@ -261,7 +261,7 @@ gongga-cli send_message --name test1 "SELF-NOTE: ..."
 
 | 动作 | 不可逆的部分 |
 |---|---|
-| `del_session <n>` | 删 transcript、删 pending，**并停掉该会话的 detached 作业**（`cancel` 不这么干） |
+| `del_session <n>` | 删 transcript、删 pending，**并停掉该会话的 background 作业**（`cancel` 不这么干） |
 | 从外面杀服务端 | 本回合没人接，等于丢了一次未落盘的判断 |
 | 没有继任者就 `cancel` | home 空着，直到有人手动起服务端才 `resume_pending` |
 | `del_bash` | 进程没了；日志文件还在，但状态没了 |
@@ -273,7 +273,7 @@ gongga-cli send_message --name test1 "SELF-NOTE: ..."
 
 | 想知道 | 怎么看 |
 |---|---|
-| 我有几个 shell、谁还有没读的输出、有哪些 detached | `list_bash`（`unread_bytes`、`background_jobs`、`detached[]`） |
+| 我有几个 shell、谁还有没读的输出、有哪些 background | `list_bash`（`unread_bytes`、`background_jobs`、`detached[]`） |
 | 后台作业跑到哪了 | `check_bash --name <shell>`，**读即清空**，同一段不会给两次 |
 | 我刚才到底做了什么、上一条命令的原文 | `get_messages --session <s> <a>:<b>`（1 基、两端含，`-1` 最新一条，如 `-5:` 取最后五条；省略范围是全部） |
 | 会话状态 / 模型 / 压缩阈值 / 消息数 | 只读查库（下面） |
@@ -309,7 +309,7 @@ EOF
   带 `/` 或带路径分隔符的第一个 token 会被命令层拿最后一段去目录里查，命中就告诉你正确写法。
 - **`bash` 传 `cmd`。** 参数名是 `command`。多余键被忽略，缺 required 会被拒并提示
   「did you mean `command`?」。
-- **在 bash 里 `kill <pid>` 停 detached。** MSYS pid 不等于 Windows pid，`taskkill` 认不出来；
+- **在 bash 里 `kill <pid>` 停 background。** MSYS pid 不等于 Windows pid，`taskkill` 认不出来；
   用 `del_bash`。
 - **用 `send_message` 记日志。** 它会永久留在 transcript 里并进入笔记，而且**会打断
   你正在等的命令**（见 §5）。
@@ -323,7 +323,7 @@ EOF
 
 动手前问四句：
 
-1. **这活谁收？** 我死/被停之后，谁还需要它？→ 决定 `background` 还是 `detached`。
+1. **这活谁收？** 我死/被停之后，谁还需要它？→ 决定要不要 `background`。
 2. **我要停的是哪一种？** 丢掉（`interrupt_session`）、留着下次干（`cancel`）、还是永不回来
    （外部杀进程）？
 3. **接着干的那个我，凭什么知道该干什么？** 意图进 transcript 或进文件了吗？
@@ -335,12 +335,12 @@ EOF
 
 | 结论 | 怎么来的 |
 |---|---|
-| 三种 bash 模式的存活语义（含 `del_bash` 后 detached 继续、`del_bash` 停住） | 本会话实测 |
+| 三种 bash 模式的存活语义（含 `del_bash` 后 background 继续、`del_bash` 停住） | 本会话实测 |
 | 超时只结束等待、输出随后回投、shell 被替换 | 本会话实测 |
 | **消息打断等待**、命令不被杀、输出随后回投 | 本会话实测（`sleep 40` / 5 秒后发消息 → 3 秒返回，命令跑满 40s 并回投） |
 | 忙时 `send_message` 在下一个 step 边界投递 | 本会话实测 |
 | 两个会话的 turn 真的并行（互斥锁每会话一把） | 2026-10-30 实测：`main` 与 `sub1` 相隔 8ms 起 turn、两次请求并行、两次 turn end 同时回来 |
-| `cancel` 保留 pending、`interrupt_session` 删 pending、`del_session` 连带停 detached | 读 `crates/server/src/commands.rs` |
+| `cancel` 保留 pending、`interrupt_session` 删 pending、`del_session` 连带停 background | 读 `crates/server/src/commands.rs` |
 | resume 不带任何 instruction | 读 `agent.rs::turn_inner`（`user_text: None` 不写行） |
 | 阈值 70% / transcript 不改写 / 只有 `heir` 培养继承人时移动 | 读 `agent.rs`、`store.rs` |
 | `evolve.sh swap` 的完整换手 | **实跑 9 次**，其中 02:24 那次**丢了回合**（pending 行被 `resume_pending` 的收尾无条件删除），修好后 3 次全部 resume 成功 |

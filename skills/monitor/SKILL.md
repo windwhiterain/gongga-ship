@@ -50,7 +50,7 @@ curl -s -o /tmp/r.json -w '%{http_code}\n' -X POST "$BASE/chat/completions" \
 | `server.key` | 客户端握手用的 key | 一般不用碰 |
 | `skills/` | 这个 home 的 skill（内容是 pin 下来的那版） | 你自己在这里 |
 | `payload/` | 发行版解出来的程序目录，每个 stamp 一份 | 判断"跑的是哪个 build" |
-| `detached/` | detached 作业的日志 | 后台进程 |
+| `detached/` | background 作业的日志 | 后台进程 |
 | `outputs/` | 被截断的工具输出全文 | 某个 tool_result 说「写在这里」时 |
 
 **日志里的 build 是权威**：`gongga server starting ... home=... supervisor=... build` 那一行说了

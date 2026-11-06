@@ -173,7 +173,7 @@ $G events --kind turn_end --session "$name" --since <派活前的 last_id>
 $G get_messages --session "$name" -20:     # 它最后 20 行（负数是倒数，闭区间）
 $G get_messages --session "$name" -1:       # 顺带看 data.status
 $G interrupt_session "$name"              # 别干了，丢掉这一轮
-$G del_session "$name"                    # 收尾：transcript、detached 作业一起走
+$G del_session "$name"                    # 收尾：transcript、background 作业一起走
 ```
 
 `status` 在 `cmd_result` 的 `data` 里，所以"它还忙不忙"不必查库。想一次看所有子会话
@@ -265,7 +265,7 @@ probe 的后一条 = "Now also look at @file(late.md) and @skill(late), then sto
    并用 model_pool 把它们摊到不同 provider 上。
 6. **它先留着，删不删你说了算。** 子 agent 的 transcript 是**返工时唯一能读的东西**：活没干好，
    你要读它走过的路、把它叫醒重做，或者换个角色再来一遍，都靠这份 transcript。所以**不要在
-   收工时顺手 `del_session`**——它连 transcript 和 detached 作业一起删，删了就没了。
+   收工时顺手 `del_session`**——它连 transcript 和 background 作业一起删，删了就没了。
    什么时候删由你决定：确认交付、不再需要它了，再删。
    删掉的如果是 `main/impl`，它名下的会话 `main/impl/review` 不会跟着走——它们按名字挂着，
    树只要还有一层在就仍然画得出来——但 `main/impl` 名下的**订阅**会跟着走，所以 `review`
