@@ -1,9 +1,7 @@
 ---
 name: self-control
-description: 控制"自己"的运行——本回合、自己起的进程、自己的上下文、自己的会话。当你要停/续自己的回合、要起一个活得比自己久的作业、要跨重启或压缩保留意图、要问另一个会话（mentor）一个问题并等它答、或者发现自己的输出/进程/状态不对劲时，读这个。只讲怎么用这个 harness：开第二个会话并行干活是 subagent skill，改它的源码、把它换成新的自己，是 evolve skill 的事。
-compatibility: 需要 Python 3 和一个在 PATH 里的 gongga-cli（ask_session 是入口）
-metadata:
-  entry: ask_session.py
+description: 控制"自己"的运行——本回合、自己起的进程、自己的上下文、自己的会话。当你要停/续自己的回合、要起一个活得比自己久的作业、要跨重启或压缩保留意图、要问另一个会话（mentor）一个问题并等它答、要开一个复制我自己配置的新会话、或者发现自己的输出/进程/状态不对劲时，读这个。只讲怎么用这个 harness：开第二个会话并行干活是 subagent skill，改它的源码、把它换成新的自己，是 evolve skill 的事。
+compatibility: 需要 Python 3 和一个在 PATH 里的 gongga-cli（入口是本包的 ask / new_session）
 ---
 
 # 自我控制
@@ -185,8 +183,8 @@ SKILL_DIR=<本 SKILL.md 所在目录>          # `@skill(...)` 展开里括号�
 "$SKILL_DIR/ask_session.py" <会话名> "<问题>"
 ```
 
-gongga 里更短的一层是 `gongga-cli skill self-control <会话名> "<问题>"`：它按名字找到入口、
-把参数原样传过去，退出码就是入口的。
+gongga 里更短的一层是 `gongga-cli skill self-control ask <会话名> "<问题>"`：`self-control`
+是个 Python 包，第一个词是函数名（`ask` 是本包的函数），参数原样传过去，退出码就是入口的。
 
 它做两件事，一件命令做完：**把问题递过去**，然后**等答复**。答复是对方会话自己 transcript 里
 的话——脚本读那条 transcript，不轮询、不猜、不重述。stdout 是答复本身，所以
@@ -203,6 +201,67 @@ gongga 里更短的一层是 `gongga-cli skill self-control <会话名> "<问题
 干别的**，消息到了再读。脚本自己等的那份是同一条答复，只是它先替你挡住了轮询。
 
 退出码：0 拿到了答复；2 问题没送到，或等超时（默认 900 秒，`--timeout` 可改）。
+
+---
+
+## 4c. 开一个新会话：复制我自己的配置 `new_session`
+
+**新会话是空的，配置是我的。** `new_session` 拿我自己的会话行（`$GONGGA_SESSION`，或
+`--source <会话名>` 指定的另一行）当来源，逐项复制配置，开一个全新会话。答复是新会话名，
+打印在 stdout。
+
+```bash
+gongga-cli skill self-control new_session <新名字> [--source <来源会话>] \
+    [--model <model>] [--thinking <level>] [--ctx_limit <n%>] [--cache_tier <name>] \
+    [--cache_keepalive <bool>] [--mode <work|explore>] [--remote <name>|none] [--cwd <dir>] \
+    [--dry_run true]
+```
+
+参数名就是字段名，`--name value` 或按位置传。`--dry_run true` 只打印将要执行的
+`set_session` 那一行，什么都不建——先看清再动手。
+
+**三条不变量**（写在这里，不靠脚本注释代言）：
+
+1. **机器与目录成对：目录只在目标机器 == 来源机器时复制。** 来源行的 `remote` 是它运行
+   的机器；不给 `--remote`，新会话落在来源那台机器上，目录随配置一起复制。`--remote` 指了
+   另一台机器（或来源在远端、而 `--remote none` 回本机）时，新会话落在那台机器上，**不复制
+   目录**——一个目录只在它存在的那台机器上有意义。显式 `--cwd` 总是生效，且它在目标机器上
+   被解释：给了一个远端机器上不存在的目录，错在创建这一刻，不在第一个 turn。
+2. **新会话是空的。** 只有配置被复制：transcript 从空开始，不带消息、不带订阅、不带
+   pending。想要孩子会话（路径挂在调用者名下、订阅它的 turn-end、重名自动加段）用
+   `subagent` skill——那是另一种关系，见下。
+3. **名字不复制。** 配置之外什么都不带走：新会话应答你给的名字，`--must_create true`
+   保证名字被占了就拒绝，绝不加入别人的 transcript。
+
+逐项字段表（默认 = 不给对应参数时发生什么；NULL = 来源行没设过，按服务端的默认走，
+复制的办法就是不发这个参数）：
+
+| 字段 | 默认 | 覆盖 | 绝不复制 |
+|---|---|---|---|
+| 名字 | —（必填的新名字） | 位置参数 | 来源会话名 |
+| model | 复制来源的 | `--model` | — |
+| thinking | 来源有则复制；NULL 不发 | `--thinking`（`default` 清除已设的） | — |
+| ctx_limit | 来源有则复制；NULL 不发 | `--ctx_limit` | — |
+| cache_tier | 来源有则复制；NULL 不发 | `--cache_tier` | — |
+| cache_keepalive | 复制（来源必有值，true/false） | `--cache_keepalive` | — |
+| mode | 来源有则复制；NULL 不发 | `--mode` | — |
+| remote | 复制来源的机器（本机则不发参数） | `--remote` / `--remote none` | — |
+| cwd | 目标机器 == 来源机器时复制 | `--cwd`（在目标机器上解释） | 机器不同时绝不复制 |
+| transcript | — | — | 绝不复制（新会话是空的） |
+
+失败路径（退出码都是 2，服务端的话原样透传，库里没有新行）：
+
+- 新名字已存在：`--must_create` 拒绝加入已有会话。
+- `--remote` 的名字不在服务端的名单里：服务端拒绝，发生在创建之前。
+- 没有来源（`$GONGGA_SESSION` 未设且没给 `--source`），或 `--source` 的名字不是会话：
+  拒绝，不退化成"建一个没配置的会话"。
+
+与 `subagent spawn` 的边界：`spawn` 开的是**孩子**——路径、订阅、命名都绑在调用者的
+子树上；`new_session` 开的是**平级**——只复制配置，不订阅、不带上下文、不建路径关系。
+要并行干活、要被告知完工，用 `subagent`；要一个"配置和我一样、但从零开始"的会话，
+用 `new_session`。
+
+退出码：0 建成（打印新会话名），或 `--dry_run` 打印计划行；2 上述任一拒绝。
 
 ---
 
@@ -345,6 +404,7 @@ EOF
 | 阈值 70% / transcript 不改写 / 只有 `heir` 培养继承人时移动 | 读 `agent.rs`、`store.rs` |
 | `evolve.sh swap` 的完整换手 | **实跑 9 次**，其中 02:24 那次**丢了回合**（pending 行被 `resume_pending` 的收尾无条件删除），修好后 3 次全部 resume 成功 |
 | 只读 sqlite 自查 | 本会话实测 |
+| 包只发布 `ask` / `new_session`；`--dry_run` 只打印不建会话；重名、未知 remote、无来源都退出 2 且库里无新行；新行逐字段等于来源行 | 2026-11-06 实跑：临时 home + 真服务端 + fake_llm 探针，外加 `test_new_session.py` 表驱动单测 |
 
 ---
 
@@ -376,6 +436,9 @@ EOF
 `@skill(...)` 展开里括号中的 `<path>` 的父目录就是那个目录（`skill` 的 `path` 列同源）。
 home 会搬、桶会变，把桶的路径写进正文，别的 harness 读到的就是一个不存在的命令。
 gongga 里更短的一层是 `gongga-cli skill <name> [args…]`，它按同样的三根优先级解析。
+本技能就是这样一个包：入口是它发布的函数 `ask` / `new_session`——package 优先于
+frontmatter 的 `metadata.entry`（即使写了也不读，所以本文件不写）；第一个词是函数名，
+其余按位置或 `--name value` 绑定，返回值是答复（字符串打印、整数作退出码、其它作 JSON）。
 
 `evolve` 不在任何桶里：它要从自己的路径往上找 `Cargo.toml` 并 stage 二进制，装进 home
 就找不到仓库，所以它住在 gongga checkout 自己的 `.agents/skills/evolve/`。
