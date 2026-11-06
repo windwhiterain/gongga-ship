@@ -61,14 +61,14 @@ mentor 不存在就用当前的 model 和 cwd 建一个；它是普通会话，�
 
 ```bash
 gongga-cli get_messages --session <你的会话名>/mentor 1:
-gongga-cli skill self-control <你的会话名>/mentor "<你的问题>"
+gongga-cli skill self-control ask <你的会话名>/mentor "<你的问题>"
 ```
 
 **先读。** 做过什么、决定过什么、哪次失败为什么失败都在原文里；`get_messages` 不走模型、不花额度。
 
 **必须问，不要重做。** 要动手之前先问 mentor 一句：它手上有整份原文，包括那些你已经不记得的失败和它们失败的原因。问一句是一个回合，重新摸索一遍是把整场搜索再付一次——上下文就是这么没的。
 
-上面第二条就是问它的命令（`self-control` skill 的 `ask_session`）：**会话名在前，问题在后**，
+上面第二条就是问它的命令（`self-control` skill 的 `ask`）：**会话名在前，问题在后**，
 问完它替你等，答复直接印在 stdout。它之所以把会话名放前面，是因为 `send_message` 的位置参数
 是 `--message` 在前——照抄那个顺序会把会话名当成问题发出去。
 

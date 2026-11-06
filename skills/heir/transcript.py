@@ -212,7 +212,7 @@ def learner_message(session, mentor, kept):
         "Your first lesson is the message that follows this one: it carries the current objective, "
         "state, failed attempts, and next action. Everything else remains readable in the mentor.\n"
         f"  read it:  gongga-cli get_messages --session {mentor} 1:\n"
-        f"  ask it:   gongga-cli skill self-control {mentor} \"<your question>\"\n"
+        f"  ask it:   gongga-cli skill self-control ask {mentor} \"<your question>\"\n"
         "Ask before you redo. The mentor holds the earlier attempts, the failures and why they "
         "failed, so one question costs one turn where a repeated search costs the whole search "
         "again. The command waits for the answer and prints it; the mentor also sends it to "
