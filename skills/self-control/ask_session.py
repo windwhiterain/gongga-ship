@@ -54,21 +54,55 @@ def _die(message):
     raise _Refused(message)
 
 
+def _suffixes(name):
+    """What makes a name directly executable on this platform.
+
+    # Invariant
+
+    Windows decides by extension: an extensionless file -- the shim a server
+    writes for bash -- is not executable there (WinError 193, and `access` will
+    not say so), so only a PATHEXT spelling is a candidate. POSIX execs a `#!`
+    file, the name alone is one.
+    """
+    if os.name != "nt":
+        return ("",)
+    if os.path.splitext(name)[1]:
+        return ("",)
+    stated = tuple(s for s in os.environ.get("PATHEXT", "").split(";") if s)
+    return stated or (".exe", ".cmd", ".bat")
+
+
 def _which(name):
     """`shutil.which` without the import: this file must run on a bare Python."""
     for directory in os.environ.get("PATH", "").split(os.pathsep):
-        candidate = os.path.join(directory, name)
-        for path in (candidate, candidate + ".exe"):
-            if os.path.isfile(path) and os.access(path, os.X_OK):
-                return path
+        for suffix in _suffixes(name):
+            candidate = os.path.join(directory, name + suffix)
+            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                return candidate
     return None
+
+
+def _runnable(spelled):
+    """The path a subprocess can actually start: itself, or a same-stem sibling in
+    an executable extension (a server exports the shim's name; the `.cmd`/`.exe`
+    beside it is what Windows can run)."""
+    if os.name != "nt":
+        return spelled
+    stem, extension = os.path.splitext(spelled)
+    if extension or os.name != "nt":
+        return spelled
+    for suffix in _suffixes(spelled):
+        candidate = stem + suffix
+        if os.path.isfile(candidate):
+            return candidate
+    return spelled
 
 
 def _command_layer():
     """The program that talks to this server, by name or by the path the server gave."""
     named = os.environ.get("GONGGA_CLI")
     if named and os.path.isfile(named):
-        return named
+        return _runnable(named)
     for candidate in CANDIDATES:
         found = _which(candidate)
         if found:
