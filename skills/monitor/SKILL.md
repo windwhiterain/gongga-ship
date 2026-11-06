@@ -108,8 +108,16 @@ sed -e 's/\(key[^=]*=\s*"\)\(.\{6\}\).*/\1\2…(redacted)"/' ~/.agents/keys.toml
 
 ## 4. 修：从最便宜的动起
 
+**你的授权只有「这一个会话的 error」。** 报告点的那个会话出错，你去查明原因、把它修好——
+到此为止。会话的 tier 是 setup 的选择（polity 的角色表、`POLITY_TIER_*`、你手上那份 brief
+决定了它），**不是你的**：换模型只能在**同一个 tier 内**换，不许顺手把 flash 档的会话换成
+sota 档（那是别人建会话时做的决定，你改了就是替别人做了没授权的决定）。除这一处修复之外，
+会话的其它配置、别人的记录、文件树都不归你动。同一 tier 里没有能跑的，就报告并停下，别越档去捞。
+
 1. **换模型**（最常见，一行）：`gongga-cli set_session <名> --model <provider>/<model>`
-   候选从 roster 里挑一个这台机器现在真能用的（有 key、不是欠费那个）。
+   候选从 roster 里挑一个这台机器现在真能用的（有 key、不是欠费那个），**且与原模型同 tier**。
+   档位照原会话的 `sessions.model` 去 roster 里查 `tier`；`model_pool pick --tier <同一个 tier>`
+   给出的就是这一档里现在能跑的。`model_pool status` 里 `out` 的行不能选，`why` 会说明原因。
 2. **改配置**：`$GONGGA_HOME/config.toml` 是合并结果，改它；改完下一个 turn 就生效（多数键每步重读）。
 3. **改源码**：只有 §0 证明是 harness 的锅时才做。改完需要让新二进制接管 home——
    那是 `@skill(self-control)` 讲的事（`cancel` 会保住正在跑的 turn），不要 `taskkill`。
