@@ -1,7 +1,7 @@
 ---
 name: subagent
-description: 把一块独立的工作交给另一个会话并行做——子 agent 不是一个工具，而是一个普通会话：自己的 transcript、自己的上下文与阈值、自己的 turn。本 skill 的 `spawn` 一次做完两件必须做的事：在调用者名下起一个撞不上、也不会选中别人的名字（`<父会话>/<角色>`，`set_session --must_create`），并替调用者订阅它的 `turn_end`，所以父会话不必轮询。派活用 `send_message`，等它用一个可选的 `wait`（工具，不是一个睡眠的 shell）。当你要并行推进两条互不相干的实现、把大块验证/探查丢出去而不涨自己的上下文、或者要一个只读的侦察兵时读这个。
-compatibility: 需要 Python 3 和一个在 PATH 里的 gongga-cli（spawn 内部调它）
+description: 把一块独立的工作交给另一个会话并行做——子 agent 不是一个工具，而是一个普通会话：自己的 transcript、自己的上下文与阈值、自己的 turn。本 skill 的 `spawn` 一次做完两件必须做的事：在调用者名下起一个撞不上、也不会选中别人的名字（`<父会话>/<角色>`，`set_session --must_create`），配置照调用者那一行整份复制（走 `self-control` 的 `new_session`，只传名字和覆盖），并替调用者订阅它的 `turn_end`，所以父会话不必轮询。派活用 `send_message`，等它用一个可选的 `wait`（工具，不是一个睡眠的 shell）。当你要并行推进两条互不相干的实现、把大块验证/探查丢出去而不涨自己的上下文、或者要一个只读的侦察兵时读这个。
+compatibility: 需要 Python 3、PATH 里的 gongga-cli，和同一个内容仓里的 self-control skill（spawn 复制调用者的配置走它的 new_session）
 ---
 
 # 子 agent
@@ -34,11 +34,25 @@ context_limit=None)`：命令行上第一个词是函数名，后面的词按参
 `--context_limit 20%` 带下划线，就是那个参数名。Python 里直接
 `import subagent; name = subagent.spawn("impl", cwd="/path")`，同一个函数，不经命令行。
 
-**它在哪儿干活，默认跟你一样。** `--remote` 和 `--cwd` 都不给时，子会话落在**调用者自己**的机器和目录上：
-`spawn` 从 shell 自己的事实落：服务端给每个 shell 导出 `GONGGA_MODEL`/`GONGGA_REMOTE`，目录就是 shell 所在目录（不带参数的 `set_session` 不再是读——sticky 会把它变成一次搬动）。
-所以在远端会话里派活，子会话默认也在那台远端、同一个目录；不用再手写一遍 `--remote`/`--cwd`。
+**它的配置就是你的配置。** `spawn` 不给参数时，子会话是**调用者那一行的整份拷贝**：模型、
+思考档位、上下文预算、缓存档位与 keepalive、mode、机器、目录——一项项都不用重打，也不会
+漏掉其中几项。这张复制表只存在一处（`@skill(self-control)` 的 `new_session`，§4c），
+`spawn` 通过服务端的 `skill` 命令调它，只传名字、来源和你在下面点名的覆盖：
 
-两个参数都能改：`--remote <名字>` 换机器（`--remote none` 是服务端自己这台），`--cwd <路径>` 换目录。
+```
+spawn impl                        -> <我>/impl，配置 == 我这一行
+spawn impl --model <别的模型>      -> 同上，只换模型（要便宜/更难的活就点名）
+spawn impl --context_limit 20%    -> 同上，只换预算
+```
+
+所以那个 skill 没装时 `spawn` 会**拒绝并说明**（不是悄悄少复制几项）：两个 skill 同属一个内容仓，
+正常安装不会只有一半。
+
+**它在哪儿干活，默认跟你一样。** 机器来自服务端给每个 shell 导出的 `GONGGA_REMOTE`，目录就是
+这个 shell 所在目录（显式写成 `--cwd`，sticky 里的 `cwd` 就挪不动它）。所以远端会话里派活，
+子会话默认也在那台远端、同一个目录，不用手写 `--remote`/`--cwd`；只换目录时机器照旧。
+
+机器和目录也能改：`--remote <名字>` 换机器（`--remote none` 是服务端自己这台），`--cwd <路径>` 换目录。
 **换了机器就不继承目录**——调用者的目录在那台机器上才有意义；只换目录时机器照旧。
 
 gongga 里更短的一层是 `gongga-cli skill subagent spawn …`：它按名字找到这个包、把第一个词当函数、其余交给它，
@@ -210,9 +224,11 @@ $G skill model_pool status              # 每个模型：档位、能不能用�
 （transcript 里一行 403/429）：`$G skill model_pool mark <provider>/<model>` 挡一会儿再抽，
 不要自己编一个模型名。
 
-不给 `--model` 也不是错：会话落到服务端的默认模型（`DEFAULT_SESSION_MODEL`，这台机器是
-`deepseek-official/deepseek-flash`）。配置里的 `[model]` 是服务端自己想事情用的，永远不是
-任何会话的模型。
+不给 `--model` 时它跑**你**的模型（复制来的），不是服务端的默认模型：想让便宜活落到便宜档，
+在这条 `spawn` 上点名（`--model "$($G pick --tier flash)"`）。服务端的默认模型
+（`DEFAULT_SESSION_MODEL`，这台机器是 `deepseek-official/deepseek-flash`）只在你
+`set_session` 一个什么都不新说的会话时才用得上；配置里的 `[model]` 是服务端自己想事情用的，
+永远不是任何会话的模型。
 
 换模型就是一次 `set_session --model`：它的 transcript 还在，下一轮就换过去了。
 

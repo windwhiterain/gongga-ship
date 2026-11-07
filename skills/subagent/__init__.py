@@ -2,12 +2,18 @@
 
     spawn(role, remote=None, cwd=None, model=None, context_limit=None)
 
-The child lands where the caller works: its model, its remote and its working
-directory are the caller's own -- the server exports `GONGGA_MODEL` and
-`GONGGA_REMOTE` to every shell it starts, and the shell's own directory is the
-session's -- and `remote`/`cwd` override them. A flagless `set_session` is no read
-any more: sticky-filled arguments would turn it from a read into a move, which is
-why these facts come from the environment instead.
+The child is a copy of its caller, not a second session configured from scratch:
+every setting this call was not told to change -- model, thinking level, context
+budget, cache tier and its keepalive, mode, machine, directory -- comes from the
+caller's own row. That table lives in `self-control`'s `new_session`, and this file
+runs it rather than restating it: a copy of an eight-field table is a copy that
+drifts, and a child that looks like its parent and is not is worse than a child
+that is told less.
+
+The child lands where the caller works: its machine is the caller's (`GONGGA_REMOTE`
+in the shell the server started) and its directory is the shell's own, stated so a
+sticky `cwd` cannot move it. `remote`/`cwd` override them, and a directory is only
+inherited on the machine it means something on.
 
 SPEC's `## Skill: subagent` names four steps. Two of them are one call here,
 because the second is worthless when it is a step somebody has to remember:
@@ -50,6 +56,11 @@ ATTEMPTS = 1000
 # What the server says when `--must_create` refuses. Its answer is the only signal
 # that separates "name taken" from a real failure, so it is named once, here.
 TAKEN = "--must_create refuses"
+#: The skill that owns the copy table, and the entry that applies it. A child is
+#: the caller's settings with a different name and its own transcript, so the
+#: table is the sibling skill's (`self-control` §4c) and not a second copy here.
+COPY_SKILL = "self-control"
+COPY_ENTRY = "new_session"
 
 
 def _die(message):
@@ -92,12 +103,36 @@ def _command(args):
     return done.returncode == 0, message, data
 
 
-def _create(args):
-    """One `set_session <name> --must_create`, returning (taken, what the server said)."""
-    accepted, message, _data = _command(["set_session", *args])
+def _copy(name, parent, overrides):
+    """The child, created by the entry that owns the copy table; (taken, what it said).
+
+    # Invariant
+
+    The words are the name, the source session and the caller's overrides --
+    nothing else. Every setting not named here is the source row's, decided in one
+    place (`self-control` §4c), so a setting added to that table reaches children
+    without a line changing here.
+
+    The entry is asked through the server (`skill`), which is how one skill uses
+    another: the server resolves the name through the same three roots the `skill`
+    tool uses, and runs it with this session's environment -- its home, its key,
+    its name.
+    """
+    words = [COPY_ENTRY, name, "--source", parent, *overrides]
+    accepted, message, _data = _command(
+        ["skill", "--session", parent, "--name", COPY_SKILL, "--args", json.dumps(words)]
+    )
     if TAKEN in message:
         return True, message
-    if not accepted or not message.startswith("session is now"):
+    if not accepted:
+        # The one failure worth explaining: this skill is installed, the one whose
+        # table it copies is not, and the server's words alone would read as a typo.
+        if "no skill named" in message:
+            _die(
+                f"could not create a session: {COPY_SKILL} is not installed, and spawn "
+                f"copies the caller's configuration through its {COPY_ENTRY} -- the two "
+                f"ship together ({message})"
+            )
         _die(f"could not create a session: {message or 'no answer from the server'}")
     return False, message
 
@@ -186,10 +221,9 @@ def spawn(role, remote=None, cwd=None, model=None, context_limit=None):
             'session it belongs to (check with: echo "$GONGGA_SESSION")'
         )
 
-    # Where the caller works is where the child starts: the caller's own row is
-    # the only place that knows its machine and its directory.
+    # Where the caller works is where the child starts: the shell's own machine and
+    # directory, which the server exports and the filesystem answers.
     place = _caller_place(parent)
-    env_model = os.environ.get("GONGGA_MODEL", "").strip()
     # A remote names a machine; `none` names the server's own.
     recorded = (place.get("remote") or "").strip()
     recorded = None if recorded.lower() in ("", "none") else recorded
@@ -203,25 +237,22 @@ def spawn(role, remote=None, cwd=None, model=None, context_limit=None):
     same_machine = wanted == recorded
     cwd = cwd if cwd is not None else (place.get("cwd") if same_machine else None)
 
-    extra = []
+    # What the caller named, and only that: the rest is the copy's to carry.
+    overrides = []
+    if model:
+        overrides += ["--model", model]
+    if context_limit:
+        overrides += ["--ctx_limit", context_limit]
     if wanted:
-        extra += ["--remote", wanted]
+        overrides += ["--remote", wanted]
     # The working directory is the shell's own, stated so a sticky `cwd` entry
     # cannot land the child somewhere its caller never worked.
     if cwd:
-        extra += ["--cwd", cwd]
-    if context_limit:
-        extra += ["--ctx_limit", context_limit]
+        overrides += ["--cwd", cwd]
 
     for attempt in range(ATTEMPTS):
         name = f"{parent}/{role}" if attempt == 0 else f"{parent}/{role}/{attempt + 1}"
-        # The model is the caller's own unless one is named: stated, a sticky
-        # entry cannot silently swap it for another project's.
-        # Optional arguments keep their flags (SPEC: order-omission is the
-        # non-optional arguments' to give), so the model is named, not positional.
-        named_model = model or env_model
-        model_flags = ["--model", named_model] if named_model else []
-        taken, _ = _create([name, *model_flags, "--must_create", "true", *extra])
+        taken, _ = _copy(name, parent, overrides)
         if taken:
             print(f"spawn: {name} is taken; trying the next segment", file=sys.stderr)
             continue

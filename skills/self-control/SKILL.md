@@ -303,6 +303,11 @@ gongga 里更短的一层是 `gongga-cli skill self-control ask <会话名> "<�
 `--source <会话名>` 指定的另一行）当来源，逐项复制配置，开一个全新会话。答复是新会话名，
 打印在 stdout。
 
+**一句话的用法就是不带任何覆盖参数**：`new_session <新名字>` 复制整行——模型、思考档位、
+上下文预算、缓存档位与 keepalive、mode、机器、目录——不用一项项重打。它也是**唯一**一张
+复制表：`subagent` 的 `spawn` 建孩子时正是调它（传名字、`--source`、和调用者点名的那几个
+覆盖），所以这里加一个字段，孩子下一次就有，不必两边各改一遍。
+
 ```bash
 gongga-cli skill self-control new_session <新名字> [--source <来源会话>] \
     [--model <model>] [--thinking <level>] [--ctx_limit <n%>] [--cache_tier <name>] \
@@ -352,8 +357,9 @@ gongga-cli skill self-control new_session <新名字> [--source <来源会话>] 
 
 与 `subagent spawn` 的边界：`spawn` 开的是**孩子**——路径、订阅、命名都绑在调用者的
 子树上；`new_session` 开的是**平级**——只复制配置，不订阅、不带上下文、不建路径关系。
-要并行干活、要被告知完工，用 `subagent`；要一个"配置和我一样、但从零开始"的会话，
-用 `new_session`。
+两者共用上面那一张复制表（`spawn` 通过 `skill` 调本包的 `new_session`），所以"孩子"和
+"平级"配的是一样的东西，区别只在关系和名字。要并行干活、要被告知完工，用 `subagent`；
+要一个"配置和我一样、但从零开始"的会话，用 `new_session`。
 
 退出码：0 建成（打印新会话名），或 `--dry_run` 打印计划行；2 上述任一拒绝。
 
@@ -531,6 +537,7 @@ EOF
 | 只读 sqlite 自查 | 本会话实测 |
 | 包只发布 `ask` / `new_session`；`--dry_run` 只打印不建会话；重名、未知 remote、无来源都退出 2 且库里无新行；新行逐字段等于来源行 | 2026-11-06 实跑：临时 home + 真服务端 + fake_llm 探针，外加 `test_new_session.py` 表驱动单测 |
 | `ask` / `new_session` 走 in-process 客户端（`import` home 的 `lib/gongga.py`，不起 `gongga-cli`），包形态与脚本形态都答出对方原话 | 2026-11-07 实跑 `scripts/selfcontrol_selftest.sh`：临时 home + 真服务端 + fake_llm，PASS |
+| `subagent` 的 `spawn` 建孩子走的正是这张表（不复制第二份）：孩子的模型、预算、机器、目录逐项等于来源行 | 2026-11-07 实跑 `scripts/subagent_selftest.sh`（同一份脚本装在临时 home 里，同时装 `self-control`）：A/B/F/G/J/K/M 全绿，`--context_limit 20%` 落到孩子的行上 |
 
 ---
 
