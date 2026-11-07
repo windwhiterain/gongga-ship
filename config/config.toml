@@ -581,6 +581,17 @@ positional = 2
 sentence = '''Its words, one per element. Omitted, the words `[channel.<name>]` declares are used.'''
 
 [[tool.new.parameters]]
+name = "remote"
+hint = "name"
+completion = "remotes"
+sentence = '''Which machine it runs on, named by `[remotes]`. Omitted is the session's own; naming another is not a change of session.'''
+
+[[tool.new.parameters]]
+name = "cwd"
+hint = "path"
+sentence = '''Where the program starts. Omitted: this session's directory when it asked for this session's machine, else that machine's own.'''
+
+[[tool.new.parameters]]
 name = "id"
 hint = "path"
 sentence = '''The name to open it under. Omitted is generated from the session and the program. A name in use is refused: `check` speaks to that one.'''
