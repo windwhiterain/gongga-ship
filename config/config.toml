@@ -272,7 +272,7 @@ output_omitted = '''
 monitor_error = '''
 @skill(providers)
 
-A gongga session stopped because a provider would not serve it: the request was refused, or the answer never finished. Fix what the provider needs; the skill says where the roster, the keys and the quota scripts are, how to prove which of them is wrong, and what "fixed" looks like on this machine.
+{{what}}. Fix what the provider needs; the skill says where the roster, the keys and the quota scripts are, how to prove which of them is wrong, and what "fixed" looks like on this machine.
 
 - session: {{session}}
 - its model: {{model}}
