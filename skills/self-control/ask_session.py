@@ -4,49 +4,45 @@
     ask_session <session> "<question>"
 
 The question goes to that session the way `send_message` does, and the answer
-comes back from the place that keeps it: the session's own transcript, where
-the turn that answered it ends. This command reads that transcript instead of
-asking the caller to poll.
+comes back from the place that keeps it: the session's own transcript, read the
+way a window reads it (`get_messages --replay true`). This module reads that
+transcript instead of asking the caller to poll.
 
-Why a command at all: asking is two steps with a name to remember in between,
-and a name remembered wrong is a question sent to the wrong session -- or, with
-the positional form of `send_message`, the session name read as the question.
-The session is a positional argument here, and the question is what follows it.
+It talks to the server through the harness's own client (`_client`), so nothing
+here spawns a command line or re-parses printed JSON: a `Reply` already says
+whether the command ran and what it carried. SKILL.md §0b is the rule.
 
-This file is also the package's internal module: every top-level name carries a
-leading `_`, so `gongga_skill`'s discovery publishes nothing from it. The
-package's public `ask` is this file's `_ask` re-published by `__init__.py`;
-running this file directly keeps the `ask_session` command working.
+Why a verb at all: asking is two steps with a name to remember in between, and a
+name remembered wrong is a question sent to the wrong session -- or, with the
+positional form of `send_message`, the session name read as the question. The
+session is a positional argument here, and the question is what follows it.
 
-Nothing is invented: the answer is the other session's own words.
+`ask` is the API and `main` is the script form of it: the answer printed, and a
+refusal as exit code 2. SKILL.md §4b is the prose this implements.
 
 Exit: 0 the answer was received, 2 the question could not be asked or no
 answer arrived.
 """
 
 import argparse
-import json
-import os
-import subprocess
 import sys
 import time
 
-# `gongga-cli` first: the bundle `gongga` carries a window, and a window
-# refuses client-side commands. A script wants the one that answers.
-CANDIDATES = ("gongga-cli", "gongga")
-# How long to wait for the answer. A turn is a model's round trip, so this is
-# measured in minutes; a question unanswered by then is reported as
-# unanswered rather than waited on forever.
+import _client
+
+#: How long to wait for the answer. A turn is a model's round trip, so this is
+#: measured in minutes; a question unanswered by then is reported as unanswered
+#: rather than waited on forever.
 TIMEOUT_SECONDS = 900
-# How long between reads of the transcript.
+#: How long between reads of the transcript.
 POLL_SECONDS = 1.0
 
 
 class _Refused(Exception):
     """A refusal whose message is the user's: the form that caught it prints it.
 
-    The script form writes it to stderr and leaves with 2; the package form
-    re-raises it as RuntimeError, which the package runner prints the same way.
+    The script leaves with 2; the package form re-raises it as RuntimeError, which
+    the package runner prints the same way.
     """
 
 
@@ -54,209 +50,105 @@ def _die(message):
     raise _Refused(message)
 
 
-def _suffixes(name):
-    """What makes a name directly executable on this platform.
+def _unwrapped(message):
+    """The event one message carries.
 
-    # Invariant
-
-    Windows decides by extension: an extensionless file -- the shim a server
-    writes for bash -- is not executable there (WinError 193, and `access` will
-    not say so), so only a PATHEXT spelling is a candidate. POSIX execs a `#!`
-    file, the name alone is one.
+    `python/gongga.py` keeps what it read as it read it: an event arrives wrapped
+    as `{"t": "event", "v": {"seq": n, "event": {...}}}`, while a reply's own rows
+    name their kind outside.
     """
-    if os.name != "nt":
-        return ("",)
-    if os.path.splitext(name)[1]:
-        return ("",)
-    stated = tuple(s for s in os.environ.get("PATHEXT", "").split(";") if s)
-    return stated or (".exe", ".cmd", ".bat")
-
-
-def _which(name):
-    """`shutil.which` without the import: this file must run on a bare Python."""
-    for directory in os.environ.get("PATH", "").split(os.pathsep):
-        for suffix in _suffixes(name):
-            candidate = os.path.join(directory, name + suffix)
-            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
-                return candidate
-    return None
-
-
-def _runnable(spelled):
-    """The path a subprocess can actually start: itself, or a same-stem sibling in
-    an executable extension (a server exports the shim's name; the `.cmd`/`.exe`
-    beside it is what Windows can run)."""
-    if os.name != "nt":
-        return spelled
-    stem, extension = os.path.splitext(spelled)
-    if extension or os.name != "nt":
-        return spelled
-    for suffix in _suffixes(spelled):
-        candidate = stem + suffix
-        if os.path.isfile(candidate):
-            return candidate
-    return spelled
-
-
-def _command_layer():
-    """The program that talks to this server, by name or by the path the server gave."""
-    named = os.environ.get("GONGGA_CLI")
-    if named and os.path.isfile(named):
-        return _runnable(named)
-    for candidate in CANDIDATES:
-        found = _which(candidate)
-        if found:
-            return found
-    _die(
-        "no command layer found: this needs `gongga-cli` on PATH, or $GONGGA_CLI "
-        "pointing at it (a shell the server started has both)"
-    )
-
-
-def _unwrapped(row):
-    """The event one printed line carries.
-
-    The command layer prints one JSON value a line, and an event travels wrapped
-    as `{"t": "event", "v": {"seq": n, "event": {...}}}` -- `python/gongga.py`
-    is the contract. A bare row is already the event, the shape an older layer
-    printed and another harness may.
-    """
-    if row.get("t") == "event":
-        payload = row.get("v")
+    if message.get("t") == "event":
+        payload = message.get("v")
         if isinstance(payload, dict) and isinstance(payload.get("event"), dict):
             return payload["event"]
-    return row
+    return message
 
 
-def _events_of(text):
-    """The events in a command layer's stdout: one JSON value a line, each bare
-    or wrapped (see `_unwrapped`); a line that is not JSON is not an event."""
-    events = []
-    for line in text.splitlines():
-        try:
-            row = json.loads(line)
-        except ValueError:
-            continue
-        if isinstance(row, dict):
-            events.append(_unwrapped(row))
-    return events
+def _rows(reply):
+    """One reply's events, each with its envelope off."""
+    return [_unwrapped(message) for message in reply.events if isinstance(message, dict)]
 
 
-def _run(cli, args):
-    """Runs the command layer and returns its events."""
-    try:
-        done = subprocess.run([cli] + args, capture_output=True, text=True)
-    except OSError as e:
-        _die(f"cannot run {cli}: {e}")
-    events = _events_of(done.stdout)
-    if done.returncode != 0:
-        # The refusal is answered with the server's own sentence: the cmd_result
-        # row's message, the same words on every command layer. The raw output
-        # is only the fallback when there is no such row -- the echoed command
-        # eats the 400-character budget and leaves the sentence unreadable.
-        ok, message = _outcome(events)
-        if ok:
-            return events
-        detail = (done.stderr or "").strip() or (done.stdout or "").strip()
-        _die(message or f"{' '.join(args)} failed: {detail[:400]}")
-    return events
+def _end_of(reply):
+    """Where the transcript ends, as the reply's `data` says; 0 when it does not."""
+    data = reply.data if isinstance(reply.data, dict) else {}
+    end = data.get("last_seq")
+    return end if isinstance(end, int) else 0
 
 
-def _command(args):
-    """One command, answered as (accepted, the cmd_result message).
+def _tail(client, session):
+    """Where the transcript ends now, before the question is sent."""
+    reply = client.call("get_messages", session=session, range="-1:-1", replay="true")
+    if not reply.ok:
+        _die(reply.message or f"cannot read the transcript of {session}")
+    return _end_of(reply)
 
-    A server's refusal is the caller's answer too, and its message is the
-    caller's verbatim: rc != 0 is not an exception on this path, and the
-    message wins over whatever else the process printed.
+
+def _read(client, session, since):
+    """The transcript of `session` after `since`, where it ends, and its status.
+
+    `replay` is what makes a read show the session's own rows -- the operator's
+    message as an input line, the answer as an output line -- instead of only what
+    streams past while the call is open. Its `data` carries the two numbers this
+    module needs: the last row, and whether the session is still running.
     """
-    cli = _command_layer()
-    try:
-        done = subprocess.run([cli, *args], capture_output=True, text=True)
-    except OSError as e:
-        _die(f"cannot run {cli}: {e}")
-    message = ""
-    for row in reversed(_events_of(done.stdout)):
-        if row.get("t") == "cmd_result":
-            message = row.get("message") or ""
-            break
-    if done.returncode != 0 and not message:
-        message = (done.stderr or "").strip()
-    return done.returncode == 0, message
+    reply = client.call("get_messages", session=session, range=f"{since + 1}:", replay="true")
+    if not reply.ok:
+        _die(reply.message or f"cannot read the transcript of {session}")
+    data = reply.data if isinstance(reply.data, dict) else {}
+    end = data.get("last_seq")
+    return _rows(reply), (end if isinstance(end, int) else since), data.get("status")
 
 
-def _outcome(events):
-    """The one line the command layer ends with: ok or not, and what it said."""
-    for row in reversed(events):
-        if row.get("t") == "cmd_result":
-            return row.get("ok"), row.get("message", "")
-    return None, ""
-
-
-def _read(cli, session, since):
-    """The transcript of `session` after `since`, and where it ends."""
-    events = _run(cli, ["get_messages", f"{since + 1}:", "--session", session])
-    ok, message = _outcome(events)
-    if not ok:
-        _die(message or f"cannot read the transcript of {session}")
-    last = since
-    status = "idle"
-    for row in events:
-        if row.get("t") == "cmd_result":
-            data = row.get("data")
-            if isinstance(data, dict):
-                if isinstance(data.get("last_seq"), int):
-                    last = data["last_seq"]
-                if isinstance(data.get("status"), str):
-                    status = data["status"]
-    return events, last, status
-
-
-def _deliver(cli, session, question):
+def _deliver(client, session, question):
     """Puts the question into the session's hands."""
-    events = _run(cli, ["send_message", "--name", session, "--message", question])
-    ok, message = _outcome(events)
-    if not ok:
-        _die(message or f"the question did not reach {session}")
+    reply = client.call("send_message", name=session, message=question)
+    if not reply.ok:
+        _die(reply.message or f"the question did not reach {session}")
 
 
-def _answer_in(events, session):
-    """What the session said since the question, as its own words.
+def _answer_in(rows, session):
+    """What the session said since the question, and whether the question landed.
 
-    The answer stream carries other sessions' rows too -- a busy server prints
-    what every session does -- so the session name is the filter, not a
-    detail: a row without it, or with another one, is somebody else's words.
+    Two filters, both needed. The stream carries other sessions' rows too, so the
+    session name picks ours. And the operator's row is the marker rather than its
+    text: a message is expanded before it is stored (`@skill(...)` gains its path),
+    so what is read back is not the bytes that were sent -- but a row after the
+    cursor taken before asking is the question this call delivered, and an output
+    before it belongs to a turn that started earlier.
     """
-    said = []
-    for row in events:
-        if row.get("t") != "response":
-            continue
-        if row.get("session") != session:
-            continue
-        if row.get("part") != "output":
+    asked, said = False, []
+    for row in rows:
+        if row.get("t") != "response" or row.get("session") != session:
             continue
         text = row.get("text")
-        if isinstance(text, str) and text.strip():
+        if not isinstance(text, str) or not text.strip():
+            continue
+        if row.get("part") == "input":
+            asked, said = True, []
+        elif row.get("part") == "output":
             said.append(text.strip())
-    return said
+    return asked, said
 
 
-def _wait_for_answer(cli, session, since, timeout):
-    """The session's turn ends, and what it said is in the transcript."""
+def _wait(client, session, since, timeout, poll):
+    """The session's turn ends, and what it said since the question is the answer."""
     deadline = time.time() + timeout
-    while time.time() < deadline:
-        events, last, status = _read(cli, session, since)
-        said = _answer_in(events, session)
-        if said and status != "running":
+    while True:
+        rows, since, status = _read(client, session, since)
+        asked, said = _answer_in(rows, session)
+        if asked and said and status != "running":
             return said[-1]
-        time.sleep(POLL_SECONDS)
-    return None
+        if time.time() >= deadline:
+            return None
+        time.sleep(poll)
 
 
-def _ask(session, question, timeout=TIMEOUT_SECONDS):
+def ask(session, question, timeout=TIMEOUT_SECONDS, poll=POLL_SECONDS):
     """The question delivered and the answer waited for; the answer, or a refusal.
 
-    The cursor is taken before the question is sent, so the answer must be a
-    turn that ends after the question, not one that ended before it.
+    The cursor is taken before the question is sent, so the answer has to come
+    after the row the question produced, not from a turn that ended before it.
     """
     session = (session or "").strip()
     question = (question or "").strip()
@@ -264,10 +156,16 @@ def _ask(session, question, timeout=TIMEOUT_SECONDS):
         _die("name the session to ask")
     if not question:
         _die("ask something: the question is the rest of the command")
-    cli = _command_layer()
-    _, since, _ = _read(cli, session, 0)
-    _deliver(cli, session, question)
-    answer = _wait_for_answer(cli, session, since, timeout)
+    try:
+        client = _client.connect()
+    except _client.Unusable as unusable:
+        _die(str(unusable))
+    try:
+        since = _tail(client, session)
+        _deliver(client, session, question)
+        answer = _wait(client, session, since, timeout, poll)
+    finally:
+        client.close()
     if answer is None:
         _die(f"{session} did not answer within {timeout:g}s")
     return answer
@@ -288,7 +186,7 @@ def _main():
     )
     args = parser.parse_args()
     try:
-        print(_ask(args.session, args.question, args.timeout))
+        print(ask(args.session, args.question, args.timeout))
     except _Refused as refused:
         print(f"ask_session: {refused}", file=sys.stderr)
         return 2

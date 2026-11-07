@@ -7,11 +7,12 @@ callable that does not and `__all__` is not consulted:
     ask(session, question)          -- §4b: ask another session and wait for its answer
     new_session(name, ...)          -- §4c: a fresh session that runs on my configuration
 
-The heavy lifting lives in the two internal modules beside this file. The
-package runner loads a skill by executing its `__init__.py` (see
-`python/gongga_skill.py::package`), which keeps no `sys.modules` entry for the
-package: a relative import has no parent to resolve, so the siblings are
-reached by name while the directory stands on `sys.path`.
+The heavy lifting lives in the three internal modules beside this file:
+`_client` (import the harness's own client from this home, SKILL.md §0b),
+`ask_session` and `new_session`. The package runner loads a skill by executing
+its `__init__.py` (see `python/gongga_skill.py::package`), which keeps no
+`sys.modules` entry for the package: a relative import has no parent to resolve,
+so the siblings are reached by name while the directory stands on `sys.path`.
 """
 
 import os as _os
@@ -36,9 +37,9 @@ def ask(session, question):
     `ask_session.py` answers the same question with exit code 2.
     """
     try:
-        return _ask_session._ask(session, question)
+        return _ask_session.ask(session, question)
     except _ask_session._Refused as refused:
-        raise RuntimeError(str(refused))
+        raise RuntimeError(str(refused)) from None
 
 
 def new_session(name, source=None, model=None, thinking=None, ctx_limit=None,

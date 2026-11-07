@@ -1,7 +1,7 @@
 ---
 name: self-control
 description: 控制"自己"的运行——本回合、自己起的进程、自己的上下文、自己的会话。当你要停/续自己的回合、要起一个活得比自己久的作业、要跨重启或压缩保留意图、要问另一个会话（mentor）一个问题并等它答、要开一个复制我自己配置的新会话、或者发现自己的输出/进程/状态不对劲时，读这个。只讲怎么用这个 harness：开第二个会话并行干活是 subagent skill，改它的源码、把它换成新的自己，是 evolve skill 的事。
-compatibility: 需要 Python 3 和一个在 PATH 里的 gongga-cli（入口是本包的 ask / new_session）
+compatibility: 需要 Python 3 和 home 里的 lib/gongga.py（服务端自己写的客户端，§0b）；入口是本包的 ask / new_session，不需要 PATH 上有 gongga-cli
 ---
 
 # 自我控制
@@ -28,13 +28,65 @@ shell 函数、导出的东西都留着，第一次调用就已经在会话的�
 两个例外会把它换掉：回合被取消、命令超时——那时同名 shell 是新的一个，cwd 回到会话目录
 （§1、§3 有细节），别假设 export 还在。
 
-**`gongga-cli` 是这台服务端的命令层**，就在 `PATH` 首位，脚本里 `["gongga-cli", ...]`
-起的是同一个程序。一条命令打印**每行一个 JSON 事件**，最后一行是 `cmd_result`——所以
-`| jq`、`| grep` 只拿你要的那部分，不必整段读。`$GONGGA_SESSION` 是你自己的会话名，
+**`gongga-cli` 是这台服务端的命令层**，就在 `PATH` 首位，给人敲的。一条命令打印
+**每行一个 JSON 事件**，最后一行是 `cmd_result`——所以 `| jq`、`| grep` 只拿你要的那部分，
+不必整段读。**脚本不要起这个进程**：同一个模块 import 进来就是一个 `Reply`（§0b）。
+`$GONGGA_SESSION` 是你自己的会话名，
 `$GONGGA_SERVER`、`$GONGGA_HOME` 都在环境里；`gongga-cli` 裸跑列出这个服务端发布了什么。
 
 **别把 `/xxx` 当命令**：交互输入行里的 `/` 是另一层语法，脚本和 bash 里只写裸名字
 （§9 有代价记录）。
+
+---
+
+## 0b. 脚本要的是 Python 面，不是命令行
+
+**服务端把客户端写在 home 里，脚本 import 它。** `$GONGGA_HOME/lib/gongga.py`
+（`docs/notes/server-pylib.md`）：一个命令一个方法，每条答复一个 `Reply`，被拒时一个异常。
+本 skill 的 `_client.py` 找到这个目录——skill 运行器给 `GONGGA_SKILL_LIB`，服务端起的
+shell 给 `GONGGA_HOME`——然后 `import gongga`。
+
+```python
+import gongga
+server = gongga.connect()          # 从 GONGGA_SERVER / GONGGA_KEY，或 home 的 server.key
+server.sessions                    # greeting 里每个会话的那一行
+server.models                      # roster 里现在真能用的 provider/model
+server.catalog                     # 这个服务端发布了哪些命令、各收什么参数
+reply = server.call("get_messages", session="x", range="-1:-1")
+server.get_messages(session="x", range="-1:-1")     # 同一个东西：名字就是命令名
+```
+
+| 拿到的 | 是什么 |
+|---|---|
+| `reply.ok` / `.message` / `.data` / `.events` | 一条命令的答复：成了没有、服务端的话、它带的数、这段流上它看到的事件 |
+| `reply.raise_for_status()` | 拒绝变成 `gongga.GonggaError`，句子里是服务端原话 |
+| `server.<命令>(**参数)` | 名字来自 greeting；服务端没发布的名字在这里是 `AttributeError`，根本不发出去 |
+| `gongga.Unreachable` | 一个字都没答（端口没人、key 不对）；这跟"被拒绝"是两件事 |
+| `server.pump(seconds)` / `server.close()` | 读掉这段时间流上还到的 / 收摊（`with gongga.connect() as s:` 也行） |
+
+**规矩：skill 的脚本里不出现 `subprocess` + `gongga-cli`。** 命令行是"人敲一行、看一行"
+的形状，脚本要的是返回值；而 `Reply` 已经把成功/拒绝、结构化数据、事件分了类。把打印出来的
+JSON 行再解析一遍，是把同一份契约抄第二遍，抄的那份一定会落后——`gongga-cli` 自己就是这份
+模块的外壳（`python/gongga_cli.py` 第一件事也是 `import gongga`）。
+
+**cli 不够方便的地方，用 Python 包一层再暴露 Python API，别拐回 cmd。** 本 skill 的两个
+入口都是这么来的，而且都能 import：
+
+| 需要 | cli 里没有 | 包一层之后 |
+|---|---|---|
+| 问一句并等它答完 | 没有"送到 + 等这一轮结束 + 取它的原话"这个动词 | `ask_session.ask(session, question)`：用 `get_messages --replay true` 读回它的行（§4b） |
+| 复制我自己的调参 | greeting 的会话行不带 `cache_tier` / `cache_keepalive` / `mode` | `new_session.new_session(...)`：只读打开 `$GONGGA_HOME/gongga.db` 取来源那一行，再一次 `set_session`（§4c） |
+
+```python
+import sys
+sys.path.append(r"C:\...\skills\self-control")   # 本 skill 的目录：`@skill(...)` 展开里那个 path 的父目录
+from ask_session import ask
+from new_session import new_session
+answer = ask("mentor", "我当时是怎么写的？")
+```
+
+脚本形态（`"$SKILL_DIR/ask_session.py" <会话> "<问题>"`）和
+`gongga-cli skill self-control ask …` 只是同一批函数的外壳。
 
 ---
 
@@ -173,10 +225,51 @@ EOF
 
 ---
 
+## 4a. 你的"第一句话"要写成带引用的 prompt
+
+**引用（meta reference）不是省字，它是前缀缓存规划唯一的入口。** 一个请求的最前面是
+instructions + index；`index` = 会话**第一条** user 消息里点到的 `@file(...)` / `@skill(...)`
+的正文，按 `prefix_cache` 算出的最省顺序拼起来。那个顺序不是随手排的：模拟出来的缓存树按
+**会话目录**共享，同一目录里先计划过的会话留下一条链，后来的会话沿它走——两条请求的
+首部逐字节相同，provider 才付得出缓存价。
+
+"先 `cat` 一遍再问"和"把文件引用进第一句话"的差别不是风格：
+
+| 写法 | 正文落在哪 | 之后怎么付费 |
+|---|---|---|
+| `bash: cat plan.md` | 一条 tool_result，在 transcript 中间 | 每轮跟着前缀重发，而且排在 index **之后**：首部一变，它和它后面整段重付 |
+| 第一句话里写 `@file(plan.md)` | 进 index，紧跟 instructions | 一次进系统提示，之后每轮命中；之后再改那个文件也不再重发 |
+
+所以"自我控制"里每个**第一句话**的时刻，都要写成带引用的 prompt：
+
+| 时刻 | 谁是第一句话 | 写什么 |
+|---|---|---|
+| spawn 一个子 agent | `send_message` 的 brief | 它要读的文件、它该用的技能全写成引用（见 `@skill(subagent)`） |
+| 培养继承人 | `heir` 的第一课 | 下一步要动的文件、要守的规矩写成引用：继承人的下一次请求就带着正文 |
+| `new_session` 之后 | 那个新会话的第一条消息 | 整轮工作都要看的东西，第一轮就引用掉 |
+| `ask_session` 问一句 | **不算**：它是轮中注入的一条消息，index 早已写定 | 那里的 `@skill(...)` 只会换成指针（路径），正文得对方自己去读 |
+
+两条边界，写错都**不报错**：
+
+- 只有**第一条** user 消息能进 index。第三轮才补一条 `@skill(foo)`，foo 的正文没有进来。
+- 引用是 `@kind(值)`，括号必须配对。漏了右括号、写错大小写，消息照发、词照留，
+  index 里没有它，也没有一行日志。
+
+拼写、递归和代价记录都在 `@skill(prefix-cache)`。
+
+---
+
 ## 4b. 问另一个会话：`ask_session`
 
 **别的会话——尤其是 mentor——手里有你已经忘掉的东西。** 自己再摸一遍是把整场搜索再付一次；
 问一句是一个回合。
+
+它是本 skill 的一个函数，也是一个脚本（§0b 的规矩：走 in-process 客户端，不起进程）：
+
+```python
+from ask_session import ask                 # 目录进 sys.path 之后（§0b）
+answer = ask("mentor", "我当时是怎么写的？")   # 答复就是它的返回值
+```
 
 ```bash
 SKILL_DIR=<本 SKILL.md 所在目录>          # `@skill(...)` 展开里括号中的 `<path>` 的父目录
@@ -186,9 +279,9 @@ SKILL_DIR=<本 SKILL.md 所在目录>          # `@skill(...)` 展开里括号�
 gongga 里更短的一层是 `gongga-cli skill self-control ask <会话名> "<问题>"`：`self-control`
 是个 Python 包，第一个词是函数名（`ask` 是本包的函数），参数原样传过去，退出码就是入口的。
 
-它做两件事，一件命令做完：**把问题递过去**，然后**等答复**。答复是对方会话自己 transcript 里
-的话——脚本读那条 transcript，不轮询、不猜、不重述。stdout 是答复本身，所以
-`answer="$("$SKILL_DIR/ask_session.py" mentor "…")"` 就是答复。
+它做两件事，一次调用做完：**把问题递过去**，然后**等答复**。答复是对方会话自己 transcript 里
+的话，按窗口读法读回来（`get_messages --replay true`），所以操作者的消息和它的输出是分开的行，
+不用去猜哪一段是谁说的。等的是"问题那一行之后、它这一轮结束"，不是"最后一行输出"。
 
 **会话名是位置参数，问题在它后面。** 这不是随意的：`send_message` 的位置参数是
 `--message` 在前、`--name` 在后，所以 `send_message <会话名> "…"` 会被读成「问题=会话名」，
@@ -198,7 +291,7 @@ gongga 里更短的一层是 `gongga-cli skill self-control ask <会话名> "<�
 把你卡住的那一步写进去，才有东西可答。
 
 答复会到你的会话里（`send_message` 给对方，对方 `send_message` 回来），所以**问完可以继续
-干别的**，消息到了再读。脚本自己等的那份是同一条答复，只是它先替你挡住了轮询。
+干别的**，消息到了再读。函数自己等的那份是同一条答复，只是它先替你挡住了这次等待。
 
 退出码：0 拿到了答复；2 问题没送到，或等超时（默认 900 秒，`--timeout` 可改）。
 
@@ -217,8 +310,9 @@ gongga-cli skill self-control new_session <新名字> [--source <来源会话>] 
     [--dry_run true]
 ```
 
-参数名就是字段名，`--name value` 或按位置传。`--dry_run true` 只打印将要执行的
-`set_session` 那一行，什么都不建——先看清再动手。
+参数名就是字段名，`--name value` 或按位置传。`--dry_run true` 只把将要发出去的参数渲染成一行
+`set_session` 打印出来，什么都不建——真正建会话那一步是一次 `server.call("set_session", ...)`
+（§0b），不经过命令行：同一张参数表既决定发什么，也决定 dry run 显示什么，所以两者不会走散。先看清再动手。
 
 **三条不变量**（写在这里，不靠脚本注释代言）：
 
@@ -265,6 +359,34 @@ gongga-cli skill self-control new_session <新名字> [--source <来源会话>] 
 
 ---
 
+## 4d. 模型名是一条 path：层级管理就写在名字里
+
+会话行里的 `model` 存的是**整条** `provider/model_name`，不是裸名字——一个名字不说明是谁在
+服务它（`SessionRow::model` 的原话）。而模型名自己还能再带 `/`：服务端只在**第一根** `/`
+处切开，剩下的整段就是模型 id。于是模型名天然是一条 path，段就是层级：
+
+| 段 | 这一层写的是什么 |
+|---|---|
+| 第一段 `provider` | 密钥（`key_env`）、端点与 `base_url`、额度查询、缓存 ttl 与它接受的档位、`prompt_cache_key` 一类请求头 |
+| 后面几段 `model_name` | 模型自己：窗口大小、模态、`tier`（flash / pro / sota）、价格、思考档位、内置工具 |
+
+**规划按层做，写的时候也按层写：**
+
+- 要"这一家整体更便宜 / 换端点 / 换 key"→ 那是 provider 段的事，这一家下所有模型一起跟着走。
+- 要"这一个要更难、要更长的窗口"→ 换叶子段。
+- **裸名字把 provider 段藏起来**：`--model` 先按整条 path 匹配，匹配不上才在 roster 里找
+  **第一个**带这个名字的 provider——落在谁家由文件顺序决定，而且那家没有 key 时命令直接失败，
+  不会替你换一家。所以凡是要**写下一个会话跑什么**的地方（`set_session --model`、
+  `new_session --model`、spawn 的 brief），写整条 path。
+- **`--cache_tier` 校验的是 provider 声明的档位**（报错句说 "not a tier this model declares"，
+  roster 却写在 `[[provider]]` 上）：provider 不动，换模型不会让档位失效；换 provider 就可能。
+  `new_session` 会照抄来源的 `cache_tier`，所以跨 provider 的 `--model` 最先被拒的地方就是这里。
+
+会话名是同一套规矩：`<调用者>/<角色>` 是一条 path，名字按前缀渲染成可折叠的层级，
+子 agent 全挂在调用者下面（见 `@skill(subagent)`）。
+
+---
+
 ## 5. 用 `send_message` 给自己留话
 
 会话正忙时 `send_message` 不排队第二个 turn，而是写一条 `kind=inject` 的行，由当前 turn
@@ -278,8 +400,9 @@ gongga-cli send_message --name test1 "SELF-NOTE: ..."
 ```
 
 回执「message queued for test1; it will be read at the next step」，下一个 step 就以
-一条 user 消息出现。脚本、launcher、别的进程也一样写 `gongga-cli`：`PATH` 首位就是它，
-那是同一个程序，不需要路径也不需要第二个变量。
+一条 user 消息出现。另起一个 shell 或 launcher 也一样写 `gongga-cli`：`PATH` 首位就是它，
+那是同一个程序，不需要路径也不需要第二个变量。**Python 脚本不这么写**：`server.call("send_message", …)`
+是同一个动作，而且知道有没有送到（§0b）。
 
 **它现在还能叫醒你**（2026-10-24 起）：前台 `bash` 正等一条长命令时，消息一到，等待就结束、
 命令交给后台继续跑（见 §3）。所以这不是"留言"，是一条**打断**——`sleep 40` 实测 3 秒返回。
@@ -364,7 +487,7 @@ EOF
 - **第二次 `check_bash` 期待同样输出。** 读即清空；第二次只会拿到新的部分。
 - **在 bash 里 `gongga-cli /cancel`。** `/` 只属于交互式输入行；这里 `/cancel` 会被
   Git Bash 当路径改写成 `C:/.../Git/cancel`。argv 已经是 token，起这个进程的人已经写下了
-  命令名，没有第二层语法要再解一遍：写裸名字 `gongga-cli cancel`（脚本里 `["gongga-cli", "cancel"]` 同理）。
+  命令名，没有第二层语法要再解一遍：写裸名字 `gongga-cli cancel`（Python 脚本里是 `server.call("cancel")`，§0b）。
   带 `/` 或带路径分隔符的第一个 token 会被命令层拿最后一段去目录里查，命中就告诉你正确写法。
 - **`bash` 传 `cmd`。** 参数名是 `command`。多余键被忽略，缺 required 会被拒并提示
   「did you mean `command`?」。
@@ -373,6 +496,8 @@ EOF
 - **用 `send_message` 记日志。** 它会永久留在 transcript 里并进入笔记，而且**会打断
   你正在等的命令**（见 §5）。
 
+- **在 skill 脚本里 `subprocess` 跑 `gongga-cli` 再解析它的输出。** 命令行是给人看的形状，
+  脚本要的是 `Reply`；再解析一遍等于把契约抄第二份，抄的那份会落后（§0b）。
 - **以为写了 skill 文件就等于能被发现。** 发现靠提示词里那句索引；索引不在（旧服务端、
   cwd 不在仓库里），文件就是死的。先跑一遍索引命令再指望别人读到。
 
@@ -405,6 +530,7 @@ EOF
 | `evolve.sh swap` 的完整换手 | **实跑 9 次**，其中 02:24 那次**丢了回合**（pending 行被 `resume_pending` 的收尾无条件删除），修好后 3 次全部 resume 成功 |
 | 只读 sqlite 自查 | 本会话实测 |
 | 包只发布 `ask` / `new_session`；`--dry_run` 只打印不建会话；重名、未知 remote、无来源都退出 2 且库里无新行；新行逐字段等于来源行 | 2026-11-06 实跑：临时 home + 真服务端 + fake_llm 探针，外加 `test_new_session.py` 表驱动单测 |
+| `ask` / `new_session` 走 in-process 客户端（`import` home 的 `lib/gongga.py`，不起 `gongga-cli`），包形态与脚本形态都答出对方原话 | 2026-11-07 实跑 `scripts/selfcontrol_selftest.sh`：临时 home + 真服务端 + fake_llm，PASS |
 
 ---
 
