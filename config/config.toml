@@ -521,3 +521,483 @@ It runs on this machine in the session's directory, whatever machine the session
 args = '''The entry's arguments, one word each: passed through unparsed and unquoted, so a word holding a space or a `$` needs no escaping and gets none.'''
 description = '''What this call is for, in a few words: the log carries it as the call's title.'''
 name = '''The skill's name, as a row of the list spells it. Omit it and this answers with the list instead.'''
+
+# The tunnel's own arguments, said once for every tool that takes them: a row that
+# worded them again would be a second answer to one question.
+[tools.arguments]
+description = '''What this call is for, in a few words -- it is read right after the tool's name, so say what the run is for, not what the command is (`check the state`, not `bash`). Optional, and never executed: it also names the file that a too-long output is spilled to, so that later you (and whoever reads the dumps) can tell one run from another. Example: `run the server tests`.'''
+background = '''Do not wait for this call: it runs as a process of its own, which outlives a `cancel` and is picked up again when the server restarts. The call returns at once; the answer arrives later as a notice for this session and `check_job` collects it. Only `cancel` lets it go: a signal, a window closing or a killed server ends every job with it. A tool that acts on the server's own state -- its shells, its interpreters, its jobs -- cannot be a process of its own and refuses `background`: call it in the foreground instead. `remote_bash` and `python` are the exception: their background is a job of that shell or interpreter, which `check_bash` and `check_python` read. Defaults to false.'''
+max_output = '''In chars: when the output exceeds this, it is saved to a temp file and the call answers with the file's metadata {path, chars, line_count}.'''
+timeout_ms = '''How long this call may hold the turn. Past it the call neither fails nor stops the work: it answers at once with the id of the `background` job that the work became, and `check_job` collects what it answered. `bash` and `python` turn a long wait into their own background job instead, which `check_bash` and `check_python` read. No call holds a turn longer than this machine's ceiling, however long it asks for.'''
+
+# ---------------------------------------------------------------- the channels
+#
+# What `new` knows about a name: whether it starts a program or routes to a cmd, the
+# words it starts with, how an input reaches it, and what ends a reply. A name this
+# table does not mention is a program started with the call's own words and framed by
+# the call's own `until` -- that is what "raw" means, and it is the usual case.
+
+[channel.bash]
+spawn = ["--norc", "--noprofile"]
+# The reply to one command ends where the sentinel this server writes ends it, and the
+# digits that follow are the command's status: `echo __gongga-...__$?`.
+write = "{{input}}; echo {{sentinel}}$?\n"
+until = "{{sentinel}}"
+exit_from_marker = true
+
+[channel.python]
+spawn = ["-u", "-i"]
+write = "{{input}}\n"
+until = ">>> "
+
+# Not a program: `new` answers this name through the command layer, with the caller's
+# session filled into the argument the command declares as one.
+[channel.GONGGA_CLI]
+kind = "cmd"
+
+# The two tools a channel is spoken through. Everything about them is here: no
+# tunnel arguments, because a channel already is the thing `background` used to mean,
+# and `wait` is the call's own clock.
+[tool.new]
+cmd = "new"
+tunneled = false
+# Starting a program has nothing to read yet: a call that states no `wait` returns as
+# soon as the channel exists.
+timeout_ms = 0
+summary = '''Start a program, and read what it says. The name is the program; `args` are its words. The channel it opens keeps running, and its output waits for `check`.'''
+
+[[tool.new.parameters]]
+name = "name"
+required = true
+positional = 1
+hint = "name"
+sentence = '''The program to start: a name on this machine's PATH, e.g. `bash`, `python`, `git`.'''
+
+[[tool.new.parameters]]
+name = "args"
+type = "array"
+items = "string"
+positional = 2
+sentence = '''Its words, one per element. Omitted, the words `[channel.<name>]` declares are used.'''
+
+[[tool.new.parameters]]
+name = "id"
+hint = "path"
+sentence = '''The name to open it under. Omitted is generated from the session and the program. A name in use is refused: `check` speaks to that one.'''
+
+[[tool.new.parameters]]
+name = "input"
+sentence = '''One line to write to the program, through the spelling `[channel.<name>]` gives.'''
+
+[[tool.new.parameters]]
+name = "until"
+sentence = '''Read until this text appears, and answer with what came before it. Omitted, `[channel.<name>]` may name one.'''
+
+[[tool.new.parameters]]
+name = "wait"
+type = "integer"
+sentence = '''Milliseconds to wait for output. Omitted is this server's default; `0` returns at once with whatever has arrived.'''
+
+[tool.check]
+cmd = "check"
+tunneled = false
+# A read waits for the program to say something, unless the call says otherwise.
+timeout_ms = 30000
+summary = '''What a channel has said since the last read. The window moves: what one call takes, the next does not see.'''
+
+[[tool.check.parameters]]
+name = "id"
+required = true
+positional = 1
+hint = "path"
+sentence = '''The channel to read: the name `new` answered with.'''
+
+[[tool.check.parameters]]
+name = "input"
+sentence = '''One line to write to the program first.'''
+
+[[tool.check.parameters]]
+name = "until"
+sentence = '''Read until this text appears. Omitted, `[channel.<name>]` may name one.'''
+
+[[tool.check.parameters]]
+name = "wait"
+type = "integer"
+sentence = '''Milliseconds to wait for output. Omitted is this server's default; `0` returns at once.'''
+
+# Reached by name, never offered to the model: the command layer still runs
+# these (`gongga-cli bash …`), and a subscription action runs in one of them.
+# They go when a name routes to the command layer and those actions move onto
+# channels, which is the next step -- until then the model must not see two ways
+# to run a command.
+
+[tool.bash]
+cmd = "bash"
+offered = false
+summary = '''Run a shell command in a persistent Git Bash on this machine -- the one the server runs on. Each `name` is a separate shell that keeps its own working directory, exports and shell functions between calls, and stays alive until you `del_bash` it; omit `name` to use `default`. So reusing one name is how state accumulates -- inventing a name per command leaves one idle process behind per command. A name is one shell: a name already held is refused rather than quietly becoming a second process. Output is streamed as it is produced. Use `cd` to move around instead of passing absolute paths every time. Very long output is capped: you get the beginning and the end, and the full text is written to a file named in the result -- read that file with `sed -n` or `grep`, do not cat it. With `background`, the command is started as a process of its own and the call returns immediately; collect what it answered later with `check_job`.'''
+timeout_ms = 120000
+handles_background = true
+owns_its_wait = true
+carrier = "process"
+
+[[tool.bash.parameters]]
+name = "command"
+required = true
+positional = 1
+sentence = '''The command line to execute. A program and its arguments, where an argument holds a space or a quote, belong in `exec`: there the words are not read by a shell and need no escaping.'''
+
+[[tool.bash.parameters]]
+name = "name"
+hint = "name"
+sentence = '''Which persistent shell to run in, default `default` -- reusing a name is what carries `cd`, exports and shell functions from one call to the next.'''
+
+[tool.remote_bash]
+cmd = "bash"
+offered = false
+summary = '''`bash` on the session's remote endpoint -- the peer that holds this session's directory. Same `command`, `name`, `description`, `timeout_ms` and `background` as `bash`; the paths are that machine's.'''
+machine = "remote"
+timeout_ms = 120000
+handles_background = true
+owns_its_wait = true
+carrier = "here"
+
+[[tool.remote_bash.parameters]]
+name = "command"
+required = true
+positional = 1
+sentence = '''The command line to execute. A program and its arguments, where an argument holds a space or a quote, belong in `exec`: there the words are not read by a shell and need no escaping.'''
+
+[[tool.remote_bash.parameters]]
+name = "name"
+hint = "name"
+sentence = '''Which shell to run in on the machine this session's directory is on, default `default`. Reusing a name is what carries `cd`, exports and shell functions from one call to the next; a name `bash` already holds is refused rather than becoming a second shell.'''
+
+[[tool.remote_bash.parameters]]
+name = "target"
+hint = "name"
+completion = "sessions"
+sentence = '''Which machine to run on. Omit it: this call runs on the session's remote whatever this names.'''
+
+[tool.exec]
+cmd = "exec"
+offered = false
+summary = '''Run one program with its arguments, without a shell. The command is a list of words: the program first, then its arguments, one word each. No shell reads them, so a word that holds a space, a quote, a `;` or a `$` reaches the program exactly as written -- there is nothing to escape and nothing to escape it wrongly. What a shell would do (pipes, redirects, `cd`, `&&`, variable expansion, wildcards) is not available here; use `bash` for those. The program is looked up on PATH, and it runs in the session's directory. This is not the persistent shell: `cd` and exports do not survive the call.'''
+timeout_ms = 120000
+owns_its_wait = true
+carrier = "worker"
+
+[[tool.exec.parameters]]
+name = "command"
+type = "array"
+items = "string"
+required = true
+positional = 1
+sentence = '''The program and its arguments, one word each: the program first. No word is interpreted, so a word that holds a space, a quote, a `;` or a `$` needs no escaping and gets none.'''
+
+[tool.remote_exec]
+cmd = "exec"
+offered = false
+summary = '''`exec` on the session's remote endpoint -- one program with its arguments, with no shell between them, looked up on the peer's PATH. Same `command` as `exec`; the paths are that machine's.'''
+machine = "remote"
+timeout_ms = 120000
+carrier = "worker"
+
+[[tool.remote_exec.parameters]]
+name = "command"
+type = "array"
+items = "string"
+required = true
+positional = 1
+sentence = '''The program and its arguments, one word each: the program first. No word is interpreted, so a word that holds a space, a quote, a `;` or a `$` needs no escaping and gets none.'''
+
+[tool.check_bash]
+cmd = "check_bash"
+offered = false
+summary = '''What a shell printed that you have not read: everything its `background` commands wrote, plus anything it printed while nobody was reading. Reading clears it, so each chunk comes back once. Empty means nothing yet -- ask again, or set `wait_ms` to wait for the running jobs.'''
+owns_its_wait = true
+
+[[tool.check_bash.parameters]]
+name = "name"
+hint = "name"
+sentence = '''Shell to read. Defaults to `default`.'''
+
+[[tool.check_bash.parameters]]
+name = "wait_ms"
+type = "integer"
+sentence = '''If this shell has background jobs, wait up to this many milliseconds for them to finish before reading. Passing it returns the output so far and leaves the jobs running; it never stops them. Defaults to 0, which reads now.'''
+
+[tool.check_job]
+cmd = "check_job"
+offered = false
+summary = '''What became of a call that did not wait for its answer: a `background` call, which answers at once with a `job_id`, and whose output waits here because nothing else collects it. The status is `running`, `ok`, `error` or `lost`, and `lost` means the server stopped before the job finished, so nothing can say what it printed. Reading an answer clears it, so it comes back once; a job that has not ended is not stopped by being asked about.'''
+timeout_ms = 120000
+owns_its_wait = true
+
+[[tool.check_job.parameters]]
+name = "job_id"
+type = "integer"
+required = true
+sentence = '''The id the `background` call answered with. A job belongs to the session that started it.'''
+
+[[tool.check_job.parameters]]
+name = "wait_ms"
+type = "integer"
+sentence = '''If the job is still running, wait up to this many milliseconds for it to end before answering. Passing it answers `running` and leaves the job going; it never stops it. Defaults to 0, which answers now.'''
+
+[tool.wait]
+cmd = "wait"
+offered = false
+summary = '''Stay in this turn until something arrives for this session: the report of a background job that finished, the news of a `subscribe` whose pattern matched, or a message from a person. It consumes nothing -- whatever arrived is delivered at the next step boundary, the same way every other queued message is -- so this call is how an agent waits without giving up its turn, and without polling. With no `timeout_ms` it waits for the same ceiling a `bash` call gets; when that passes it says nothing arrived, which is not an error.'''
+timeout_ms = 120000
+tunneled = false
+
+[[tool.wait.parameters]]
+name = "timeout_ms"
+type = "integer"
+sentence = '''Give up after this many milliseconds. This is a limit on waiting, not on the news: passing it returns what has not arrived, and nothing is lost.'''
+
+[tool.del_bash]
+cmd = "del_bash"
+offered = false
+summary = '''Delete bash whose name matches a regex. A persistent shell is discarded: its working directories, exports and shell functions are lost, and naming it again starts a fresh shell in its own session directory; the background jobs it was running go with it. A name is one shell, so this ends it wherever it lives. Use this when a shell is wedged or polluted, and to clean up the names a long session invented.'''
+carrier = "here"
+
+[[tool.del_bash.parameters]]
+name = "name_regex"
+positional = 1
+hint = "regex"
+sentence = '''Pattern matched against shell names, unanchored: `qa` also takes `qa2`. Defaults to `^default$`.'''
+
+[tool.del_job]
+cmd = "del_job"
+offered = false
+summary = '''Delete a job by its id. A job still running is stopped: the work ends where it is, and what it had printed is not kept. A job that had already ended is only forgotten. Nothing about a deleted job is posted to this session afterwards, so this drops a job whose answer is no longer wanted as well as one that has to stop.'''
+carrier = "here"
+
+[[tool.del_job.parameters]]
+name = "job_id"
+type = "integer"
+required = true
+sentence = '''The id the `background` call answered with, or the one a call became when it outlived its clock. A job belongs to the session that started it.'''
+
+[tool.list_bash]
+cmd = "list_bash"
+offered = false
+summary = '''List the bash of this session: their names, their working directories, how much unread output they are holding, and how many background jobs are still running. `name_regex` narrows the answer to the names that match, which is how one name's state is asked about.'''
+carrier = "here"
+
+[[tool.list_bash.parameters]]
+name = "name_regex"
+positional = 1
+hint = "regex"
+sentence = '''Only names matching this pattern, unanchored: `qa` also takes `qa2`. Defaults to every bash.'''
+
+[tool.python]
+cmd = "python"
+offered = false
+summary = '''`bash` with Python instead of a shell, on this machine. Everything `bash` says about `name`, `description` and `timeout_ms` holds here unchanged; `code` takes the place of `command`, and `restart` stops this name's interpreter so the call starts a fresh namespace. State survives between calls to one name because it is one process, so write ordinary Python -- there is no shell quoting to escape. Standard output and standard error come back; an exception comes back as a traceback and the namespace keeps what it had reached.'''
+timeout_ms = 120000
+handles_background = true
+owns_its_wait = true
+
+[[tool.python.parameters]]
+name = "code"
+required = true
+positional = 1
+sentence = '''Python source to execute in the named interpreter. A single expression is evaluated and its repr printed; otherwise the block is executed.'''
+
+[[tool.python.parameters]]
+name = "name"
+hint = "name"
+sentence = '''Which interpreter this call is about. Omitted means `default`; a new name starts a fresh interpreter in the session's working directory.'''
+
+[[tool.python.parameters]]
+name = "restart"
+type = "boolean"
+sentence = '''Stop this name's current interpreter and start a fresh one for this call, discarding its namespace.'''
+
+[tool.remote_python]
+cmd = "python"
+offered = false
+summary = '''`python` on the session's remote endpoint, exactly as `remote_bash` is `bash`: same `code`, `name`, `description`, `timeout_ms`, `background` and `restart`; the paths are that machine's.'''
+machine = "remote"
+timeout_ms = 120000
+handles_background = true
+owns_its_wait = true
+
+[[tool.remote_python.parameters]]
+name = "code"
+required = true
+positional = 1
+sentence = '''Python source to execute in the named interpreter. A single expression is evaluated and its repr printed; otherwise the block is executed.'''
+
+[[tool.remote_python.parameters]]
+name = "name"
+hint = "name"
+sentence = '''Which interpreter this call is about. Omitted means `default`; a new name starts a fresh interpreter in the session's working directory.'''
+
+[[tool.remote_python.parameters]]
+name = "restart"
+type = "boolean"
+sentence = '''Stop this name's current interpreter and start a fresh one for this call, discarding its namespace.'''
+
+[tool.check_python]
+cmd = "check_python"
+offered = false
+summary = '''What `check_bash` is to a shell, for an interpreter: the output a finished background call printed, which reading clears.'''
+owns_its_wait = true
+
+[[tool.check_python.parameters]]
+name = "name"
+hint = "name"
+sentence = '''Interpreter to read. Defaults to `default`.'''
+
+[[tool.check_python.parameters]]
+name = "wait_ms"
+type = "integer"
+sentence = '''If this interpreter has background calls running, wait up to this many milliseconds for them to finish before reading. Passing it returns what is there and leaves them running. Defaults to 0.'''
+
+[tool.del_python]
+cmd = "del_python"
+offered = false
+summary = '''What `del_bash` is to a shell: the interpreters of this session whose name matches a regex are stopped, and naming one again starts fresh -- no variables, imports or open files from before, and any call it was running is gone with it.'''
+carrier = "here"
+
+[[tool.del_python.parameters]]
+name = "name_regex"
+positional = 1
+hint = "regex"
+sentence = '''Pattern matched against interpreter names, unanchored: `qa` also takes `qa2`. Defaults to `^default$`.'''
+
+[tool.list_python]
+cmd = "list_python"
+offered = false
+summary = '''What `list_bash` is to a shell: each interpreter's name, pid, program, directory, running calls and whether anything unread is waiting. `name_regex` narrows it.'''
+carrier = "here"
+
+[[tool.list_python.parameters]]
+name = "name_regex"
+positional = 1
+hint = "regex"
+sentence = '''Only names matching this pattern, unanchored: `qa` also takes `qa2`. Defaults to every python.'''
+
+[tool.read_file]
+cmd = "read_file"
+offered = false
+summary = '''Read a UTF-8 file through the Python tool's interpreter. `offset` and `limit` are lines, zero-based; `limit = 0` reads to the end. The content is a tool result, so it never passes through shell quoting. Use it instead of `cat` when the file's bytes matter.'''
+carrier = "worker"
+
+[[tool.read_file.parameters]]
+name = "path"
+required = true
+positional = 1
+hint = "path"
+sentence = '''File to read.'''
+
+[[tool.read_file.parameters]]
+name = "remote"
+hint = "name"
+sentence = '''Which machine the file is on. Omit it for this machine; name the session's remote for that machine's file instead.'''
+
+[[tool.read_file.parameters]]
+name = "offset"
+type = "integer"
+sentence = '''First line, zero-based. Defaults to 0.'''
+
+[[tool.read_file.parameters]]
+name = "limit"
+type = "integer"
+sentence = '''How many lines; 0 means to the end. Defaults to 0.'''
+
+[tool.write_file]
+cmd = "write_file"
+offered = false
+summary = '''Write a file through the Python tool's interpreter: `content` is a JSON field, so it is written exactly as given, with no shell or Python quoting layer. Missing parent directories are created and the replacement is atomic. Use this instead of a heredoc or `write_text` inside a `python` program.'''
+carrier = "worker"
+writes = true
+
+[[tool.write_file.parameters]]
+name = "path"
+required = true
+positional = 1
+hint = "path"
+sentence = '''File to write.'''
+
+[[tool.write_file.parameters]]
+name = "remote"
+hint = "name"
+sentence = '''Which machine the file is on. Omit it for this machine; name the session's remote for that machine's file instead.'''
+
+[[tool.write_file.parameters]]
+name = "content"
+required = true
+sentence = '''The complete UTF-8 content; this is the file, not a program.'''
+
+[tool.replace]
+cmd = "replace"
+offered = false
+summary = '''Replace one exact, literal piece of a UTF-8 file through the Python tool's interpreter. Without `all`, `old` must occur exactly once; any other count is an error, so a stale context cannot silently rewrite the wrong place. With `all`, every occurrence is replaced. The write is atomic. `old` and `new` are JSON fields, not shell or Python syntax.'''
+carrier = "worker"
+writes = true
+
+[[tool.replace.parameters]]
+name = "path"
+required = true
+positional = 1
+hint = "path"
+sentence = '''File to edit.'''
+
+[[tool.replace.parameters]]
+name = "remote"
+hint = "name"
+sentence = '''Which machine the file is on. Omit it for this machine; name the session's remote for that machine's file instead.'''
+
+[[tool.replace.parameters]]
+name = "old"
+required = true
+sentence = '''Exact text to replace.'''
+
+[[tool.replace.parameters]]
+name = "new"
+required = true
+sentence = '''Replacement text.'''
+
+[[tool.replace.parameters]]
+name = "all"
+type = "boolean"
+sentence = '''Replace every occurrence instead of requiring exactly one. Defaults to false.'''
+
+[tool.skill]
+cmd = "skill"
+summary = '''Run the entry a skill declares, or list what is installed.
+
+With no `name`: one row per skill this session can open -- what to call it, the line saying what it is for, the `SKILL.md` to read, and which root it came from (`project` for this checkout, `harness` for the home, `general` for the machine, in that precedence).
+
+With `name`: that skill's entry, started with your `args` and nothing between them -- no shell, so a word holding a space, a quote or a `$` arrives as it is. A skill that is a Python package publishes *functions*: the first word of `args` names which one, and the rest bind to its parameters in order (`--name value` spells one out). A script entry's program is read off its extension and its `#!` line: give the script's arguments, never its interpreter. The entry's own output comes back and its exit code is this call's `ok`, so a non-zero one is the skill failing, not this tool. A skill that is a body with no entry refuses, naming the `SKILL.md` to read instead, and a name installed in two roots refuses rather than picking one.
+
+It runs on this machine in the session's directory, whatever machine the session works on: an entry is a file this server can open. Use `exec` when the program is yours to name; use this when the skill owns it.'''
+carrier = "worker"
+
+[[tool.skill.parameters]]
+name = "name"
+positional = 1
+hint = "name"
+completion = "skills"
+sentence = '''The skill's name, as a row of the list spells it. Omit it and this answers with the list instead.'''
+
+[[tool.skill.parameters]]
+name = "args"
+type = "array"
+items = "string"
+positional = 2
+sentence = '''The entry's arguments, one word each: passed through unparsed and unquoted, so a word holding a space or a `$` needs no escaping and gets none.'''
+
+[tool.live_compact]
+cmd = "live_compact"
+summary = '''Write the checkpoint summary requested by the server. Summarize everything since the previous checkpoint, including the latest ordinary tool-call round. The server retains that complete round separately and keeps every checkpoint summary.'''
+carrier = "here"
+
+[[tool.live_compact.parameters]]
+name = "summary"
+required = true
+sentence = '''The agent-written summary of the segment since the previous checkpoint. File and skill references are embedded directly in the stored checkpoint.'''
