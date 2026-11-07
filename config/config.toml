@@ -254,17 +254,25 @@ output_omitted = '''
 
 [... {{omitted}} characters omitted ...]'''
 
-# What the server hands a monitor session when a turn of another session ended in an
-# error. The facts vary; every rule the monitor works under is here, because a report
-# that leaves them out is a report whose reader invents them.
+# What the server hands the providers monitor when a turn of another session failed
+# because a provider refused its request, or stopped answering it. The facts vary;
+# every rule the monitor works under is here, because a report that leaves them out
+# is a report whose reader invents them.
+#
+# Only a provider failure reaches this report: SPEC's monitor watches the machine's
+# providers and nothing else, so a session that broke elsewhere stays in `error`.
+#
+# The name is kept as `monitor_error` although this is the providers monitor: a
+# config's prompt names are content shape, and renaming one is a protocol bump that
+# would strand a build reading the older protocol. The words below are the change.
 #
 # Placeholders: {{session}}, {{model}}, {{rows}}, {{build}}, {{home}}, {{pid}},
 # {{cwd}}, {{mine}}, and {{noted}} -- the server's own last note for that session, or
 # nothing at all.
 monitor_error = '''
-@skill(monitor)
+@skill(providers)
 
-A gongga session stopped with an error. Find the cause and fix it; the skill says how to tell a provider's refusal from a harness bug, and where the truth is on this machine.
+A gongga session stopped because a provider would not serve it: the request was refused, or the answer never finished. Fix what the provider needs; the skill says where the roster, the keys and the quota scripts are, how to prove which of them is wrong, and what "fixed" looks like on this machine.
 
 - session: {{session}}
 - its model: {{model}}
@@ -280,8 +288,9 @@ Read it back with:
 
 Your authorization is this session's error and nothing else: find the cause and fix it. A session whose model cannot run may be moved to another model of the same tier -- the tier is the setup's choice, never yours, so do not change it -- and nothing else about the session, its records or the file tree is yours to change. When that tier has nothing able to run, say so and stop instead of reaching for another one. If it is a harness bug, `@skill(self-control)` says how to restart the server without losing a turn. Report what you found and what you changed in one message.'''
 
-# The same report, handed to the next model after the monitor itself failed: what it
-# was given, unchanged. Re-deriving it would lose what the first attempt was told.
+# The same report, handed to the next model after the providers monitor itself
+# failed: what it was given, unchanged. Re-deriving it would lose what the first
+# attempt was told.
 #
 # Placeholders: {{model}}, {{failure}}, {{again}}
 monitor_error_again = '''
