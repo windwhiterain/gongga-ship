@@ -689,38 +689,6 @@ hint = "name"
 completion = "sessions"
 sentence = '''Which machine to run on. Omit it: this call runs on the session's remote whatever this names.'''
 
-[tool.exec]
-cmd = "exec"
-offered = false
-summary = '''Run one program with its arguments, without a shell. The command is a list of words: the program first, then its arguments, one word each. No shell reads them, so a word that holds a space, a quote, a `;` or a `$` reaches the program exactly as written -- there is nothing to escape and nothing to escape it wrongly. What a shell would do (pipes, redirects, `cd`, `&&`, variable expansion, wildcards) is not available here; use `bash` for those. The program is looked up on PATH, and it runs in the session's directory. This is not the persistent shell: `cd` and exports do not survive the call.'''
-timeout_ms = 120000
-owns_its_wait = true
-carrier = "worker"
-
-[[tool.exec.parameters]]
-name = "command"
-type = "array"
-items = "string"
-required = true
-positional = 1
-sentence = '''The program and its arguments, one word each: the program first. No word is interpreted, so a word that holds a space, a quote, a `;` or a `$` needs no escaping and gets none.'''
-
-[tool.remote_exec]
-cmd = "exec"
-offered = false
-summary = '''`exec` on the session's remote endpoint -- one program with its arguments, with no shell between them, looked up on the peer's PATH. Same `command` as `exec`; the paths are that machine's.'''
-machine = "remote"
-timeout_ms = 120000
-carrier = "worker"
-
-[[tool.remote_exec.parameters]]
-name = "command"
-type = "array"
-items = "string"
-required = true
-positional = 1
-sentence = '''The program and its arguments, one word each: the program first. No word is interpreted, so a word that holds a space, a quote, a `;` or a `$` needs no escaping and gets none.'''
-
 [tool.check_bash]
 cmd = "check_bash"
 offered = false
