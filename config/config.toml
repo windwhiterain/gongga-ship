@@ -757,6 +757,10 @@ sentence = '''If the job is still running, wait up to this many milliseconds for
 
 [tool.wait]
 cmd = "wait"
+# Waiting is this tool's whole work, so a call's own `timeout_ms` is the answer to
+# "how long", not a clock the turn puts on it: without this the row's `timeout_ms`
+# is all a call can ever get.
+owns_its_wait = true
 summary = '''Stay in this turn until something arrives for this session: the notice of a channel that ended, or a message -- a person's, or one a subscription's action sent. It consumes nothing: whatever arrived is delivered at the next step boundary, the same way every other queued message is, so this is how an agent waits without giving up its turn and without polling. Nothing wakes an idle session on its own: a `subscribe` reaches this one only through what its action sends, which is why a session that has just armed one has nothing else to do. With no `timeout_ms` it waits for the same ceiling a `bash` call gets; when that passes it says nothing arrived, which is not an error.'''
 timeout_ms = 120000
 tunneled = false
