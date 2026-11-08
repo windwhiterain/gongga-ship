@@ -1004,7 +1004,7 @@ sentence = '''The entry's arguments, one word each: passed through unparsed and 
 
 [tool.live_compact]
 cmd = "live_compact"
-summary = '''Write the checkpoint summary requested by the server. Summarize everything since the previous checkpoint, including the latest ordinary tool-call round. The server retains that complete round separately and keeps every checkpoint summary.'''
+summary = '''Write the checkpoint summary requested by the server. Summarize everything since the previous checkpoint, including the latest ordinary tool-call round. The server retains that complete round separately and keeps every checkpoint summary. The summary may also cite a file as `@file(<path>)`: the citation embeds that file whole into the summary, so a later turn reads the content without opening it again -- at the cost of carrying it in every later request. Keep it short.'''
 carrier = "here"
 
 [[tool.live_compact.parameters]]
