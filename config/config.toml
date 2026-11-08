@@ -575,10 +575,10 @@ sentence = '''The program to start: a name on this machine's PATH, e.g. `bash`, 
 
 [[tool.new.parameters]]
 name = "args"
-type = "array"
+type = "array|object"
 items = "string"
 positional = 2
-sentence = '''Its words, one per element. Omitted, the words `[channel.<name>]` declares are used.'''
+sentence = '''Its words, one per element -- or, for a `kind = "cmd"` channel such as `GONGGA_CLI`, one table of that command's arguments, `{"cmd": "send_message", "message": "hi"}`. Omitted, the words `[channel.<name>]` declares are used.'''
 
 [[tool.new.parameters]]
 name = "remote"
