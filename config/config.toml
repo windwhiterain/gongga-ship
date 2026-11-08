@@ -401,7 +401,7 @@ job_id = '''The id the `background` call answered with. A job belongs to the ses
 wait_ms = '''If the job is still running, wait up to this many milliseconds for it to end before answering. Passing it answers `running` and leaves the job going; it never stops it. Defaults to 0, which answers now.'''
 
 [tool_text.wait]
-description = '''Stay in this turn until something arrives for this session: the report of a background job that finished, the news of a `subscribe` whose pattern matched, or a message from a person. It consumes nothing -- whatever arrived is delivered at the next step boundary, the same way every other queued message is -- so this call is how an agent waits without giving up its turn, and without polling. With no `timeout_ms` it waits for the same ceiling a `bash` call gets; when that passes it says nothing arrived, which is not an error.'''
+description = '''Stay in this turn until something arrives for this session: the report of a background job that finished, the news of a `subscribe` whose pattern matched, or a message from a person. It consumes nothing -- whatever arrived is delivered at the next step boundary, the same way every other queued message is -- so this call is how an agent waits without giving up its turn, and without polling. With no `time` it waits for the same ceiling a `bash` call gets; when that passes it says nothing arrived, which is not an error.'''
 
 [tool_text.wait.arguments]
 timeout_ms = '''Give up after this many milliseconds. This is a limit on waiting, not on the news: passing it returns what has not arrived, and nothing is lost.'''
@@ -757,7 +757,7 @@ sentence = '''If the job is still running, wait up to this many milliseconds for
 
 [tool.wait]
 cmd = "wait"
-# Waiting is this tool's whole work, so a call's own `timeout_ms` is the answer to
+# Waiting is this tool's whole work, so a call's own `time` is the answer to
 # "how long", not a clock the turn puts on it: without this the row's `timeout_ms`
 # is all a call can ever get.
 owns_its_wait = true
@@ -766,7 +766,7 @@ timeout_ms = 120000
 tunneled = false
 
 [[tool.wait.parameters]]
-name = "timeout_ms"
+name = "time"
 type = "integer"
 sentence = '''Give up after this many milliseconds. This is a limit on waiting, not on the news: passing it returns what has not arrived, and nothing is lost.'''
 

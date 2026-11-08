@@ -16,7 +16,7 @@
 # 4: the start card names `{{model}}`, a placeholder a protocol-3 server does not
 # fill -- it would install this config and print the braces into every new session's
 # card. Walking back is what keeps that machine on the 3 card it can read.
-protocol = 5
+protocol = 6
 
 # Which path in this repository is the home's config.
 config = "config/config.toml"
