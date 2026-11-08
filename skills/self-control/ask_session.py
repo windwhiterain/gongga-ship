@@ -132,11 +132,22 @@ def _answer_in(rows, session):
 
 
 def _wait(client, session, since, timeout, poll):
-    """The session's turn ends, and what it said since the question is the answer."""
+    """The session's turn ends, and what it said since the question is the answer.
+
+    The marker is remembered, not re-read: the cursor moves past the question on the
+    poll that sees it, so a window that asks again would never see it, and a question
+    answered one poll later would never be answered at all -- measured: the operator's
+    row in the first window (`asked`, nothing said), the answer in the second
+    (`said`, `asked` gone), and the loop to the deadline.
+    """
     deadline = time.time() + timeout
+    asked, said = False, []
     while True:
         rows, since, status = _read(client, session, since)
-        asked, said = _answer_in(rows, session)
+        marker, texts = _answer_in(rows, session)
+        if marker:
+            asked, said = True, []
+        said.extend(texts)
         if asked and said and status != "running":
             return said[-1]
         if time.time() >= deadline:
