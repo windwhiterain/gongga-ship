@@ -564,7 +564,7 @@ tunneled = false
 # Starting a program has nothing to read yet: a call that states no `wait` returns as
 # soon as the channel exists.
 timeout_ms = 0
-summary = '''Start a program, and read what it says. The name is the program; `args` are its words. The channel it opens keeps running, and its output waits for `check`.'''
+summary = '''Start a program, and read what it says. The name is the program; `args` are its words. The channel it opens keeps running, and its output waits for `check`. A name the config calls a cmd -- `GONGGA_CLI` -- is the exception: the call does not open a channel at all, it runs that one command and answers with its result, so its `id` is null and there is nothing to `check`.'''
 
 [[tool.new.parameters]]
 name = "name"
