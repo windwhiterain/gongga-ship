@@ -402,7 +402,7 @@ gongga-cli skill self-control new_session <新名字> [--source <来源会话>] 
 放进你 shell 的 `PATH` 最前面：
 
 ```
-gongga-cli send_message --name test1 "SELF-NOTE: ..."
+gongga-cli send_message --name test1 --message "SELF-NOTE: ..."
 ```
 
 回执「message queued for test1; it will be read at the next step」，下一个 step 就以

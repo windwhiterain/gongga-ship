@@ -180,7 +180,7 @@ def send_lesson(session, lesson):
     else:
         try:
             sent = subprocess.run(
-                [cli, "send_message", "--name", session, lesson],
+                [cli, "send_message", "--name", session, "--message", lesson],
                 capture_output=True,
                 text=True,
             )
@@ -211,7 +211,7 @@ def learner_message(session, mentor, kept):
         f"This session is empty {'down to the call you are reading this from' if kept else 'for your next request'}. "
         "Your first lesson is the message that follows this one: it carries the current objective, "
         "state, failed attempts, and next action. Everything else remains readable in the mentor.\n"
-        f"  read it:  gongga-cli get_messages --session {mentor} 1:\n"
+        f"  read it:  gongga-cli get_messages --session {mentor} --range 1:\n"
         f"  ask it:   gongga-cli skill self-control ask {mentor} \"<your question>\"\n"
         "Ask before you redo. The mentor holds the earlier attempts, the failures and why they "
         "failed, so one question costs one turn where a repeated search costs the whole search "
@@ -228,7 +228,7 @@ def mentor_message(learner):
         f"You are the mentor of `{learner}`: its complete transcript was copied into "
         "this session row for row, and this row answers its last call. The heir is "
         "continuing the current work there. Answer only what it asks, and answer it in one "
-        f"message: read its questions with `gongga-cli get_messages --session {learner} 1:`, "
+        f"message: read its questions with `gongga-cli get_messages --session {learner} --range 1:`, "
         f"reply with `gongga-cli send_message --message \"<your answer>\" --name {learner}`. "
         "Put the whole answer in your own turn as well: that turn is what the heir's "
         "`ask_session` reads, and a message alone leaves that reader with your receipt. "

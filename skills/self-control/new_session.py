@@ -117,10 +117,10 @@ def _options(source, name, model=None, thinking=None, ctx_limit=None,
 
 
 def _words(name, options):
-    """`set_session`'s command line: the name as a bare word, then one flag and its
-    value per argument. Nothing runs this -- the dry run prints it, and the unit
-    test asserts on it."""
-    words = [name]
+    """`set_session`'s command line: the name as a flag, then one flag and its value
+    per argument. Nothing runs this -- the dry run prints it, and the unit test
+    asserts on it."""
+    words = ["--name", name]
     for flag, value in options.items():
         words += [f"--{flag}", value]
     return words

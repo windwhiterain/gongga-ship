@@ -185,7 +185,7 @@ def test_new_session_reads_the_caller_row():
         os.environ["GONGGA_HOME"] = home.dir
         os.environ["GONGGA_SESSION"] = "me"
         line = ns.new_session("fresh2", dry_run=True)
-        assert line.startswith("set_session fresh2 --model fake/flash"), line
+        assert line.startswith("set_session --name fresh2 --model fake/flash"), line
         assert "--cwd C:/work" in line, line
     finally:
         os.environ.clear()

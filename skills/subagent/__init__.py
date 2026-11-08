@@ -18,7 +18,7 @@ inherited on the machine it means something on.
 SPEC's `## Skill: subagent` names four steps. Two of them are one call here,
 because the second is worthless when it is a step somebody has to remember:
 
-1. **A new session under the caller session's name.** `set_session <name>
+1. **A new session under the caller session's name.** `set_session --name <name>
    --must_create true` takes the name and refuses a name that already exists, so choosing and
    claiming are one step: a probe followed by a create leaves a window in which
    another caller takes the name, and the loser silently joins the winner's
@@ -165,7 +165,9 @@ def _subscribe(name):
     accepted, message, _data = _command(
         [
             "subscribe",
+            "--pattern",
             pattern,
+            "--cmd",
             action,
             "--subscription",
             name,
@@ -250,7 +252,7 @@ def spawn(role, remote=None, cwd=None, model=None, context_limit=None):
             # A child nobody hears from is worse than no child: it runs work the
             # parent will never be told is finished. Undo it, and say what is left
             # behind if the undo fails too.
-            _, undone, _data = _command(["del_session", name])
+            _, undone, _data = _command(["del_session", "--name", name])
             _die(
                 f"could not subscribe {parent} to {name}'s turn ends ({said}); "
                 + (
