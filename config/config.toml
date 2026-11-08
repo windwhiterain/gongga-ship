@@ -552,9 +552,6 @@ until = ">>> "
 
 # Not a program: `new` answers this name through the command layer, with the caller's
 # session filled into the argument the command declares as one.
-[channel.GONGGA_CLI]
-kind = "cmd"
-
 # The two tools a channel is spoken through. Everything about them is here: no
 # tunnel arguments, because a channel already is the thing `background` used to mean,
 # and `wait` is the call's own clock.
@@ -564,7 +561,7 @@ tunneled = false
 # Starting a program has nothing to read yet: a call that states no `wait` returns as
 # soon as the channel exists.
 timeout_ms = 0
-summary = '''Start a program, and read what it says. The name is the program; `args` are its words. The channel it opens keeps running, and its output waits for `check`. A name the config calls a cmd -- `GONGGA_CLI` -- is the exception: the call does not open a channel at all, it runs that one command and answers with its result, so its `id` is null and there is nothing to `check`.'''
+summary = '''Start a program, and read what it says. The name is the program; `args` are its words. The channel it opens keeps running, and its output waits for `check`.'''
 
 [[tool.new.parameters]]
 name = "name"
