@@ -139,26 +139,6 @@ def _copy(name, parent, overrides):
 
 #: The shell the callback runs in. Its own: the same name is the same queue, and a
 #: callback behind the parent's long command is news that arrives minutes late.
-NOTICE_SHELL = "notice"
-
-
-def _relay():
-    """The command a match runs: the event, sent back to the session that armed it.
-
-    # Invariant
-
-    The address is `$GONGGA_SESSION`, which the server exports into every shell of a
-    session, so the news goes to whoever armed this and never to the subject of the
-    pattern. The three `GONGGA_EVENT_*` names are the prefix the server puts on this
-    one command line; they are gone with it. Their values are expanded, never
-    re-parsed, so a payload full of quotes is carried as data.
-    """
-    return (
-        'gongga-cli send_message --name "$GONGGA_SESSION" '
-        '--message "$GONGGA_EVENT_KIND $GONGGA_EVENT_SESSION: $GONGGA_EVENT_PAYLOAD"'
-    )
-
-
 def _subscribe(name):
     """Arms the caller's ears for `name`'s turn ends, returning what was armed.
 
@@ -169,21 +149,30 @@ def _subscribe(name):
     children would hear about the wrong one and wait on the right one for nothing.
     The name is a session's, not a regex's, so it is escaped before it is a pattern.
 
-    The action is part of arming, not a second step: a subscription whose row
-    carries nothing fires and tells nobody, and the server refuses to write one.
+    The action is a command, sent as one: SPEC's `subscribe(id?, pattern, cmd,
+    session)` runs the command in the subscriber's session, so the news is a
+    `send_message` to the parent -- the same call the parent would make itself --
+    and the log row it leaves behind is where the event's own fields are read.
     """
     pattern = f"^turn_end:{re.escape(name)}$"
+    parent = os.environ.get("GONGGA_SESSION", "")
+    action = json.dumps(
+        {
+            "name": "send_message",
+            "args": {"name": parent, "message": f"{name} finished its turn"},
+        }
+    )
     accepted, message, _data = _command(
         [
             "subscribe",
-            name,
             pattern,
+            action,
+            "--subscription",
+            name,
+            "--session",
+            parent,
             "--persistant",
             "true",
-            "--bash",
-            NOTICE_SHELL,
-            "--cmd",
-            _relay(),
         ]
     )
     if not accepted:
