@@ -122,10 +122,16 @@ def sftp_quote(value: str) -> str:
 
 
 def local_sftp_path(path: Path) -> str:
-    text = str(path).replace("\\", "/")
-    if os.name == "nt" and len(text) > 2 and text[1] == ":":
-        return "/" + text[0].lower() + text[2:]
-    return text
+    """The local half of an sftp put.
+
+    # Invariant
+
+    The local side is read by the local OS, so it is spelled the way that OS spells
+    it: C:/dir/file on Windows. The MSYS form /c/dir/file is a Git Bash path and means
+    nothing to sftp, which then reports a Windows file as missing -- an install that
+    failed at the upload over a path that only looked right.
+    """
+    return str(path).replace("\\", "/")
 
 
 def runner_command(runner: str) -> str:
