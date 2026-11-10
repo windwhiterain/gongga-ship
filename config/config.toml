@@ -558,9 +558,9 @@ until = ">>> "
 [tool.new]
 cmd = "new"
 tunneled = false
-# Starting a program has nothing to read yet: a call that states no `wait` returns as
-# soon as the channel exists.
-timeout_ms = 0
+# Four seconds: enough for a program to say its first line. A call that states no `wait`
+# waits this long, and returns whatever the program has said by then.
+timeout_ms = 4000
 summary = '''Start a program, and read what it says. The name is the program; `args` are its words. The channel it opens keeps running, and its output waits for `check`.'''
 
 [[tool.new.parameters]]
