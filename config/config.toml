@@ -532,10 +532,11 @@ timeout_ms = '''How long this call may hold the turn. Past it the call neither f
 
 # ---------------------------------------------------------------- the channels
 #
-# What `new` knows about a name: whether it starts a program or routes to a cmd, the
-# words it starts with, how an input reaches it, and what ends a reply. A name this
-# table does not mention is a program started with the call's own words and framed by
-# the call's own `until` -- that is what "raw" means, and it is the usual case.
+# What `exec` knows about a program: the words it starts with, how an input reaches
+# it, and what ends a reply. The table is keyed by the program's name, so a path to
+# one is read by its stem (`.../bash.exe` is `[channel.bash]`); a program this table
+# does not mention is started with the call's own words and framed by the call's own
+# `until` -- that is what "raw" means, and it is the usual case.
 
 [channel.bash]
 spawn = ["--norc", "--noprofile"]
@@ -550,88 +551,61 @@ spawn = ["-u", "-i"]
 write = "{{input}}\n"
 until = ">>> "
 
-# Not a program: `new` answers this name through the command layer, with the caller's
-# session filled into the argument the command declares as one.
 # The two tools a channel is spoken through. Everything about them is here: no
 # tunnel arguments, because a channel already is the thing `background` used to mean,
 # and `wait` is the call's own clock.
-[tool.new]
-cmd = "new"
+# One verb for both halves: `bin` starts a program, and the `id` it answers by is how
+# every later call speaks to it -- there is no second verb for reading.
+[tool.exec]
+cmd = "exec"
 tunneled = false
 # Four seconds: enough for a program to say its first line. A call that states no `wait`
-# waits this long, and returns whatever the program has said by then.
+# waits this long, and returns whatever the program has said by then. A read gives up
+# only at the program's end or at the text `[channel.<name>]` ends a reply with.
 timeout_ms = 4000
-summary = '''Start a program, and read what it says. The name is the program; `args` are its words. The channel it opens keeps running, and its output waits for `check`.'''
+summary = '''Run a program as a channel, or read the one already running. `bin` and `args` start it; the `id` it answers by is how a later call speaks to it again, with no `bin`. Each call takes the output nobody has read yet -- a window that moves, so what one call took the next does not see. Long output is capped, the whole of it kept in a file the answer names.'''
 
-[[tool.new.parameters]]
-name = "name"
-required = true
+[[tool.exec.parameters]]
+name = "bin"
 positional = 1
-hint = "name"
-sentence = '''The program to start: a name on this machine's PATH, e.g. `bash`, `python`, `git`.'''
+hint = "path"
+sentence = '''The program to run: a name on this machine's PATH, or a path to it -- `bash`, `python`, `C:////Program Files\\Git\\bin\\bash.exe`. Omitted, this call speaks to the channel `id` names, as the program it was started as.'''
 
-[[tool.new.parameters]]
+[[tool.exec.parameters]]
 name = "args"
 type = "array|object"
 items = "string"
 positional = 2
-sentence = '''Its words, one per element -- or, for a `kind = "cmd"` channel such as `GONGGA_CLI`, one table of that command's arguments, `{"cmd": "send_message", "message": "hi"}`. Omitted, the words `[channel.<name>]` declares are used.'''
+sentence = '''Its words, one per element -- or, for a `kind = "cmd"` channel such as `GONGGA_CLI`, one table of that command's arguments, `{"cmd": "send_message", "message": "hi"}`. Omitted, the words `[channel.<name>]` declares are used. Only a program about to start takes them.'''
 
-[[tool.new.parameters]]
+[[tool.exec.parameters]]
+name = "input"
+sentence = '''One line to write to the program, through the spelling `[channel.<name>]` gives.'''
+
+[[tool.exec.parameters]]
+name = "id"
+hint = "path"
+sentence = '''The name it answers by, in this session's namespace. Omitted: `/<bin>/default`, so a second call about the same program speaks to the same channel. A name already running is that channel, and a `bin` that is a different program is refused rather than started twice.'''
+
+[[tool.exec.parameters]]
+name = "wait"
+type = "integer"
+sentence = '''Milliseconds to wait for output. Omitted is this server's default; `0` returns at once with whatever has arrived.'''
+
+[[tool.exec.parameters]]
+name = "until"
+sentence = '''Read until this text appears, and answer with what came before it. Omitted, `[channel.<name>]` may name one.'''
+
+[[tool.exec.parameters]]
 name = "remote"
 hint = "name"
 completion = "remotes"
 sentence = '''Which machine it runs on, named by `[remotes]`. Omitted is the session's own; naming another is not a change of session.'''
 
-[[tool.new.parameters]]
+[[tool.exec.parameters]]
 name = "cwd"
 hint = "path"
 sentence = '''Where the program starts. Omitted: this session's directory when it asked for this session's machine, else that machine's own.'''
-
-[[tool.new.parameters]]
-name = "id"
-hint = "path"
-sentence = '''The name to open it under. Omitted is generated from the session and the program. A name in use is refused: `check` speaks to that one.'''
-
-[[tool.new.parameters]]
-name = "input"
-sentence = '''One line to write to the program, through the spelling `[channel.<name>]` gives.'''
-
-[[tool.new.parameters]]
-name = "until"
-sentence = '''Read until this text appears, and answer with what came before it. Omitted, `[channel.<name>]` may name one.'''
-
-[[tool.new.parameters]]
-name = "wait"
-type = "integer"
-sentence = '''Milliseconds to wait for output. Omitted is this server's default; `0` returns at once with whatever has arrived.'''
-
-[tool.check]
-cmd = "check"
-tunneled = false
-# A read waits for the program to say something, unless the call says otherwise.
-timeout_ms = 30000
-summary = '''What a channel has said since the last read. The window moves: what one call takes, the next does not see.'''
-
-[[tool.check.parameters]]
-name = "id"
-required = true
-positional = 1
-hint = "path"
-sentence = '''The channel to read: the name `new` answered with.'''
-
-[[tool.check.parameters]]
-name = "input"
-sentence = '''One line to write to the program first.'''
-
-[[tool.check.parameters]]
-name = "until"
-sentence = '''Read until this text appears. Omitted, `[channel.<name>]` may name one.'''
-
-[[tool.check.parameters]]
-name = "wait"
-type = "integer"
-sentence = '''Milliseconds to wait for output. Omitted is this server's default; `0` returns at once.'''
 
 # Reached by name, never offered to the model: the command layer still runs
 # these (`gongga-cli bash …`), and a subscription action runs in one of them.
