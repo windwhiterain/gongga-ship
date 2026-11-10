@@ -488,3 +488,39 @@ carrier = "here"
 name = "summary"
 required = true
 sentence = '''The agent-written summary of the segment since the previous checkpoint. File and skill references are embedded directly in the stored checkpoint.'''
+
+# A skill is called by the harness command, and never offered to the model:/n# SPEC's `## Skill` is a command, so the row is an operator route only.
+[tool.skill]
+cmd = "skill"
+summary = '''Run the entry a skill declares, or list what is installed.
+
+With no `name`: one row per skill this session can open -- what to call it, the line saying what it is for, the `SKILL.md` to read, and which root it came from (`project` for this checkout, `harness` for the home, `general` for the machine, in that precedence).
+
+With `name`: that skill's entry, started with your `args` and nothing between them -- no shell, so a word holding a space, a quote or a `$` arrives as it is. A skill that is a Python package publishes *functions*: the first word of `args` names which one, and the rest bind to its parameters in order (`--name value` spells one out). A script entry's program is read off its extension and its `#!` line: give the script's arguments, never its interpreter. The entry's own output comes back and its exit code is this call's `ok`, so a non-zero one is the skill failing, not this tool. A skill that is a body with no entry refuses, naming the `SKILL.md` to read instead, and a name installed in two roots refuses rather than picking one.
+
+It runs on this machine in the session's directory, whatever machine the session works on: an entry is a file this server can open. Use `exec` when the program is yours to name; use this when the skill owns it.'''
+carrier = "worker"
+offered = false
+
+[[tool.skill.parameters]]
+name = "name"
+positional = 1
+hint = "name"
+completion = "skills"
+sentence = '''The skill's name, as a row of the list spells it. Omit it and this answers with the list instead.'''
+
+[[tool.skill.parameters]]
+name = "args"
+type = "array"
+items = "string"
+positional = 2
+sentence = '''The entry's arguments, one word each: passed through unparsed and unquoted, so a word holding a space or a `$` needs no escaping and gets none.'''
+
+[tool_text.skill]
+description = """Run the entry a skill declares, or list what is installed.
+
+With no `name`: one row per skill this session can open -- what to call it, the line saying what it is for, the `SKILL.md` to read, and which root it came from (`project` for this checkout, `harness` for the home, `general` for the machine, in that precedence).
+
+With `name`: that skill's entry, started with your `args` and nothing between them -- no shell, so a word holding a space, a quote or a `$` arrives as it is. A skill that is a Python package publishes *functions*: the first word of `args` names which one, and the rest bind to its parameters in order (`--name value` spells one out). A script entry's program is read off its extension and its `#!` line: give the script's arguments, never its interpreter. The entry's own output comes back and its exit code is this call's `ok`, so a non-zero one is the skill failing, not this tool. A skill that is a body with no entry refuses, naming the `SKILL.md` to read instead, and a name installed in two roots refuses rather than picking one.
+
+It runs on this machine in the session's directory, whatever machine the session works on: an entry is a file this server can open. Use `exec` when the program is yours to name; use this when the skill owns it."""
