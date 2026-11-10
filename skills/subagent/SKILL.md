@@ -80,7 +80,7 @@ stdout 只有一行名字（给 `$(…)` 用）；哪个名字被占了、订阅
 
 ```bash
 $G subscribe main/impl '^turn_end:main/impl$' --persistant true \
-  --bash notice --cmd 'gongga-cli send_message --name "$GONGGA_SESSION" \
+  --bash notice --cmd 'gongga-cli send_message --session "$GONGGA_SESSION" \
     --message "$GONGGA_EVENT_KIND $GONGGA_EVENT_SESSION: $GONGGA_EVENT_PAYLOAD"'
 ```
 
@@ -135,7 +135,7 @@ $G events --kind subscription --session "$GONGGA_SESSION" --since <派活前的 
 ## 派活：`send_message`
 
 ```bash
-$G send_message --name "$name" "$(cat <<'BRIEF'
+$G send_message --session "$name" "$(cat <<'BRIEF'
 实现 @file(docs/notes/plan.md) 里的第一步。约定见 @skill(whiting-dev)。
 验收：cargo test -p gongga-server 绿。不要动 docs/。
 BRIEF
@@ -234,7 +234,7 @@ $G skill model_pool status              # 每个模型：档位、能不能用�
 
 ## brief 是它的第一句话：引用写进去
 
-`send_message --name <name> <brief>` 的 brief 就是子 agent 的**第一条** user 消息，而它的 index 就是**那一次**写下的：
+`send_message --session <name> <brief>` 的 brief 就是子 agent 的**第一条** user 消息，而它的 index 就是**那一次**写下的：
 brief 里写的 `@file(...)` / `@skill(...)` 的正文进系统提示的 index，一次付费，之后每一轮都是命中；
 消息里 `@file(...)` 保持字面，`@skill(...)` 留成带路径的指针。
 

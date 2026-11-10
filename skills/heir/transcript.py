@@ -180,7 +180,7 @@ def send_lesson(session, lesson):
     else:
         try:
             sent = subprocess.run(
-                [cli, "send_message", "--name", session, "--message", lesson],
+                [cli, "send_message", "--session", session, "--message", lesson],
                 capture_output=True,
                 text=True,
             )
@@ -229,7 +229,7 @@ def mentor_message(learner):
         "this session row for row, and this row answers its last call. The heir is "
         "continuing the current work there. Answer only what it asks, and answer it in one "
         f"message: read its questions with `gongga-cli get_messages --session {learner} --range 1:`, "
-        f"reply with `gongga-cli send_message --message \"<your answer>\" --name {learner}`. "
+        f"reply with `gongga-cli send_message --message \"<your answer>\" --session {learner}`. "
         "Put the whole answer in your own turn as well: that turn is what the heir's "
         "`ask_session` reads, and a message alone leaves that reader with your receipt. "
         "Do not start work of your own here."

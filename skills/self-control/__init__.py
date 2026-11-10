@@ -43,7 +43,7 @@ def ask(session, question):
 
 
 def new_session(name, source=None, model=None, thinking=None, ctx_limit=None,
-                cache_tier=None, cache_keepalive=None, mode=None, remote=None,
+                cache_tier=None, keep_alive=None, mode=None, remote=None,
                 cwd=None, dry_run=False):
     """Open a new session that copies my own configuration (§4c).
 
@@ -56,5 +56,5 @@ def new_session(name, source=None, model=None, thinking=None, ctx_limit=None,
     """
     return _new_session.new_session(name, source=source, model=model, thinking=thinking,
                                     ctx_limit=ctx_limit, cache_tier=cache_tier,
-                                    cache_keepalive=cache_keepalive, mode=mode,
+                                    keep_alive=keep_alive, mode=mode,
                                     remote=remote, cwd=cwd, dry_run=dry_run)

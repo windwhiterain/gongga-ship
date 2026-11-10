@@ -284,7 +284,7 @@ gongga 里更短的一层是 `gongga-cli skill self-control ask <会话名> "<�
 不用去猜哪一段是谁说的。等的是"问题那一行之后、它这一轮结束"，不是"最后一行输出"。
 
 **会话名是位置参数，问题在它后面。** 这不是随意的：`send_message` 的位置参数是
-`--message` 在前、`--name` 在后，所以 `send_message <会话名> "…"` 会被读成「问题=会话名」，
+`--message` 在前、`--session` 在后，所以 `send_message <会话名> "…"` 会被读成「问题=会话名」，
 问题发给了空名字。`ask_session` 把会话名放在前面，正是为了躲开这个坑。
 
 **问的时候把问题说具体**：要什么答案、为什么现在要。"当时能不能这么写"只能换来一句"能"，
@@ -311,7 +311,7 @@ gongga 里更短的一层是 `gongga-cli skill self-control ask <会话名> "<�
 ```bash
 gongga-cli skill self-control new_session <新名字> [--source <来源会话>] \
     [--model <model>] [--thinking <level>] [--ctx_limit <n%>] [--cache_tier <name>] \
-    [--cache_keepalive <bool>] [--mode <work|explore>] [--remote <name>|none] [--cwd <dir>] \
+    [--keep_alive <bool>] [--mode <work|explore>] [--remote <name>|none] [--cwd <dir>] \
     [--dry_run true]
 ```
 
@@ -342,7 +342,7 @@ gongga-cli skill self-control new_session <新名字> [--source <来源会话>] 
 | thinking | 来源有则复制；NULL 不发 | `--thinking`（`default` 清除已设的） | — |
 | ctx_limit | 来源有则复制；NULL 不发 | `--ctx_limit` | — |
 | cache_tier | 来源有则复制；NULL 不发 | `--cache_tier` | — |
-| cache_keepalive | 复制（来源必有值，true/false） | `--cache_keepalive` | — |
+| cache_keepalive | 复制（来源必有值，true/false） | `--keep_alive` | — |
 | mode | 来源有则复制；NULL 不发 | `--mode` | — |
 | remote | 复制来源的机器（本机则不发参数） | `--remote` / `--remote none` | — |
 | cwd | 目标机器 == 来源机器时复制 | `--cwd`（在目标机器上解释） | 机器不同时绝不复制 |
@@ -402,7 +402,7 @@ gongga-cli skill self-control new_session <新名字> [--source <来源会话>] 
 放进你 shell 的 `PATH` 最前面：
 
 ```
-gongga-cli send_message --name test1 --message "SELF-NOTE: ..."
+gongga-cli send_message --session test1 --message "SELF-NOTE: ..."
 ```
 
 回执「message queued for test1; it will be read at the next step」，下一个 step 就以

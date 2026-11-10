@@ -104,7 +104,7 @@ def _options(source, name, model=None, thinking=None, ctx_limit=None,
         options["cache_tier"] = str(chosen)
     chosen = cache_keepalive if cache_keepalive is not None else source.get("cache_keepalive")
     if chosen is not None:
-        options["cache_keepalive"] = "true" if chosen else "false"
+        options["keep_alive"] = "true" if chosen else "false"
     chosen = mode if _given(mode) else source.get("mode")
     if chosen:
         options["mode"] = str(chosen)
@@ -120,19 +120,19 @@ def _words(name, options):
     """`set_session`'s command line: the name as a flag, then one flag and its value
     per argument. Nothing runs this -- the dry run prints it, and the unit test
     asserts on it."""
-    words = ["--name", name]
+    words = ["--id", name]
     for flag, value in options.items():
         words += [f"--{flag}", value]
     return words
 
 
 def mapping(source, name, model=None, thinking=None, ctx_limit=None,
-            cache_tier=None, cache_keepalive=None, mode=None, remote=None,
+            cache_tier=None, keep_alive=None, mode=None, remote=None,
             cwd=None):
     """The `set_session` words for the fresh session: `_options` rendered."""
     return _words(name, _options(source, name, model=model, thinking=thinking,
                                  ctx_limit=ctx_limit, cache_tier=cache_tier,
-                                 cache_keepalive=cache_keepalive, mode=mode,
+                                 cache_keepalive=keep_alive, mode=mode,
                                  remote=remote, cwd=cwd))
 
 
@@ -174,7 +174,7 @@ def _create(name, options):
 
 
 def new_session(name, source=None, model=None, thinking=None, ctx_limit=None,
-                cache_tier=None, cache_keepalive=None, mode=None, remote=None,
+                cache_tier=None, keep_alive=None, mode=None, remote=None,
                 cwd=None, dry_run=False):
     """Create a session with my configuration; answer its name, or the planned
     command when `dry_run` -- the caller's own row is the only record of what
@@ -194,7 +194,7 @@ def new_session(name, source=None, model=None, thinking=None, ctx_limit=None,
     if row is None:
         raise RuntimeError(f"no session named {source!r}: nothing to copy from")
     options = _options(row, name, model=model, thinking=thinking, ctx_limit=ctx_limit,
-                       cache_tier=cache_tier, cache_keepalive=cache_keepalive,
+                       cache_tier=cache_tier, cache_keepalive=keep_alive,
                        mode=mode, remote=remote, cwd=cwd)
     if dry_run:
         return "set_session " + shlex.join(_words(name, options))

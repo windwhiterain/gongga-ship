@@ -155,9 +155,9 @@ any other name is refused -- a session works on one machine, and moving it is
 `set_session --remote`, not a tool argument.
 
 ```bash
-gongga-cli set_session --name build --model provider/model --remote build \
+gongga-cli set_session --id build --model provider/model --remote build \
     --cwd /home/build/project
-gongga-cli send_message --name build --message \
+gongga-cli send_message --session build --message \
     'Run pwd there with remote_bash, then read this machine with bash.'
 ```
 
