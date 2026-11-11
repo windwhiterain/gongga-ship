@@ -27,11 +27,11 @@ harness 给你四类杠杆：**回合**（turn）、**进程**（谁能收尸）
 那个 `id` 就是对它说话（读新输出或写一行 input）。回合被取消或 `del_channel` 会结束它
 （§1 有细节），别假设一个被结束的 channel 还在。
 
-**`gongga-cli` 是这台服务端的命令层**，就在 `PATH` 首位，给人敲的。一条命令打印
-**每行一个 JSON 事件**，最后一行是 `cmd_result`——所以 `| jq`、`| grep` 只拿你要的那部分，
-不必整段读。**脚本不要起这个进程**：同一个模块 import 进来就是一个 `Reply`（§0b）。
-`$GONGGA_SESSION` 是你自己的会话名，
-`$GONGGA_SERVER`、`$GONGGA_HOME` 都在环境里；`gongga-cli` 裸跑列出这个服务端发布了什么。
+**`gongga-cli` 是这台服务端的命令层**，就在 `PATH` 首位。它只读**一个 JSON Cmd**：
+`gongga-cli '{"name":"<cmd>","args":{...}}'`（SPEC `Cmd={name,args}`），没有 `--flag` 形式。
+一条命令打印**每行一个 JSON 事件**，最后一行是 `cmd_result`——所以 `| jq`、`| grep` 只拿你要的
+那部分。**脚本不要起这个进程**：同一个模块 import 进来就是一个 `Reply`（§0b）。
+`$GONGGA_SESSION` 是你自己的会话名，`$GONGGA_SERVER`、`$GONGGA_HOME` 都在环境里。
 
 **调 server cmd 也可以直接一个 tool call**：用命令自己的名字当工具名发 call，参数按它的
 schema 给。schema **不注册进工具列表，由 skill 告诉你**——这就是 SPEC 的 `fn <tool>(**args)`。
@@ -45,8 +45,9 @@ schema 给。schema **不注册进工具列表，由 skill 告诉你**——这�
 | `ls_session` | `path` | 按名字前缀列会话 |
 | `interrupt_session` | `id*` | 停某会话这一轮 |
 
-全量目录与每个命令的参数：`gongga-cli` 裸跑列出。到命令层共三条路：`gongga-cli` 程序（上面）、
-直接以命令名 tool call（这条）、Python 的 `server.call`（§0b）。`exec` 只起程序（channel），不调 cmd。
+命令的 schema 由 skill 告知（上表是常用的）；`ls_skill` 列出有哪些 skill。到命令层共三条路：
+`gongga-cli` 程序（上面）、直接以命令名 tool call（这条）、Python 的 `server.call`（§0b）。
+`exec` 只起程序（channel），不调 cmd。
 
 **别把 `/xxx` 当命令**：交互输入行里的 `/` 是另一层语法，脚本和 shell 里只写裸名字
 （§9 有代价记录）。
@@ -100,7 +101,7 @@ answer = ask("mentor", "我当时是怎么写的？")
 ```
 
 脚本形态（`"$SKILL_DIR/ask_session.py" <会话> "<问题>"`）和
-`gongga-cli skill self-control ask …` 只是同一批函数的外壳。
+`gongga-cli '{"name":"skill","args":{"name":"self-control","args":["ask",…]}}'` 只是同一批函数的外壳。
 
 ---
 
@@ -252,7 +253,7 @@ SKILL_DIR=<本 SKILL.md 所在目录>          # `@skill(...)` 展开里括号�
 "$SKILL_DIR/ask_session.py" <会话名> "<问题>"
 ```
 
-gongga 里更短的一层是 `gongga-cli skill self-control ask <会话名> "<问题>"`：`self-control`
+gongga 里更短的一层是 `gongga-cli '{"name":"skill","args":{"name":"self-control","args":["ask","<会话名>","<问题>"]}}'`：`self-control`
 是个 Python 包，第一个词是函数名（`ask` 是本包的函数），参数原样传过去，退出码就是入口的。
 
 它做两件事，一次调用做完：**把问题递过去**，然后**等答复**。答复是对方会话自己 transcript 里
@@ -285,13 +286,10 @@ gongga 里更短的一层是 `gongga-cli skill self-control ask <会话名> "<�
 覆盖），所以这里加一个字段，孩子下一次就有，不必两边各改一遍。
 
 ```bash
-gongga-cli skill self-control new_session <新名字> [--source <来源会话>] \
-    [--model <model>] [--thinking <level>] [--ctx_limit <n%>] [--cache_tier <name>] \
-    [--keep_alive <bool>] [--mode <work|explore>] [--remote <name>|none] [--cwd <dir>] \
-    [--dry_run true]
+gongga-cli '{"name":"skill","args":{"name":"self-control","args":["new_session","<新名字>","--source","<来源会话>","--model","<model>","--ctx_limit","<n%>","--dry_run","true"]}}'
 ```
 
-参数名就是字段名，`--name value` 或按位置传。`--dry_run true` 只把将要发出去的参数渲染成一行
+args 里第一个词是函数名 `new_session`，其余按 `--name value` 或位置绑定到它的参数（可选字段见下）。`--dry_run true` 只把将要发出去的参数渲染成一行
 `set_session` 打印出来，什么都不建——真正建会话那一步是一次 `server.call("set_session", ...)`
 （§0b），不经过命令行：同一张参数表既决定发什么，也决定 dry run 显示什么，所以两者不会走散。先看清再动手。
 
@@ -378,7 +376,7 @@ gongga-cli skill self-control new_session <新名字> [--source <来源会话>] 
 放进你 shell 的 `PATH` 最前面：
 
 ```
-gongga-cli send_message --session test1 --message "SELF-NOTE: ..."
+gongga-cli '{"name":"send_message","args":{"session":"test1","message":"SELF-NOTE: ..."}}'
 ```
 
 回执「message queued for test1; it will be read at the next step」，下一个 step 就以
@@ -463,10 +461,8 @@ EOF
 - **把 `exec` 的 `wait` 当 kill。** 它不杀；程序还在那个 channel 里跑，输出稍后自己回来。
 - **`cat` 溢出文件。** 它们可能很大；用 `sed -n` / `grep`。
 - **第二次 `exec` 读期待同样输出。** 读即取走；第二次只会拿到新的部分。
-- **在 shell 里 `gongga-cli /cancel`。** `/` 只属于交互式输入行；这里 `/cancel` 会被
-  Git Bash 当路径改写成 `C:/.../Git/cancel`。argv 已经是 token，起这个进程的人已经写下了
-  命令名，没有第二层语法要再解一遍：写裸名字 `gongga-cli cancel`（Python 脚本里是 `server.call("cancel")`，§0b）。
-  带 `/` 或带路径分隔符的第一个 token 会被命令层拿最后一段去目录里查，命中就告诉你正确写法。
+- **拿 flag 形式调 `gongga-cli`。** 它只读一个 JSON Cmd：`gongga-cli '{"name":"cancel","args":{}}'`。
+  `--name value` 那套已经没了（Python 脚本里是 `server.call("cancel")`，§0b）。
 - **拿 `exec` 调 server cmd。** `exec` 只起程序（channel），`args` 是一列词。调命令直接用
   命令名当工具名发 call（schema 见 §0），不经 `exec`。
 - **在 shell 里 `kill <pid>` 停 channel。** MSYS pid 不等于 Windows pid，`taskkill` 认不出来；
@@ -540,7 +536,7 @@ EOF
 **桶的路径不是调用方式。** 跑一个 skill 自己的脚本，一律从**它自己的目录**出发：
 `@skill(...)` 展开里括号中的 `<path>` 的父目录就是那个目录（`skill` 的 `path` 列同源）。
 home 会搬、桶会变，把桶的路径写进正文，别的 harness 读到的就是一个不存在的命令。
-gongga 里更短的一层是 `gongga-cli skill <name> [args…]`，它按同样的三根优先级解析。
+gongga 里更短的一层是 `gongga-cli '{"name":"skill","args":{"name":"<name>","args":[…]}}'`，它按同样的三根优先级解析。
 本技能就是这样一个包：入口是它发布的函数 `ask` / `new_session`——package 优先于
 frontmatter 的 `metadata.entry`（即使写了也不读，所以本文件不写）；第一个词是函数名，
 其余按位置或 `--name value` 绑定，返回值是答复（字符串打印、整数作退出码、其它作 JSON）。
