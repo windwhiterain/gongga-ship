@@ -1,6 +1,6 @@
 ---
 name: providers
-description: 一个会话因为**供应商**而失败时，服务端把 `@monitor/providers` 交给你，并用这份文件当你的起点——除了 `@monitor/disk`（满盘，读 `clean-disk`），这是唯一的 error 型 monitor：只收 LLM 请求相关的失败（请求被拒、流没结束、模型不在 roster、没有 key），别的错误不会叫醒它。你要回答的是「是鉴权、额度、模型还是 harness」并把该改的那一处改对：本文件给的是这台机器上 roster / 密钥 / 额度脚本的位置与规则、复现一次失败的最小方法、以及「改了什么才算修好」。普通 agent 拿到它也照此更新 provider。
+description: 一个会话因为**供应商**而失败时，服务端把 `@monitor/providers` 交给你，并用这份文件当你的起点——除了 `@monitor/disk`（满盘，读 `clean-disk`），这是唯一的 error 型 monitor：只收 LLM 请求相关的失败（请求被拒、流没结束、模型不在 roster、没有 key），别的错误不会叫醒它。你要回答的是「是鉴权、额度、模型还是 harness」并把该改的那一处改对：本文件给的是这台机器上 roster / 密钥 / 额度脚本的位置与规则、复现一次失败的最小方法、以及「改了什么才算修好」。控制台会话 cookie 缺席（`qwen-console` / `minimax-console`）时走 §4b：从用户已登录的浏览器里拿，不用等人去签。普通 agent 拿到它也照此更新 provider。
 ---
 
 # Providers
@@ -16,7 +16,7 @@ description: 一个会话因为**供应商**而失败时，服务端把 `@monito
 | 层 | 长什么样 | 谁修 |
 | --- | --- | --- |
 | 供应商 | `401`/`403`（key 无效、模型未购买）、`402`/`429`（欠费/限流）、4xx 参数、上游 5xx | 换 key / 换模型 / 等；roster 只记事实 |
-| 配置 | 模型不在 roster、`key_env` 指向的变量没有值、模型名写错、`context` 没声明、额度脚本读不出来 | 本文件 §3–§5，改 roster 或脚本 |
+| 配置 | 模型不在 roster、`key_env` 指向的变量没有值、模型名写错、`context` 没声明、额度脚本读不出来 | 本文件 §3–§5（cookie 缺席看 §4b），改 roster 或脚本 |
 | harness | panic、请求体构造错、状态机、迁移 | 不是这份报告的范围；说清楚并停 |
 
 **别猜，复现。** 拿 roster 里的端点和 key，用 `curl` 在 harness 之外发一次同样的请求
@@ -80,10 +80,47 @@ curl -sS -o /dev/null -w '%{http_code}\n' "$BASE/chat/completions" \
   `credit-left`（预付积分：钱，不是百分比）。
 - **凭据**：多数 reader 要的是 provider 的 API key；有的要**控制台会话 cookie**，那就自己从
   `~/.agents/keys.toml` 的独立条目读（例：`minimax-console`），拿不到就明确拒绝，别把 API key
-  当 cookie 发出去。
+  当 cookie 发出去。取 cookie 的四步和四个坑在 §4b。
 - **绝不转发响应里的秘密**：有的端点会把账户的 `api_key` 原样带回来（MiniMax 的
   `/backend/account/token_plan_credit` 就是），只取数字。
 - **没有 key 可读的额度就明说**：写进 roster 的 `note`，别让下一个人以为它坏了。
+
+## 4b. 控制台会话 cookie：这台机器上已有的会话，不是凭空签一个新的
+
+有的额度只在控制台里，凭据是**浏览器会话**而不是 key。reader 自己从 `~/.agents/keys.toml`
+的独立条目读（`qwen-token-plan` 的额度 → `qwen-console`，`minimax-cn` 的积分 →
+`minimax-console`）。条目缺席是「没有可问的凭据」，不是「额度为 0」，也不是「用户得重新登录」——
+两者要分开报，否则下次读的人会去查一个没坏的账号。
+
+harness 传给脚本的是**模型 key**（`providers.rs` 的 `QuotaAccess.key`，注释说「和请求一样的凭据」），
+所以 cookie 型 reader 必须自己按名字拒掉它，再自己去找会话：`qwen.py` / `minimax_credit.py` 里的
+`keystore_cookie` + `cookie_of` 就是这份形状，新写一个照抄，别发明第二套条目名。
+
+**取 cookie 的四步**（2026-11-11 对 `qwen-token-plan` 实测；日常那个浏览器里登录着就够了）：
+
+```bash
+$ gongga-cli skill browser attach          # 接用户在用的 Edge，不重启、不拷 profile
+$ gongga-cli skill browser cookies qianwenai > /项目内的临时文件
+#   ↑ 每行 `域 名 = 值`，含 HttpOnly 的 login_qianwenai_ticket
+# 拼成 name=value; name=value，写成 keys.toml 的 qwen-console
+$ gongga-cli skill browser stop            # 只释放连接，那个浏览器照常跑
+```
+
+写进去之后两步都要过：`python ~/.agents/gongga-agents/providers/qwen.py --timeout 15` 出读数，
+`gongga-cli skill model_pool status --provider <id>` 复核。
+
+四个坑，都是踩过的：
+
+| 坑 | 现象 | 原因 |
+| --- | --- | --- |
+| 用页面里的 `document.cookie` | 只拿到 `cna/tfstk/isg`，用拼出来的头去打网关回 `NotLogined` | 会话票是 HttpOnly，JS 看不见；那句 `NotLogined` 说的是「没有会话」，不是「会话过期」 |
+| 直接读浏览器的 cookie 数据库 | `Device or resource busy` | Edge 运行中独占那个文件；而且 Chromium 136 起，真实 profile 上 `--remote-debugging-port` 被静默忽略，重启浏览器也没用 |
+| 把值打印到 stdout | 值进了 transcript（`<home>/gongga.db`） | cookie 是活凭据：用文件或剪贴板搬，只打印**名字** |
+| 以为抓一次就永久 | 几天后又 `NotLogined` | 会话有寿命：`GET /tool/user/info.json` 的 `data.sessionExpireTimeStamp`（毫秒）。到期照上面四步再来一遍；在意泄露就去控制台退出重登，换一把新的 |
+
+`browse attach` 需要**人**在 `edge://inspect/#remote-debugging` 勾一次「Allow remote debugging
+for this browser instance」——这一步 agent 不代办；勾过之后这台机器上一直是开的，所以通常是
+直接 `attach` 就成。
 
 ## 5. 改完怎么证明
 
