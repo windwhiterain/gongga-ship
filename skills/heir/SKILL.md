@@ -24,7 +24,7 @@ metadata:
 
 ```bash
 # 从本 skill 的目录运行：`@skill(...)` 展开里是 `@skill(<名字>) (<path>)`，取 `<path>` 的父目录；
-# gongga 里更短：`gongga-cli skill heir read`。
+# gongga 里更短：`gongga-cli '{"name":"skill","args":{"name":"heir","args":["read"]}}'`。
 SKILL_DIR=<本 SKILL.md 所在目录>
 T="$SKILL_DIR/transcript"
 
@@ -60,8 +60,8 @@ mentor 不存在就用当前的 model 和 cwd 建一个；它是普通会话，�
 第一课走 `send_message` 而不是写进数据库，有两个原因：一，它现在就在这条 call 里跑，直接插一行会落在 call 和它的结果之间，那是 provider 不收的形状；二，一条普通消息才会被当作**空会话的首条 user 消息**处理——它命名的 `@file(...)`/`@skill(...)` 因此进 index、随前缀缓存只收一次费（机制、拼法和写错的后果见 `@skill(prefix-cache)`）。别把它改回某种"笔记列"，那正是这条路原来的样子。
 
 ```bash
-gongga-cli get_messages --session <你的会话名>/mentor --range 1:
-gongga-cli skill self-control ask <你的会话名>/mentor "<你的问题>"
+gongga-cli '{"name":"get_messages","args":{"session":"<你的会话名>/mentor","range":"1:"}}'
+gongga-cli '{"name":"skill","args":{"name":"self-control","args":["ask","<你的会话名>/mentor","<你的问题>"]}}'
 ```
 
 **先读。** 做过什么、决定过什么、哪次失败为什么失败都在原文里；`get_messages` 不走模型、不花额度。

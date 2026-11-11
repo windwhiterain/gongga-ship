@@ -28,7 +28,7 @@ when that exact content-addressed distribution is already on the peer.
 Find this skill's own directory -- `@skill(...)`'s expansion names it in parentheses,
 and so does the `path` column of `skill` -- then call its `remote` launcher.
 These examples use `R="$SKILL_DIR/remote"`, not a command assumed to be on `PATH`.
-In gongga, `gongga-cli skill remote <command>` is the same launcher, shorter.
+In gongga, `gongga-cli '{"name":"skill","args":{"name":"remote","args":["<command>"]}}'` is the same launcher, shorter.
 
 ```bash
 SKILL_DIR=<the directory this SKILL.md is in>
@@ -153,8 +153,8 @@ runs on the peer. The harness itself stays on the server machine: `gongga-cli`, 
 home's skills and the roster are not on the peer.
 
 ```bash
-gongga-cli set_session --id build --model provider/model --remote build --cwd /home/build/project
-gongga-cli send_message --session build --message 'Run pwd with exec; it runs on the peer. The harness stays on the server machine.'
+gongga-cli '{"name":"set_session","args":{"id":"build","model":"provider/model","remote":"build","cwd":"/home/build/project"}}'
+gongga-cli '{"name":"send_message","args":{"session":"build","message":"Run pwd with exec; it runs on the peer. The harness stays on the server machine."}}'
 ```
 
 `--cwd` belongs to the **peer** and must already exist there; omit it to use the peer's
