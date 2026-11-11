@@ -1,562 +1,596 @@
 ---
 name: self-control
-description: 控制"自己"的运行——本回合、自己起的进程、自己的上下文、自己的会话。当你要停/续自己的回合、要起一个活得比自己久的作业、要跨重启或压缩保留意图、要问另一个会话（mentor）一个问题并等它答、要开一个复制我自己配置的新会话、或者发现自己的输出/进程/状态不对劲时，读这个。只讲怎么用这个 harness：开第二个会话并行干活是 subagent skill，改它的源码、把它换成新的自己，是 evolve skill 的事。
-compatibility: 需要 Python 3 和 home 里的 lib/gongga.py（服务端自己写的客户端，§0b）；入口是本包的 ask / new_session，不需要 PATH 上有 gongga-cli
+description: The server's command schemas as this build publishes them -- the twenty commands a session drives itself with (send_message, new_session, set_session, del_session, ls_session, clone_session, interrupt_session, cancel, subscribe, ls_subscription, del_subscription, trigger_event, new_channel, input_channel, ls_channel, rename_channel, del_channel, get_messages, events, list_paths), each with its exact arguments and a callable example, plus the one convenience this skill publishes, `ask`, which puts a question to another session and waits for its answer. Read it when you are about to call one of these and need its argument names, which ones are required, and what the answer carries.
+compatibility: the command schemas need nothing but the server; `ask` needs Python 3 and the client the server writes at <home>/lib/gongga.py
 ---
 
-# 自我控制
+# Self control: the server's commands
 
-harness 给你四类杠杆：**回合**（turn）、**进程**（谁能收尸）、**上下文**（什么会活下来）、
-**身份**（跑着你的那个 exe）。每个都有确切的作用域，其中三个是单向门。
+This file is the schema reference for the commands a session uses to drive itself: its
+own turn and the turns of others, its sessions, its channels, its transcript, and the
+event stream. Every command below is listed with the arguments the server actually
+publishes (`crates/server/src/commands.rs`, `server_catalog`), and each one has a
+`gongga-cli` call you can paste.
 
-这份文件只讲**怎么用**这个 harness。**改它的源码、把它换成新的自己**，是 `evolve` skill 的事，
-不在这里混着写。
+It is not a second copy of SPEC: naming, `config` shapes and the last word on meaning
+are SPEC's (`## Server Cmd`). It is also not about when to use the harness versus
+changing it: two sessions working in parallel is `@skill(subagent)`, replacing the
+server itself is `@skill(evolve)`. And `ls_skill` / `run_skill` are the `@skill(skill)`
+skill's business, so they are not repeated here.
 
-先记住贯穿全文的一个问题：**谁回来收这活？** 有主的东西才谈得上"停"；channel 归会话所有，`del_channel` 停得住，而本回合被换掉时没有任何人回来。
+## The commands, by subject
 
----
+| subject | commands |
+|---|---|
+| a turn | `send_message`, `interrupt_session`, `cancel` |
+| sessions | `new_session`, `set_session`, `del_session`, `ls_session`, `clone_session` |
+| channels | `new_channel`, `input_channel`, `ls_channel`, `rename_channel`, `del_channel` |
+| reading | `get_messages`, `events` |
+| subscriptions | `subscribe`, `ls_subscription`, `del_subscription`, `trigger_event` |
+| paths | `list_paths` |
 
-## 0. 一个 channel，一条命令层
+## How a command is called, and how its arguments are written
 
-系统提示只留了身份和一句话：能跑命令、别问、别留垃圾、程序去 skill 里找。下面这些是它
-原来顺带说的事，现在住在这里。
+Three doors, one catalog:
 
-**channel 是持久的，且跨调用**：`exec` 起的程序一直在跑，工作目录、环境变量、shell 函数、
-导出的东西都留着，第一次调用就已经在会话的工作目录（也就是项目所在处）。所以要 `pwd` 一次、
-之后写相对路径；要改环境就 `export`，下一个调用还在。给它一个 `id`，之后同一个 `exec` 带
-那个 `id` 就是对它说话（读新输出或写一行 input）。回合被取消或 `del_channel` 会结束它
-（§1 有细节），别假设一个被结束的 channel 还在。
+1. **A tool call named after the command** -- SPEC's `fn <tool>(**args)`. The schema is
+   not in the tool list; it is in this file. The server routes the name to the command
+   layer and runs it with your session as the asking one.
+2. **`gongga-cli '<json>'`** -- one JSON Cmd, `{"name": "<cmd>", "args": {...}}`. It
+   prints one event per line, the last being `cmd_result` (`ok`, `message`, `data`).
+   Exit: `0` ran, `1` the server refused, `2` the line itself was wrong, `3` nothing
+   answered.
+3. **Python** -- `server.call("<cmd>", **arguments)`, one `Reply` per call. "The Python
+   client", below.
 
-**`gongga-cli` 是这台服务端的命令层**，就在 `PATH` 首位。它只读**一个 JSON Cmd**：
-`gongga-cli '{"name":"<cmd>","args":{...}}'`（SPEC `Cmd={name,args}`），没有 `--flag` 形式。
-一条命令打印**每行一个 JSON 事件**，最后一行是 `cmd_result`——所以 `| jq`、`| grep` 只拿你要的
-那部分。**脚本不要起这个进程**：同一个模块 import 进来就是一个 `Reply`（§0b）。
-`$GONGGA_SESSION` 是你自己的会话名，`$GONGGA_SERVER`、`$GONGGA_HOME` 都在环境里。
+**In the JSON form an argument is spelled by name, always.** The distinction between a
+*named* argument (`--message <text>`) and a *positional* one (`<path>`) belongs to the
+command line a person types in a window: there, positional arguments bind in the order
+published, then named ones as `--name value`. The examples here are JSON, so neither
+order nor spelling can go wrong.
 
-**调 server cmd 也可以直接一个 tool call**：用命令自己的名字当工具名发 call，参数按它的
-schema 给。schema **不注册进工具列表，由 skill 告诉你**——这就是 SPEC 的 `fn <tool>(**args)`。
-服务端把这个名字路由到命令层，在你的会话里执行；名字命令层不认识，就用它自己的话拒绝。
-常用的几个（`*` 必填）：
+**Every argument travels as a string.** A JSON boolean, number or object in place of a
+string is sent as its own JSON text, which is how `config` and a subscription's `cmd`
+travel: `true` arrives as the text `true`, and `70` as the text `70`.
 
-| 工具名 | 参数 | 干什么 |
-|---|---|---|
-| `send_message` | `message*`, `session*` | 给会话注入一条消息并跑一轮 |
-| `get_messages` | `session*`, `range` | 读 transcript 一段（如 `-20:`） |
-| `ls_session` | `path` | 按名字前缀列会话 |
-| `interrupt_session` | `id*` | 停某会话这一轮 |
+**`session` arguments carry the kind `session`.** A window fills a missing one from its
+sticky `session` entry (`set_sticky --type session --value <name>`); `gongga-cli` and
+`server.call` do not -- they send exactly the arguments they are given. So every
+`session` argument below is required in practice unless the command says it falls back
+to the caller.
 
-命令的 schema 由 skill 告知（上表是常用的）；`ls_skill` 列出有哪些 skill。到命令层共三条路：
-`gongga-cli` 程序（上面）、直接以命令名 tool call（这条）、Python 的 `server.call`（§0b）。
-`exec` 只起程序（channel），不调 cmd。
+**The server checks required arguments before it runs the command** and refuses with the
+missing names: `send_message is missing required argument(s): session`. An argument the
+catalog does not declare is *not* refused -- that is how `set_session` reads a few
+settings it does not advertise (see there).
 
-**别把 `/xxx` 当命令**：交互输入行里的 `/` 是另一层语法，脚本和 shell 里只写裸名字
-（§9 有代价记录）。
+**A path takes what is under it, by components.** Sessions, channels and subscriptions
+are named by paths: `work/a` is under `work`, and `workab` is not. An empty path means
+"every one" wherever a path is a filter.
 
----
+## Sessions
 
-## 0b. 脚本要的是 Python 面，不是命令行
+### `send_message` -- put a message into a session and run a turn
 
-**服务端把客户端写在 home 里，脚本 import 它。** `$GONGGA_HOME/lib/gongga.py`
-（`docs/notes/server-pylib.md`）：一个命令一个方法，每条答复一个 `Reply`，被拒时一个异常。
-本 skill 的 `_client.py` 找到这个目录——skill 运行器给 `GONGGA_SKILL_LIB`，服务端起的
-shell 给 `GONGGA_HOME`——然后 `import gongga`。
+| argument | spelling | required | meaning |
+|---|---|---|---|
+| `message` | named (`--message`) | yes | the text, with `@file(...)`, `@image(...)`, `@skill(...)` resolved once before it is stored |
+| `session` | named (`--session`), kind `session` | yes | the target; there is no implicit default, not even the caller |
 
-```python
-import gongga
-server = gongga.connect()          # 从 GONGGA_SERVER / GONGGA_KEY，或 home 的 server.key
-server.sessions                    # greeting 里每个会话的那一行
-server.models                      # roster 里现在真能用的 provider/model
-server.catalog                     # 这个服务端发布了哪些命令、各收什么参数
-reply = server.call("get_messages", session="x", range="-1:-1")
-server.get_messages(session="x", range="-1:-1")     # 同一个东西：名字就是命令名
+A free session starts a turn now (`message accepted by <name>`). A session already
+running gets the message at its next step boundary and is told to stop waiting
+(`message queued for <name>; the running command has been told to stop waiting`). While
+the server is stopping, the message is recorded for the next start instead.
+
+```bash
+gongga-cli '{"name":"send_message","args":{"session":"work/child","message":"the fix is in crates/server"}}'
 ```
 
-| 拿到的 | 是什么 |
-|---|---|
-| `reply.ok` / `.message` / `.data` / `.events` | 一条命令的答复：成了没有、服务端的话、它带的数、这段流上它看到的事件 |
-| `reply.raise_for_status()` | 拒绝变成 `gongga.GonggaError`，句子里是服务端原话 |
-| `server.<命令>(**参数)` | 名字来自 greeting；服务端没发布的名字在这里是 `AttributeError`，根本不发出去 |
-| `gongga.Unreachable` | 一个字都没答（端口没人、key 不对）；这跟"被拒绝"是两件事 |
-| `server.pump(seconds)` / `server.close()` | 读掉这段时间流上还到的 / 收摊（`with gongga.connect() as s:` 也行） |
+### `new_session` -- start a session under a name nobody holds
 
-**规矩：skill 的脚本里不出现 `subprocess` + `gongga-cli`。** 命令行是"人敲一行、看一行"
-的形状，脚本要的是返回值；而 `Reply` 已经把成功/拒绝、结构化数据、事件分了类。把打印出来的
-JSON 行再解析一遍，是把同一份契约抄第二遍，抄的那份一定会落后——`gongga-cli` 自己就是这份
-模块的外壳（`python/gongga_cli.py` 第一件事也是 `import gongga`）。
+| argument | spelling | required | meaning |
+|---|---|---|---|
+| `id` | named (`--id`), kind `session`, sticky | yes | the name; a path, rendered as a hierarchy |
+| `config` | named (`--config`) | no | SPEC's `SessionConfig` as one JSON object |
+| `mode` | named (`--mode`), kind `mode` | no | `work` (the default) or `explore` |
 
-**cli 不够方便的地方，用 Python 包一层再暴露 Python API，别拐回 cmd。** 本 skill 的两个
-入口都是这么来的，而且都能 import：
+SPEC's `new_session` is `set_session` that refuses a name already taken. That is why
+`must_create` is not published for this command: refusing a name in use is what the
+command means. The refusal is explicit -- it never joins the other session's transcript.
 
-| 需要 | cli 里没有 | 包一层之后 |
+#### The `config` object
+
+One JSON object, SPEC's `SessionConfig`:
+
+```json
+{
+  "model_config": {
+    "model": {"provider": "deepseek-official", "model": "deepseek-flash"},
+    "thinking": "high",
+    "ctx_limit": "70%",
+    "cache_tier": "1h"
+  },
+  "workspace": {"remote": "none", "cwd": "C:/resource/gongga"},
+  "keep_alive": true
+}
+```
+
+| field | takes | notes |
 |---|---|---|
-| 问一句并等它答完 | 没有"送到 + 等这一轮结束 + 取它的原话"这个动词 | `ask_session.ask(session, question)`：用 `get_messages --replay true` 读回它的行（§4b） |
-| 复制我自己的调参 | greeting 的会话行不带 `cache_tier` / `cache_keepalive` / `mode` | `new_session.new_session(...)`：只读打开 `$GONGGA_HOME/gongga.db` 取来源那一行，再一次 `set_session`（§4c） |
+| `model_config.model` | `{provider, model}`, or `{"model": "<provider>/<model>"}` | flattened to the `provider/model` path the session row stores; a provider with no model is refused, a model with no provider is looked up in the roster, which takes the first provider that has it |
+| `model_config.thinking` | a level the model declares, or `default` | checked against the model this session runs on, so a typo fails now; `default` clears an earlier level |
+| `model_config.ctx_limit` | `"70%"`, `"70"`, or `0` | percent of the model's context window; `0` means never notice. Needs the model to declare a window |
+| `model_config.cache_tier` | a tier the model declares, or `none` | validated against the roster entry, so a tier from another provider is refused here |
+| `workspace.remote` | a remote's name, or `none` | `none` is this machine; a name not in the roster is refused before anything is created |
+| `workspace.cwd` | a path | read on the machine the session lands on; moving to another machine does not carry the source's directory |
+| `keep_alive` | `true` / `false` | SPEC's `keep_alive`: send a message at the step boundary when the cache's life is nearly over |
+
+Every field is optional, at every level. For `new_session` an omitted field takes the
+configured default; for `set_session` (next) it keeps what the session already had.
+
+```bash
+# a fresh session on my own model, in this checkout
+gongga-cli '{"name":"new_session","args":{"id":"work/child","config":{"model_config":{"model":{"provider":"deepseek-official","model":"deepseek-flash"},"ctx_limit":"70%"},"workspace":{"cwd":"C:/resource/gongga"}}}}'
+```
+
+```bash
+# explore only: refusals instead of writes
+gongga-cli '{"name":"new_session","args":{"id":"work/reader","mode":"explore"}}'
+```
+
+### `set_session` -- create the session if it does not exist, and apply settings
+
+| argument | spelling | required | meaning |
+|---|---|---|---|
+| `id` | named (`--id`), kind `session`, sticky | yes | the session to create or re-tune |
+| `config` | named (`--config`) | no | SPEC's `SessionConfig`, as a **delta**: omitted fields are kept |
+| `mode` | named (`--mode`), kind `mode` | no | `work` or `explore`; omitted keeps the session's mode |
+| `must_create` | named (`--must_create`) | no | `true` refuses the command when the name is already taken |
+
+What the command actually applies is a flat set of settings, and `config` is flattened
+into exactly those (`crates/server/src/session_config.rs`). They are therefore also
+readable as flat arguments, although the catalog does not advertise them, so a client
+completing from the catalog will never offer them:
+
+| flat argument | same as |
+|---|---|
+| `model` | `config.model_config.model`, spelled `provider/model` |
+| `thinking` | `config.model_config.thinking` |
+| `ctx_limit` | `config.model_config.ctx_limit` |
+| `cache_tier` | `config.model_config.cache_tier` |
+| `keep_alive` | `config.keep_alive` |
+| `remote` | `config.workspace.remote` |
+| `cwd` | `config.workspace.cwd` |
+
+Three rules that make the delta safe:
+
+- **An omitted argument is a decision, not a default.** The session keeps what it had,
+  at every level of the object.
+- **`none` is a statement.** `remote: "none"` and `cache_tier: "none"` clear those two;
+  leaving them out keeps them.
+- **Writing a model re-defaults what belongs to a model.** A new model re-resolves the
+  thinking level and validates the cache tier against itself.
+
+Workspace changes are moves, not edits. A `cwd` is read on the destination's side; a
+`remote` change lands the session on that machine; a move asked for while a turn is
+running is queued and happens when that turn ends (`move_pending` in the answer says
+so). Changing `mode` to `explore` or back injects a notice the agent reads at its next
+step boundary, and `explore` -> `work` also opens the live-compact checkpoint SPEC asks
+for.
+
+The answer is a sentence and:
+
+```json
+{"session": "work/child", "move_pending": false, "cwd": "C:/resource/gongga",
+ "remote": null, "model": "deepseek-official/deepseek-flash", "context_limit": 70,
+ "thinking_effort": "high", "mode": "work"}
+```
+
+```bash
+gongga-cli '{"name":"set_session","args":{"id":"work/child","config":{"model_config":{"thinking":"low"},"keep_alive":false}}}'
+```
+
+```bash
+# the flat form still lands, for a caller that already knows the handler
+gongga-cli '{"name":"set_session","args":{"id":"work/child","ctx_limit":"40%"}}'
+```
+
+### `del_session` -- delete a session and everything under that path
+
+| argument | spelling | required | meaning |
+|---|---|---|---|
+| `path` | named (`--path`), kind `session` | yes | one session, or a directory whose sessions all go |
+
+Deletes the session's channels (their programs end), its background jobs, its
+subscriptions, its pending task rows and its transcript. A running turn is interrupted
+first, so nothing is left owing a reply. A path deletes every session below it and
+answers `deleted N session(s) under "<path>": ...`.
+
+```bash
+gongga-cli '{"name":"del_session","args":{"path":"work/child"}}'
+```
+
+### `ls_session` -- list sessions by the prefix of their name
+
+| argument | spelling | required | meaning |
+|---|---|---|---|
+| `path` | positional | no | the name prefix; omitted is every session |
+
+No session argument: this is the server's whole list. The answer is a JSON array in the
+`message` (there is no `data`), one row per session:
+
+```json
+[{"name": "work/child", "status": "Idle", "model": "deepseek-official/deepseek-flash",
+  "cwd": "C:/resource/gongga", "context_limit": 70, "thinking_effort": "high",
+  "created_at": "...", "updated_at": "..."}]
+```
+
+`status` is the server's own word for the session's turn and is what a waiter reads to
+tell "still running" from "finished".
+
+```bash
+gongga-cli '{"name":"ls_session","args":{"path":"work/"}}'
+```
+
+### `clone_session` -- copy a transcript into a free name
+
+| argument | spelling | required | meaning |
+|---|---|---|---|
+| `id` | named (`--id`), kind `session` | yes | the session to copy; it keeps its own rows |
+| `new_id` | positional (`<new_id>`) | yes | the name the copy takes; it must be free |
+
+Row for row at the same `seq`, so the copy reads exactly as the source does; its next
+turn is its own. Row count and the last `seq` are in the answer.
+
+```bash
+gongga-cli '{"name":"clone_session","args":{"id":"mentor","new_id":"work/mentor-copy"}}'
+```
+
+### `interrupt_session` -- stop the turn one session is running
+
+| argument | spelling | required | meaning |
+|---|---|---|---|
+| `id` | positional (`<id>`), kind `session` | yes | whose turn stops |
+
+A tool that is waiting returns early with a result, the stream stops, and everything
+received is kept in the context. Nothing is owed to the next start: continuing a turn is
+`cancel`'s flag, not this one's. Channels (background programs) keep running. An idle
+session answers `is idle`; one that exists but is not running answers that there is
+nothing to interrupt, which is still success.
+
+```bash
+gongga-cli '{"name":"interrupt_session","args":{"id":"work/child"}}'
+```
+
+### `cancel` -- interrupt every turn and shut the server down
+
+| argument | spelling | required | meaning |
+|---|---|---|---|
+| `keep_alive` | named (`--keep_alive`) | no | `true` leaves every channel's program running for the next start to adopt |
+
+This is the **server's** stop, not your turn's: every running turn is interrupted, the
+stop is announced on the stream, and the process goes away.
+
+- A session that is **not waiting** is flagged so the next start continues that turn.
+- A session that **is waiting** is flagged to resume waiting for the time that is left.
+- Without `keep_alive`, every channel's program is ended with the server. With it, they
+  are detached and adopted on the next start; one that cannot be adopted produces a
+  channel-end notice.
+
+Background jobs a tool started (the detached ones) are released by this stop: they are
+processes of their own, they outlive the server, and the next start adopts them. Any
+other stop -- a signal, a killed process -- ends every one it started.
+
+SPEC's rule that matters for you: the flag is all a restart gets. Nothing appends "you
+were interrupted, continue", so anything the next start must know has to be in the
+transcript (a `send_message` to yourself) or in a file it will read.
+
+```bash
+gongga-cli '{"name":"cancel","args":{"keep_alive":true}}'
+```
+
+## Channels
+
+A channel is a program owned by a session: it outlives the turn, keeps its working
+directory and environment, and is named by a path in the session's namespace
+(`/bash/default`). The `exec` tool is the usual door; these commands are the same layer.
+
+### `new_channel` -- start a program under this session
+
+| argument | spelling | required | meaning |
+|---|---|---|---|
+| `id` | positional (`<id>`) | yes | the name it is called by: a path in this session's namespace |
+| `name` | positional (`<name>`) | yes | the program: a path, or a name the config's `[channel.<name>]` rows know (that row supplies the spawn words) |
+| `session` | named (`--session`), kind `session` | yes | the owner; the channel starts in that session's directory, environment and machine |
+
+A name already in use is refused -- `exec` speaks to that one. The answer carries the
+pid.
+
+```bash
+gongga-cli '{"name":"new_channel","args":{"id":"/bash/default","name":"bash","session":"work/child"}}'
+```
+
+### `input_channel` -- write a line in, read the unread part of what comes back
+
+| argument | spelling | required | meaning |
+|---|---|---|---|
+| `id` | positional (`<id>`) | yes | the channel to write into |
+| `input` | positional (`<input>`) | yes | the words; the `[channel.<name>]` row decides how a line is framed |
+| `session` | named (`--session`), kind `session` | yes | the owner |
+| `wait` | named (`--wait`) | no | milliseconds to wait for output, default `30000`; a limit on waiting, not on the program |
+| `until` | named (`--until`) | no | a marker to stop at; the window ends before it |
+
+The answer is SPEC's `Result`, as the message and as `data`:
+
+```json
+{"id": "/bash/default", "output": "...", "time": "0.412s", "matched": false, "exit": null}
+```
+
+What did not arrive stays unread for the next call. `matched` says whether `until` was
+there, and `exit` is the program's exit status once it has ended.
+
+```bash
+gongga-cli '{"name":"input_channel","args":{"id":"/bash/default","input":"ls","session":"work/child","wait":"5000","until":"$ "}}'
+```
+
+### `ls_channel` -- a session's channels
+
+| argument | spelling | required | meaning |
+|---|---|---|---|
+| `path` | positional | no | a name prefix; omitted is every channel the session has |
+| `session` | named (`--session`), kind `session` | yes | whose channels |
+
+A JSON array in the `message`: `id`, `session`, `program`, `remote`, `pid`, `dir`,
+`started_at`, `ended_at`, `exit`, and `unread` (the lines nobody has read). Nothing
+matching answers a sentence instead.
+
+```bash
+gongga-cli '{"name":"ls_channel","args":{"session":"work/child"}}'
+```
+
+### `rename_channel` -- give a channel another name
+
+| argument | spelling | required | meaning |
+|---|---|---|---|
+| `id` | positional (`<id>`) | yes | the name it has now |
+| `new_id` | positional (`<new_id>`) | yes | the name it takes |
+| `session` | named (`--session`), kind `session` | yes | the owner |
+
+Nothing moves on disk: the name is the server's namespace, not a path. A name already
+taken is refused.
+
+```bash
+gongga-cli '{"name":"rename_channel","args":{"id":"/bash/default","new_id":"/bash/main","session":"work/child"}}'
+```
+
+### `del_channel` -- end a channel's program, and forget the name
+
+| argument | spelling | required | meaning |
+|---|---|---|---|
+| `id` | positional (`<id>`) | yes | one channel, or a path whose channels all go |
+| `session` | named (`--session`), kind `session` | yes | the owner |
+
+A channel that had already ended is only forgotten, which is still success.
+
+```bash
+gongga-cli '{"name":"del_channel","args":{"id":"/bash/main","session":"work/child"}}'
+```
+
+## Reading
+
+### `get_messages` -- a range of the transcript
+
+| argument | spelling | required | meaning |
+|---|---|---|---|
+| `range` | positional (`<range>`) | no | which rows, as `begin:end` over sequence numbers; omitted is the whole transcript |
+| `session` | named (`--session`), kind `session` | yes | whose transcript |
+| `replay` | named (`--replay`) | no | `true` sends it as a window draws it, with the stream position the answer is a picture of |
+
+How a range reads:
+
+| written | means |
+|---|---|
+| `5` | row 5 only |
+| `5:10` | rows 5 through 10, both ends inclusive |
+| `5:` | from row 5 to the newest |
+| `:10` | the first ten |
+| `-1` | the newest row |
+| `-5:` | the newest five |
+
+A sequence number starts at 1 and a negative one counts back from the tail, so `0` is a
+typo either way and is refused. A range past the end is fewer rows, not an error. Each
+row arrives as the event it was published as, before the result, and the result carries
+`last_seq` (where the transcript ends) and `status`.
+
+`replay: "true"` is the window's reading: rows as a window draws them, the operator's
+own messages as input lines, and the answer still being written. A person reading does
+not need it; anything that waits for an answer does.
+
+```bash
+gongga-cli '{"name":"get_messages","args":{"session":"mentor","range":"-5:"}}'
+```
+
+### `events` -- the server's event log as a cursor
+
+| argument | spelling | required | meaning |
+|---|---|---|---|
+| `since` | named (`--since`) | no | rows after this log id, exclusive; omitted is from the beginning |
+| `kind` | named (`--kind`) | no | only this kind, e.g. `turn_end`, `tool_result`, `step_timing` |
+| `session` | named (`--session`), kind `session` | no | only rows about this session; rows that belong to no session are then left out |
+| `limit` | named (`--limit`) | no | at most this many rows, oldest first; default `200`, at most `5000` |
+
+Each row arrives as a log record `{id, seq, session, kind, payload, at}`, and the result
+carries `{count, last_id, since}`. Continue by passing the `last_id` you last saw as
+`since`. There is no live tail here: a wait on what happens next is a `subscribe`.
+
+```bash
+gongga-cli '{"name":"events","args":{"since":"4711","kind":"turn_end","session":"work/child"}}'
+```
+
+## Subscriptions
+
+A subscription names a pattern over events and the one command a match runs. Arming one
+answers at once; it never waits for a match.
+
+### `subscribe` -- arm a subscription
+
+| argument | spelling | required | meaning |
+|---|---|---|---|
+| `pattern` | positional (`<pattern>`) | yes | an unanchored regular expression over event names |
+| `cmd` | positional (`<cmd>`) | yes | the command a match runs: a name, or the whole call as an object |
+| `session` | positional | no | the session a match runs in; omitted is the calling session |
+| `id` | named (`--id`) | no | the name it is armed and dropped by; arming a name again replaces what it held. Omitted is a free name, reported in the answer |
+| `persistant` | named (`--persistant`) | no | `true` keeps it armed after a match, so every later match is news too; without it one match is the whole subscription |
+
+The pattern is matched against an event's name -- a log row's `kind`, or one of the
+stream's own names (`status`, `usage`, `sessions`, `log`, `cmd_result`) -- and against
+`name:session` when the event is about a session, so `turn_end:work/child` is that one
+session's turn ending. Anchors are yours to write: `^turn_end$` is exactly one name.
+
+`persistant` is spelled this way in the argument and in `ls_subscription`'s answer; it
+is not a typo to correct.
+
+The answer:
+
+```json
+{"id": 3, "session": "work/child", "subscription": "done",
+ "event": "turn_end:work/child", "cmd": "send_message", "persistant": false}
+```
+
+```bash
+gongga-cli '{"name":"subscribe","args":{"pattern":"^turn_end:work/child$","cmd":{"name":"send_message","args":{"session":"work/parent","message":"child finished"}},"id":"done"}}'
+```
+
+A match runs the command in the named session through the same layer a tool call uses,
+so anything in this file can be the action.
+
+### `ls_subscription` -- a session's armed subscriptions
+
+| argument | spelling | required | meaning |
+|---|---|---|---|
+| `path` | positional | no | a name prefix; omitted is every one the session has |
+| `session` | named (`--session`), kind `session` | yes | whose subscriptions |
+
+Unlike `subscribe` and `del_subscription`, this one has **no caller fallback**: the
+session must be named, because it lists for somebody specified. The answer is a JSON
+array in the `message`: `subscription`, `pattern`, `persistant`, `action`.
+
+```bash
+gongga-cli '{"name":"ls_subscription","args":{"session":"work/child"}}'
+```
+
+### `del_subscription` -- drop one, or every one under a path
+
+| argument | spelling | required | meaning |
+|---|---|---|---|
+| `path` | positional (`<path>`) | yes | the name it was armed by, or the path whose subscriptions all go |
+| `session` | named (`--session`), kind `session` | no | the session that armed it; omitted is the calling session |
+
+A path that matches nothing is a refusal, not silence.
+
+```bash
+gongga-cli '{"name":"del_subscription","args":{"path":"done","session":"work/child"}}'
+```
+
+### `trigger_event` -- publish an event under a name of your choosing
+
+| argument | spelling | required | meaning |
+|---|---|---|---|
+| `event` | positional (`<event>`) | yes | the name it is published under; every pattern matching it fires |
+
+The row lands in the event log like any other, which is how a matcher sees it. Its
+payload is empty.
+
+```bash
+gongga-cli '{"name":"trigger_event","args":{"event":"work/child:built"}}'
+```
+
+## Paths
+
+### `list_paths` -- one directory on a machine
+
+| argument | spelling | required | meaning |
+|---|---|---|---|
+| `remote` | named (`--remote`) | no | which machine's filesystem; omitted is this one |
+| `path` | named (`--path`) | no | what to list, as that machine spells it; empty is where its shell starts |
+
+For a front-end completing a `cwd`; an agent reads its own shell's directories better by
+running `ls` in it. The answer is `{path, remote, entries: [{name, dir}, ...]}`.
+
+```bash
+gongga-cli '{"name":"list_paths","args":{"path":"C:/resource"}}'
+```
+
+## The one convenience: `ask`
+
+**Another session -- a mentor, a parent -- holds what you have already forgotten.**
+Searching again is that whole search paid twice; one question is one turn. `ask` is the
+only thing this skill publishes, and it does both halves in one call: it puts the
+question in the other session's hands with `send_message`, then waits for that session's
+turn to end and answers with what it said.
+
+The answer is read from the transcript the way a window reads it (`get_messages` with
+`replay: "true"`): the operator's line and the answer's own lines are distinct rows, so
+there is no guessing about who said what. The cursor is taken *before* the question is
+sent, so the answer has to come after the question's own row, never from a turn that
+ended earlier.
 
 ```python
 import sys
-sys.path.append(r"C:\...\skills\self-control")   # 本 skill 的目录：`@skill(...)` 展开里那个 path 的父目录
+sys.path.append(SKILL_DIR)   # the directory this file is in: `@skill(...)` prints its path
 from ask_session import ask
-from new_session import new_session
-answer = ask("mentor", "我当时是怎么写的？")
+answer = ask("mentor", "how did I write the snapshot step?")   # the answer, or a refusal
 ```
 
-脚本形态（`"$SKILL_DIR/ask_session.py" <会话> "<问题>"`）和
-`gongga-cli '{"name":"skill","args":{"name":"self-control","args":["ask",…]}}'` 只是同一批函数的外壳。
+```bash
+SKILL_DIR=<the directory holding this file>   # the parent of the path in `@skill(...)`
+"$SKILL_DIR/ask_session.py" mentor "how did I write the snapshot step?"
+```
 
----
+In a window the shorter form is the `skill` line -- `skill self-control ask mentor
+"<question>"` -- where the first word names the function this package publishes and the
+rest bind to its parameters.
 
-## 1. 进程：channel 归会话，cancel 决定去留
+- **The session is the first argument and the question follows it.** Not an accident:
+  `send_message` takes its text first, so a form that put the session last would send the
+  session name as the message, to an empty session name.
+- **Ask something specific.** Say what you want answered and why now. "Is this fine?"
+  earns one word; the step that has you stuck earns an answer.
+- **Timeout**: 900 seconds by default (`--timeout <seconds>` in the script form).
+- **Exit**: `0` the answer was received and printed, `2` the question could not be asked
+  or no answer arrived in time. The package form raises `RuntimeError` instead.
 
-`exec` 起的程序是一个 **channel**：归这个会话所有，跨调用活着，`id` 是它的名字。
-没有第二个工具去「读」它——同一个 `exec` 带 `id` 就是读它没人读过的新输出。
+The answer also reaches your own session as a message (`send_message` goes to the other
+session, and its `send_message` comes back), so you can go on working and read it at the
+next step boundary. `ask` is that wait done for you, first.
 
-| 谁 | 拥有什么 | 输出 | 谁结束它 | 服务端停时 |
-|---|---|---|---|---|
-| 会话 | 它名下的每个 channel | `exec` 每次取走未读窗口 | `del_channel`，或会话被删 | `cancel` 默认结束全部 channel；`keep_alive` 留下，下次启动 adopt |
+## The Python client inside a script
 
-- channel 的生死绑在**会话**上，不在回合上：回合结束它还在跑；`del_channel`、`del_session`、
-  或 `cancel`（不带 keep_alive）才带走它。
-- 想「活得比服务端久」→ `cancel --keep_alive true`：channel 被 detach，下次启动 adopt；
-  被杀或 adopt 不上的 channel 会留下一条 channel end notice。signal / 关窗 / kill 不带
-  keep_alive，channel 随服务端死。
-- 想「卡住就回来」→ `exec` 的 `wait`（毫秒）或 `wait` 工具（见 §3），不要自己 `&` 加轮询。
-
-`background` / `timeout_ms` / `max_output` 这些旧 tunnel 参数已经不在 `exec` / `wait` 上：
-channel 本身就是「后台」，`wait` 就是调用自己的时钟。
-
----
-
-## 2. 回合：两种「停」，区别在「下次启动记不记得」
-
-| 动作 | 语义 | transcript | 重启后 | 谁接着干 |
-|---|---|---|---|---|
-| `interrupt_session <n>` | 别干了 | 停在断点，已收到的都存进上下文 | **不**自动续 | 没人（要你手动再派） |
-| `cancel`（服务端命令） | 停，下次接着干 | 停在断点 | 自动续 | 下一个启动的服务端 |
-
-`cancel` 给每个**正在跑**的会话写一个 flag，重启据此继续：
-
-- 不在 `wait` 里的 → **canceled** flag：下次启动直接续这个 turn。
-- 正在 `wait` 里的 → **waiting** flag（带等到几时）：下次启动把那段等待按剩余时间续上。
-
-flag 才是记忆，不是 pending 行的装饰：canceled 的会话即使没有 pending 行也会续。
-
-### 最关键的一条：续跑不给任何提示
-
-续起的 turn 不写任何 instruction，不追加「你被中断了，继续」，只是拿 transcript 再请求一次。
-所以 **cancel 之前，把意图写进 transcript 或文件**，否则接着干的你手上只有半截工具结果。
-两种写法：发一条消息给自己（§5，下一个 step 边界落库）；或写文件并在 cancel 前读进 transcript。
-
-### `cancel` 不会立刻杀你
-
-`cancel` 先记下每个会话的 flag，触发 token，等回执发出去再 shutdown；监听循环等 active 归零。
-你在 select 点（模型流、工具调用、重试退避）看到 token 才退出：正卡在 `exec` 前台等输出 →
-带着「已取消」的结果退出；正在写文件 → 那一步跑完再退出。
-
-想「立刻死、不要了」用 `interrupt_session`；想「停在这里、下次原样恢复」用 `cancel`。
-只有 protocol `cancel`（含优雅 signal，它走的就是 cancel）会写 flag；从外面硬杀
-（`taskkill /F`）不写，所以没人接。
-
----
-
-## 3. 时间：等待是调用自己的时钟
-
-`exec` 的 `wait`（毫秒）决定这次调用等多久输出：省略用服务端默认，`0` 立刻返回已有的。
-等待到点就返回已到的输出，**程序不被杀**——它还在 channel 里跑，下次 `exec` 接着读。
-
-要「等到某件事发生」用 `wait` 工具（不是一个 sleep 的 shell）：`wait {time: <毫秒>}`。
-任何东西落到本会话它就返回（channel 结束的通知、订阅命中寄来的消息、人来消息），
-**什么都不消费**，消息仍在下一个 step 边界按原路进 transcript。超时不是错误，只是「还没到」，
-返回值是它实际等了多久。
-
-- 等待不是预算，也不是 kill。要真停就 `interrupt_session`（丢这一轮）或 `del_channel`（结束程序）。
-- **没有步数上限**：一个 turn 跑到活干完。harness 不给你预算，自我控制只能来自你：
-  小步验证、及时落盘、别开无法收尾的长链。
-
----
-
-## 4. 上下文：什么活下来，什么蒸发
-
-| 事件 | transcript | 摘要 | 你的"当前意图" |
-|---|---|---|---|
-| 培养继承人 | 服务端**从不改写**行；只有 agent 自己会 | `heir` 把整份 transcript 存进 mentor 会话后**删空当前会话**（删前逐行校验副本），只留继承人的第一课 | 由第一课明确保留，继承人继续当前工作 |
-| 回合结束 | 保留 | — | 丢（除非写下来了） |
-| `cancel` + 重启 | 保留 | 保留 | **丢**（resume 无提示，见 §2） |
-| `del_session` | 全删 | 删 | 全没 |
-
-压缩阈值默认是上下文窗口的 **70%**（本会话模型 `deepseek-flash` 窗口 1,000,000），
-`set_session --ctx_limit 30%` 可调，`0` 关闭；设百分比要求模型在 roster 里有
-`context`，否则命令当场报错而不是悄悄忽略。
-
-### 记忆写在文件里，不写在上下文里
-
-- 服务端只读**一个** `AGENTS.md`：会话 cwd 里的那个（2026-11-02 起）。它作为 index 的
-  第一个 root 进 `instructions`，随前缀缓存，所以写在那里的话每轮都算一次、改一次才重算；
-  父目录的、`~/.agents/AGENTS.md` 都不读。机器自己的常驻规矩仍是
-  `~/.agents/skills/whiting-dev`。别的约定要么放进 `instructions`，要么写成 skill 让
-  `skill`（不带 `name`）列出来——否则新会话根本不会看见它。
-- WIP 按仓库约定写 `.agents/notes/<date>-<slug>.md`。
-- 长输出溢出的全文在 `~/.gongga/outputs/`，文件名是 `<session>-<shell>-<description>-<callid>`
-  ——所以 `exec` 的 `description` 参数是给"未来的自己"和读 dump 的人的索引，不是装饰：
-  它还会印在那一行工具调用上（`exec·check the state`），所以写的是这次要干嘛，不是命令本身。
-  默认超过 8000 字符就只回头尾，回执里有路径：用 `sed -n` / `grep` 读，**别 cat**。
-
----
-
-## 4a. 你的"第一句话"要写成带引用的 prompt
-
-**引用（meta reference）不是省字，它是前缀缓存规划唯一的入口。** 一个请求的最前面是
-instructions + index；`index` = 会话**第一条** user 消息里点到的 `@file(...)` / `@skill(...)`
-的正文，按 `prefix_cache` 算出的最省顺序拼起来。那个顺序不是随手排的：模拟出来的缓存树按
-**会话目录**共享，同一目录里先计划过的会话留下一条链，后来的会话沿它走——两条请求的
-首部逐字节相同，provider 才付得出缓存价。
-
-"先 `cat` 一遍再问"和"把文件引用进第一句话"的差别不是风格：
-
-| 写法 | 正文落在哪 | 之后怎么付费 |
-|---|---|---|
-| `bash: cat plan.md` | 一条 tool_result，在 transcript 中间 | 每轮跟着前缀重发，而且排在 index **之后**：首部一变，它和它后面整段重付 |
-| 第一句话里写 `@file(plan.md)` | 进 index，紧跟 instructions | 一次进系统提示，之后每轮命中；之后再改那个文件也不再重发 |
-
-所以"自我控制"里每个**第一句话**的时刻，都要写成带引用的 prompt：
-
-| 时刻 | 谁是第一句话 | 写什么 |
-|---|---|---|
-| spawn 一个子 agent | `send_message` 的 brief | 它要读的文件、它该用的技能全写成引用（见 `@skill(subagent)`） |
-| 培养继承人 | `heir` 的第一课 | 下一步要动的文件、要守的规矩写成引用：继承人的下一次请求就带着正文 |
-| `new_session` 之后 | 那个新会话的第一条消息 | 整轮工作都要看的东西，第一轮就引用掉 |
-| `ask_session` 问一句 | **不算**：它是轮中注入的一条消息，index 早已写定 | 那里的 `@skill(...)` 只会换成指针（路径），正文得对方自己去读 |
-
-两条边界，写错都**不报错**：
-
-- 只有**第一条** user 消息能进 index。第三轮才补一条 `@skill(foo)`，foo 的正文没有进来。
-- 引用是 `@kind(值)`，括号必须配对。漏了右括号、写错大小写，消息照发、词照留，
-  index 里没有它，也没有一行日志。
-
-拼写、递归和代价记录都在 `@skill(prefix-cache)`。
-
----
-
-## 4b. 问另一个会话：`ask_session`
-
-**别的会话——尤其是 mentor——手里有你已经忘掉的东西。** 自己再摸一遍是把整场搜索再付一次；
-问一句是一个回合。
-
-它是本 skill 的一个函数，也是一个脚本（§0b 的规矩：走 in-process 客户端，不起进程）：
+**The server writes a client into its home, and a script imports it:**
+`<home>/lib/gongga.py` (`docs/notes/server-pylib.md`). One method per command, one
+`Reply` per answer, an exception when something is refused. `_client.py` beside this file
+finds that module -- `GONGGA_SKILL_LIB` from a skill runner, `GONGGA_HOME` from a shell
+the server started -- and imports it:
 
 ```python
-from ask_session import ask                 # 目录进 sys.path 之后（§0b）
-answer = ask("mentor", "我当时是怎么写的？")   # 答复就是它的返回值
+import _client
+server = _client.connect()                      # or catch _client.Unusable
+reply = server.call("get_messages", session="mentor", range="-1:-1", replay="true")
+reply.ok, reply.message, reply.data, reply.events
+reply.raise_for_status()                        # a refusal becomes gongga.GonggaError
+gongga = _client.module()                       # the client module: exceptions, connect()
+server.close()                                  # or: with gongga.connect() as server:
 ```
 
-```bash
-SKILL_DIR=<本 SKILL.md 所在目录>          # `@skill(...)` 展开里括号中的 `<path>` 的父目录
-"$SKILL_DIR/ask_session.py" <会话名> "<问题>"
-```
-
-gongga 里更短的一层是 `gongga-cli '{"name":"skill","args":{"name":"self-control","args":["ask","<会话名>","<问题>"]}}'`：`self-control`
-是个 Python 包，第一个词是函数名（`ask` 是本包的函数），参数原样传过去，退出码就是入口的。
-
-它做两件事，一次调用做完：**把问题递过去**，然后**等答复**。答复是对方会话自己 transcript 里
-的话，按窗口读法读回来（`get_messages --replay true`），所以操作者的消息和它的输出是分开的行，
-不用去猜哪一段是谁说的。等的是"问题那一行之后、它这一轮结束"，不是"最后一行输出"。
-
-**会话名是位置参数，问题在它后面。** 这不是随意的：`send_message` 的位置参数是
-`--message` 在前、`--session` 在后，所以 `send_message <会话名> "…"` 会被读成「问题=会话名」，
-问题发给了空名字。`ask_session` 把会话名放在前面，正是为了躲开这个坑。
-
-**问的时候把问题说具体**：要什么答案、为什么现在要。"当时能不能这么写"只能换来一句"能"，
-把你卡住的那一步写进去，才有东西可答。
-
-答复会到你的会话里（`send_message` 给对方，对方 `send_message` 回来），所以**问完可以继续
-干别的**，消息到了再读。函数自己等的那份是同一条答复，只是它先替你挡住了这次等待。
-
-退出码：0 拿到了答复；2 问题没送到，或等超时（默认 900 秒，`--timeout` 可改）。
-
----
-
-## 4c. 开一个新会话：复制我自己的配置 `new_session`
-
-**新会话是空的，配置是我的。** `new_session` 拿我自己的会话行（`$GONGGA_SESSION`，或
-`--source <会话名>` 指定的另一行）当来源，逐项复制配置，开一个全新会话。答复是新会话名，
-打印在 stdout。
-
-**一句话的用法就是不带任何覆盖参数**：`new_session <新名字>` 复制整行——模型、思考档位、
-上下文预算、缓存档位与 keepalive、mode、机器、目录——不用一项项重打。它也是**唯一**一张
-复制表：`subagent` 的 `spawn` 建孩子时正是调它（传名字、`--source`、和调用者点名的那几个
-覆盖），所以这里加一个字段，孩子下一次就有，不必两边各改一遍。
-
-```bash
-gongga-cli '{"name":"skill","args":{"name":"self-control","args":["new_session","<新名字>","--source","<来源会话>","--model","<model>","--ctx_limit","<n%>","--dry_run","true"]}}'
-```
-
-args 里第一个词是函数名 `new_session`，其余按 `--name value` 或位置绑定到它的参数（可选字段见下）。`--dry_run true` 只把将要发出去的参数渲染成一行
-`set_session` 打印出来，什么都不建——真正建会话那一步是一次 `server.call("set_session", ...)`
-（§0b），不经过命令行：同一张参数表既决定发什么，也决定 dry run 显示什么，所以两者不会走散。先看清再动手。
-
-**三条不变量**（写在这里，不靠脚本注释代言）：
-
-1. **机器与目录成对：目录只在目标机器 == 来源机器时复制。** 来源行的 `remote` 是它运行
-   的机器；不给 `--remote`，新会话落在来源那台机器上，目录随配置一起复制。`--remote` 指了
-   另一台机器（或来源在远端、而 `--remote none` 回本机）时，新会话落在那台机器上，**不复制
-   目录**——一个目录只在它存在的那台机器上有意义。显式 `--cwd` 总是生效，且它在目标机器上
-   被解释：给了一个远端机器上不存在的目录，错在创建这一刻，不在第一个 turn。
-2. **新会话是空的。** 只有配置被复制：transcript 从空开始，不带消息、不带订阅、不带
-   pending。想要孩子会话（路径挂在调用者名下、订阅它的 turn-end、重名自动加段）用
-   `subagent` skill——那是另一种关系，见下。
-3. **名字不复制。** 配置之外什么都不带走：新会话应答你给的名字，`--must_create true`
-   保证名字被占了就拒绝，绝不加入别人的 transcript。
-
-逐项字段表（默认 = 不给对应参数时发生什么；NULL = 来源行没设过，按服务端的默认走，
-复制的办法就是不发这个参数）：
-
-| 字段 | 默认 | 覆盖 | 绝不复制 |
-|---|---|---|---|
-| 名字 | —（必填的新名字） | 位置参数 | 来源会话名 |
-| model | 复制来源的 | `--model` | — |
-| thinking | 来源有则复制；NULL 不发 | `--thinking`（`default` 清除已设的） | — |
-| ctx_limit | 来源有则复制；NULL 不发 | `--ctx_limit` | — |
-| cache_tier | 来源有则复制；NULL 不发 | `--cache_tier` | — |
-| cache_keepalive | 复制（来源必有值，true/false） | `--keep_alive` | — |
-| mode | 来源有则复制；NULL 不发 | `--mode` | — |
-| remote | 复制来源的机器（本机则不发参数） | `--remote` / `--remote none` | — |
-| cwd | 目标机器 == 来源机器时复制 | `--cwd`（在目标机器上解释） | 机器不同时绝不复制 |
-| transcript | — | — | 绝不复制（新会话是空的） |
-
-失败路径（退出码都是 2，服务端的话原样透传，库里没有新行）：
-
-- 新名字已存在：`--must_create` 拒绝加入已有会话。
-- `--remote` 的名字不在服务端的名单里：服务端拒绝，发生在创建之前。
-- 没有来源（`$GONGGA_SESSION` 未设且没给 `--source`），或 `--source` 的名字不是会话：
-  拒绝，不退化成"建一个没配置的会话"。
-
-与 `subagent spawn` 的边界：`spawn` 开的是**孩子**——路径、订阅、命名都绑在调用者的
-子树上；`new_session` 开的是**平级**——只复制配置，不订阅、不带上下文、不建路径关系。
-两者共用上面那一张复制表（`spawn` 通过 `skill` 调本包的 `new_session`），所以"孩子"和
-"平级"配的是一样的东西，区别只在关系和名字。要并行干活、要被告知完工，用 `subagent`；
-要一个"配置和我一样、但从零开始"的会话，用 `new_session`。
-
-退出码：0 建成（打印新会话名），或 `--dry_run` 打印计划行；2 上述任一拒绝。
-
----
-
-## 4d. 模型名是一条 path：层级管理就写在名字里
-
-会话行里的 `model` 存的是**整条** `provider/model_name`，不是裸名字——一个名字不说明是谁在
-服务它（`SessionRow::model` 的原话）。而模型名自己还能再带 `/`：服务端只在**第一根** `/`
-处切开，剩下的整段就是模型 id。于是模型名天然是一条 path，段就是层级：
-
-| 段 | 这一层写的是什么 |
+| what you get | what it is |
 |---|---|
-| 第一段 `provider` | 密钥（`key_env`）、端点与 `base_url`、额度查询、缓存 ttl 与它接受的档位、`prompt_cache_key` 一类请求头 |
-| 后面几段 `model_name` | 模型自己：窗口大小、模态、`tier`（flash / pro / sota）、价格、思考档位、内置工具 |
+| `reply.ok` / `.message` / `.data` / `.events` | ran or refused, the server's own words, its structured answer, the events seen during the call |
+| `reply.raise_for_status()` | a refusal, raised as `gongga.GonggaError` carrying the server's sentence |
+| `server.<command>(**arguments)` | the same call by method name, for the names in the greeting's catalog |
+| `server.catalog` / `server.sessions` / `server.models` | the published commands, the session rows, the usable roster |
+| `gongga.Unreachable` | nothing answered at all (no server, wrong key), which is not a refusal |
 
-**规划按层做，写的时候也按层写：**
-
-- 要"这一家整体更便宜 / 换端点 / 换 key"→ 那是 provider 段的事，这一家下所有模型一起跟着走。
-- 要"这一个要更难、要更长的窗口"→ 换叶子段。
-- **裸名字把 provider 段藏起来**：`--model` 先按整条 path 匹配，匹配不上才在 roster 里找
-  **第一个**带这个名字的 provider——落在谁家由文件顺序决定，而且那家没有 key 时命令直接失败，
-  不会替你换一家。所以凡是要**写下一个会话跑什么**的地方（`set_session --model`、
-  `new_session --model`、spawn 的 brief），写整条 path。
-- **`--cache_tier` 校验的是 provider 声明的档位**（报错句说 "not a tier this model declares"，
-  roster 却写在 `[[provider]]` 上）：provider 不动，换模型不会让档位失效；换 provider 就可能。
-  `new_session` 会照抄来源的 `cache_tier`，所以跨 provider 的 `--model` 最先被拒的地方就是这里。
-
-会话名是同一套规矩：`<调用者>/<角色>` 是一条 path，名字按前缀渲染成可折叠的层级，
-子 agent 全挂在调用者下面（见 `@skill(subagent)`）。
-
----
-
-## 5. 用 `send_message` 给自己留话
-
-会话正忙时 `send_message` 不排队第二个 turn，而是写一条 `kind=inject` 的行，由当前 turn
-在**下一个 step 边界**读进 transcript。这就是"给自己留一句不会丢的话"。
-
-你自己（agent）在 shell 里直接敲 `gongga-cli` —— 服务端把这条命令装进 `<home>/bin`，并把它
-放进你 shell 的 `PATH` 最前面：
-
-```
-gongga-cli '{"name":"send_message","args":{"session":"test1","message":"SELF-NOTE: ..."}}'
-```
-
-回执「message queued for test1; it will be read at the next step」，下一个 step 就以
-一条 user 消息出现。另起一个 shell 或 launcher 也一样写 `gongga-cli`：`PATH` 首位就是它，
-那是同一个程序，不需要路径也不需要第二个变量。**Python 脚本不这么写**：`server.call("send_message", …)`
-是同一个动作，而且知道有没有送到（§0b）。
-
-**它还能叫醒你**：你正在 `wait`（或 `exec` 的 `wait`）里等时，消息一到，等待就结束、
-程序还在 channel 里继续跑（见 §3）。所以这不是"留言"，是一条**打断**。
-两面的用法：
-
-- 想让等待早点放手 → 从别处发一条消息，不用干等。
-- 小心：你自己发的消息同样会打断自己正在等的东西，别在关键写入中途插自己。
-  程序不被杀：它还在 channel 里跑，输出之后用 `exec` 接着读，或等它的 channel end notice。
-
-规矩：
-
-- 它是**用户消息**，会一直留在 transcript 里，还会被折进笔记。不要当 printf 用。
-- 只能用在这一处合法位置：`function_call` 和它的 `function_call_output` 之间插 user 消息
-  会被 provider 整单拒绝，所以注入点在 step 边界。
-- 消息自己也是 pending 行，`cancel` 前后都能活下来 —— 这是跨重启留意图最省事的办法。
-
-### 子 agent：一块独立的工作交给另一个会话
-
-多开一个会话就有第二个上下文，可以并行做另一件事。怎么开、brief 要写什么、什么时候不能
-并发写同一份树，都在 **`subagent` skill**。
-
-一条和"自己"直接相关的：`send_message` 发出去的 brief 就是那个会话的**第一条** user 消息，
-所以 brief 里写的 `@file(...)`/`@skill(...)` 会进它的 index，随前缀缓存只收一次费——这也是
-"派活时把要读的东西一次说清"比"派完再补一条"便宜的原因（见 `@skill(prefix-cache)`）。
-
-
-
-## 6. 改源码不是用 harness
-
-换掉跑着自己的那个 exe、改它的源码、用它自己的开发环，都是另一件事，在 **`evolve` skill**
-（`@skill(evolve)`）。这里的每一条都是**使用**这个 harness 的规矩；
-要动它的源码，先去读那个 skill。
-
-## 7. 单向门：做之前先看范围
-
-| 动作 | 不可逆的部分 |
-|---|---|
-| `del_session <n>` | 删 transcript、删 pending，**并停掉该会话名下的 channel** |
-| 从外面杀服务端 | 本回合没人接，等于丢了一次未落盘的判断 |
-| 没有继任者就 `cancel` | home 空着，直到有人手动起服务端才按 flag 续跑 |
-| `del_channel` | 程序没了；溢出的输出文件还在，但 channel 状态没了 |
-| `del_channel` | 那个 channel 的 cwd / export / 函数全清零 |
-
----
-
-## 8. 看自己
-
-| 想知道 | 怎么看 |
-|---|---|
-| 我有几个 channel、谁还有没读的输出 | `ls_channel` |
-| channel 跑到哪了 | `exec` 带那个 `id`，**读即取走未读窗口**，同一段不会给两次 |
-| 我刚才到底做了什么、上一条命令的原文 | `get_messages --session <s> <a>:<b>`（1 基、两端含，`-1` 最新一条，如 `-5:` 取最后五条；省略范围是全部） |
-| 会话状态 / 模型 / 压缩阈值 / 消息数 | 只读查库（下面） |
-| 我哪些工具调用在失败 | `tool_calls` 表按 `name,status` 汇总 |
-
-只读查库（服务端在跑时也安全，`mode=ro`）：
-
-```bash
-python - <<'EOF'
-import sqlite3, os
-c = sqlite3.connect(f"file:{os.path.expanduser('~/.gongga/gongga.db')}?mode=ro", uri=True)
-print(c.execute("select name,status,model,context_limit,context_tokens from sessions").fetchall())
-print(c.execute("select name,status,count(*) from tool_calls group by name,status").fetchall())
-print(c.execute("select ID,session,kind from pending_tasks").fetchall())
-EOF
-```
-
-注意服务端日志是 **stdout/stderr**，不落文件——想要日志就在起服务端时重定向。
-
----
-
-## 9. 别做这些（都有代价记录）
-
-- **一个程序一个 channel id。** 一个 id = 一个常驻程序；每次新 id 会留下一个空转程序。
-  默认就用 `/<bin>/default`，并在 `description` 里写清这次在干嘛。
-- **把 `exec` 的 `wait` 当 kill。** 它不杀；程序还在那个 channel 里跑，输出稍后自己回来。
-- **`cat` 溢出文件。** 它们可能很大；用 `sed -n` / `grep`。
-- **第二次 `exec` 读期待同样输出。** 读即取走；第二次只会拿到新的部分。
-- **拿 flag 形式调 `gongga-cli`。** 它只读一个 JSON Cmd：`gongga-cli '{"name":"cancel","args":{}}'`。
-  `--name value` 那套已经没了（Python 脚本里是 `server.call("cancel")`，§0b）。
-- **拿 `exec` 调 server cmd。** `exec` 只起程序（channel），`args` 是一列词。调命令直接用
-  命令名当工具名发 call（schema 见 §0），不经 `exec`。
-- **在 shell 里 `kill <pid>` 停 channel。** MSYS pid 不等于 Windows pid，`taskkill` 认不出来；
-  用 `del_channel`。
-- **用 `send_message` 记日志。** 它会永久留在 transcript 里并进入笔记，而且**会打断
-  你正在等的命令**（见 §5）。
-
-- **在 skill 脚本里 `subprocess` 跑 `gongga-cli` 再解析它的输出。** 命令行是给人看的形状，
-  脚本要的是 `Reply`；再解析一遍等于把契约抄第二份，抄的那份会落后（§0b）。
-- **以为写了 skill 文件就等于能被发现。** 发现靠提示词里那句索引；索引不在（旧服务端、
-  cwd 不在仓库里），文件就是死的。先跑一遍索引命令再指望别人读到。
-
----
-
-## 10. 决策清单
-
-动手前问四句：
-
-1. **这活谁收？** 我死/被停之后，谁还需要它？→ 决定 `cancel` 要不要带 `keep_alive`。
-2. **我要停的是哪一种？** 丢掉（`interrupt_session`）、留着下次干（`cancel`）、还是永不回来
-   （外部杀进程）？
-3. **接着干的那个我，凭什么知道该干什么？** 意图进 transcript 或进文件了吗？
-4. **这动作可逆吗？** 看 §7 的表；不可逆的话，范围和回退路径写在旁边。
-
----
-
-## 11. 本技能的验证状态
-
-| 结论 | 怎么来的 |
-|---|---|
-| channel 归会话、`cancel` 默认结束 / `keep_alive` 留下并 adopt | 读 `commands.rs::cancel`、`tools/channel.rs` |
-| `exec` 的 `wait` 只结束等待、程序不被杀 | 读 `tools/exec.rs` |
-| **消息打断 `wait`**、程序不被杀 | 读 `tools/mod.rs`（wait）、`commands.rs::send_message` |
-| 忙时 `send_message` 在下一个 step 边界投递 | 本会话实测 |
-| 两个会话的 turn 真的并行（互斥锁每会话一把） | 2026-10-30 实测：`main` 与 `sub1` 相隔 8ms 起 turn、两次请求并行、两次 turn end 同时回来 |
-| `cancel` 写 canceled/waiting flag、`interrupt_session` 只停不续、`del_session` 连带停 channel | 读 `crates/server/src/commands.rs` |
-| resume 不带任何 instruction | 读 `agent.rs::turn_inner`（`user_text: None` 不写行） |
-| 阈值 70% / transcript 不改写 / 只有 `heir` 培养继承人时移动 | 读 `agent.rs`、`store.rs` |
-| `evolve.sh swap` 的完整换手 | **实跑 9 次**，其中 02:24 那次**丢了回合**（pending 行被续跑收尾无条件删除），修好后 3 次全部 resume 成功 |
-| 只读 sqlite 自查 | 本会话实测 |
-| 包只发布 `ask` / `new_session`；`--dry_run` 只打印不建会话；重名、未知 remote、无来源都退出 2 且库里无新行；新行逐字段等于来源行 | 2026-11-06 实跑：临时 home + 真服务端 + fake_llm 探针，外加 `test_new_session.py` 表驱动单测 |
-| `ask` / `new_session` 走 in-process 客户端（`import` home 的 `lib/gongga.py`，不起 `gongga-cli`），包形态与脚本形态都答出对方原话 | 2026-11-07 实跑 `scripts/selfcontrol_selftest.sh`：临时 home + 真服务端 + fake_llm，PASS |
-| `subagent` 的 `spawn` 建孩子走的正是这张表（不复制第二份）：孩子的模型、预算、机器、目录逐项等于来源行 | 2026-11-07 实跑 `scripts/subagent_selftest.sh`（同一份脚本装在临时 home 里，同时装 `self-control`）：A/B/F/G/J/K/M 全绿，`--context_limit 20%` 落到孩子的行上 |
-
----
-
-## 12. 技能本身是怎么被发现的
-
-发现机制是 **`skill` 工具**（不带 `name`）：一次调用返回一张表，每行是
-`name` / `description` / `path` / `bucket`。先只看这张表，命中才读正文——
-这就是全部成本。别再 `grep` 目录：那等于让每个会话重新实现一遍这个工具。
-
-系统提示（`instructions`）是 ship 仓库里的一段**静态文本**：不渲染、不拼任何东西、
-没有占位符，所以每个会话收到的字节都一样——它开在请求最前面，一样才谈得上被 provider
-的前缀缓存覆盖。它只留身份、一句授权（能跑命令、别问、别留垃圾）、一句"程序去 skill 里找"。
-会话名靠 `$GONGGA_SESSION`，不靠提示词里的插值；其余的说明都在 skill 里，也就是这一份。
-
-为什么这么切：任何随会话变化的东西都会让那条会话拥有自己的前缀，缓存一点也留不住；
-而一份要读三段的常驻规矩，只有真需要它的人付得起。
-
-三个桶，优先级就是顺序（同名以先出现的为准）：
-
-- **项目桶** → `<cwd>/.agents/skills/<name>/`。会话正在干活的那个 checkout 自己的，
-  最具体，所以排第一：一个仓库说"here, do it this way"就压过它所在的 home。
-- **harness 桶** → `<home>/skills/<name>/`。跟着 home 走，随服务端实例存在。
-  本文件、`heir`、`image`、`remote` 在这个桶。
-- **通用桶** → `~/.agents/skills/<name>/`。跟着机器走，和 `providers.toml` 做邻居：机器自己的
-  常驻规矩也放这儿当一个 skill——`instructions` 里没有任何东西是从磁盘自动读进来的。
-  `computer_use`、`latency`、`model_pool`、`polity`、`proxy`、`web-search` 在这个桶。
-
-**桶的路径不是调用方式。** 跑一个 skill 自己的脚本，一律从**它自己的目录**出发：
-`@skill(...)` 展开里括号中的 `<path>` 的父目录就是那个目录（`skill` 的 `path` 列同源）。
-home 会搬、桶会变，把桶的路径写进正文，别的 harness 读到的就是一个不存在的命令。
-gongga 里更短的一层是 `gongga-cli '{"name":"skill","args":{"name":"<name>","args":[…]}}'`，它按同样的三根优先级解析。
-本技能就是这样一个包：入口是它发布的函数 `ask` / `new_session`——package 优先于
-frontmatter 的 `metadata.entry`（即使写了也不读，所以本文件不写）；第一个词是函数名，
-其余按位置或 `--name value` 绑定，返回值是答复（字符串打印、整数作退出码、其它作 JSON）。
-
-`evolve` 不在任何桶里：它要从自己的路径往上找 `Cargo.toml` 并 stage 二进制，装进 home
-就找不到仓库，所以它住在 gongga checkout 自己的 `.agents/skills/evolve/`。
-
-home 的两个桶来自一个独立的 ship 仓库，服务端按它读的 `protocol` 取最新 commit：启动时把内容装进去，
-用 git 三方合并把上游更新和你的本地修改合起来——你改过的不被覆盖，合不上就报错而不是硬合。
-
-要点（这几条从旧机制继承，仍然成立）：
-
-- **别把 skill 列表写进 Rust 字符串**。现在它连文件都不在这个仓库里：加一个 skill
-  不用重新编译服务端，也不用换服务端。
-- 正文要能独立成立：读它的人只有任务和这份文件，没有你的上下文。
-- 附带脚本就写在 SKILL.md 旁边，让自己直接跑，而不是每次重敲命令。
-- 路径写 `$GONGGA_HOME/...` 或 `~/...`，不要写相对仓库根的路径：会话的 cwd 不保证
-  在那个仓库里，而 skill 现在本来就不在仓库里。
-
-历史：懒发现是 2026-10-24 加的（那时 skill 文件存在但没人会看见，包括本文件第一版）；
-2026-10-28 提示词进模板、`AGENTS.md` 开始注入；同日 skill 移出项目目录、
-发现改成 `index_skill`；还是同日，注入被撤销——常驻规矩活了一天就当上了 skill。
-2026-11-02 回来的只有 cwd 那一个，而且走 index 而不是拼进 `instructions`。
+**No `subprocess` plus `gongga-cli` inside a skill's script.** The command line is the
+shape a person reads; a script wants the return value, and `Reply` already separates
+success, refusal, data and events. Re-parsing printed JSON is a second copy of one
+contract, and the copy is the one that falls behind.
