@@ -434,6 +434,33 @@ name = "summary"
 required = true
 sentence = '''The agent-written summary of the segment since the previous checkpoint. File and skill references are embedded directly in the stored checkpoint.'''
 
+# SPEC's channel commands, offered as tools: the model lists and ends channels by
+# name. The session is the call's own; the command layer fills it.
+[tool.ls_channel]
+cmd = "ls_channel"
+summary = """List a session's channels: the name each one is called, what it runs, and how much of what it said nobody has read."""
+carrier = "here"
+tunneled = false
+
+[[tool.ls_channel.parameters]]
+name = "path"
+positional = 1
+hint = "path"
+sentence = """The channels whose name starts this way. Omitted is every channel the session has."""
+
+[tool.del_channel]
+cmd = "del_channel"
+summary = """End a channel's program and forget the name, and do the same for every channel under that path. A channel that had already ended is only forgotten."""
+carrier = "here"
+tunneled = false
+
+[[tool.del_channel.parameters]]
+name = "id"
+positional = 1
+required = true
+hint = "path"
+sentence = """Channel to end, or the path whose channels all go."""
+
 # A skill is called by the harness command, and never offered to the model:
 # SPEC's `## Skill` is a command, so the row is an operator route only.
 [tool.skill]
