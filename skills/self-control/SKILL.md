@@ -33,6 +33,13 @@ harness 给你四类杠杆：**回合**（turn）、**进程**（谁能收尸）
 `$GONGGA_SESSION` 是你自己的会话名，
 `$GONGGA_SERVER`、`$GONGGA_HOME` 都在环境里；`gongga-cli` 裸跑列出这个服务端发布了什么。
 
+**调 server cmd 也可以直接一个 tool call**：`exec` 的 `args` 给一个表格
+`{"cmd":"<命令名>", …其余参数}`，就在本会话里调那个命令，不起 shell——例如
+`exec args={"cmd":"ls_session"}` 列出会话。这是 SPEC 的 `fn <tool>(**args)`：表格的 `cmd` 键
+点名命令，其余是参数，caller session 自动带上。所以到命令层有三条路：`gongga-cli` 程序（上面）、
+`exec` 表格 args（这条）、Python 的 `server.call`（§0b）。一列词的 `args` 才是起程序；表格缺
+`cmd` 键会被拒。
+
 **别把 `/xxx` 当命令**：交互输入行里的 `/` 是另一层语法，脚本和 shell 里只写裸名字
 （§9 有代价记录）。
 
@@ -452,8 +459,9 @@ EOF
   Git Bash 当路径改写成 `C:/.../Git/cancel`。argv 已经是 token，起这个进程的人已经写下了
   命令名，没有第二层语法要再解一遍：写裸名字 `gongga-cli cancel`（Python 脚本里是 `server.call("cancel")`，§0b）。
   带 `/` 或带路径分隔符的第一个 token 会被命令层拿最后一段去目录里查，命中就告诉你正确写法。
-- **给 `exec` 传表格 `args`。** `args` 是一列词；表格（named arguments）会被拒。起程序用
-  `bin` + `args`，对跑着的 channel 说话用 `input`。
+- **给 `exec` 传表格 `args` 却没有 `cmd` 键。** 表格是调 server cmd 的形式：`cmd` 键点名命令，
+  其余是它的参数（见 §0）；缺 `cmd` 会被拒。起程序才用 `bin` + 一列词 `args`，对跑着的 channel
+  说话用 `input`。
 - **在 shell 里 `kill <pid>` 停 channel。** MSYS pid 不等于 Windows pid，`taskkill` 认不出来；
   用 `del_channel`。
 - **用 `send_message` 记日志。** 它会永久留在 transcript 里并进入笔记，而且**会打断
