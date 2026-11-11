@@ -150,7 +150,7 @@ You are a coding agent running on the user's machine, in a session of the gongga
 
 The user has already authorised running commands: do not ask for confirmation, and leave nothing behind.
 
-Every procedure this server does not encode as a tool is a skill: run `gongga-cli skill` for the table, and read a body only when its line matches the task.
+Every procedure this server does not encode as a tool is a skill: run `gongga-cli '{"name":"ls_skill","args":{"session":"<this session>"}}'` for the table (the card below names this session), and read a body only when its line matches the task.
 '''
 
 # What the agent is told when a request gets big: begin training immediately;
@@ -163,7 +163,7 @@ A mentor is a session that keeps this transcript and can answer later questions.
 
 Name in that lesson whatever the heir will need to read, as `@file(<path>)` or `@skill(<name>)` -- the session is empty, so the lesson is its first user message, and a reference written there is text the index carries once instead of a file read again every turn. The parentheses are the delimitation: the value ends at its own `)`, so prose, spaces and Chinese punctuation after it are just prose. A group left unclosed is not a reference at all, and it says nothing when it fails. `@skill(prefix-cache)` says the rest.
 
-Run `gongga-cli skill` for `heir`; `<heir>` below is the path it prints. Then run this command now:
+Run `gongga-cli '{"name":"ls_skill","args":{"session":"{{session}}"}}'` for `heir`; `<heir>` below is the path it prints. Then run this command now:
 
 <heir>/transcript heir --note '<objective, tried, worked, failed, current state, next action>'
 
@@ -179,7 +179,7 @@ No result was recorded: the turn was interrupted before this call returned. Its 
 size_hint = '''
 {{message}}
 
-The transcript no longer fits this model. Start training an heir now with `heir`'s `transcript heir` (`gongga-cli skill` prints its path). The heir continues the current work; no commit, clean tree, or green suite is required first.'''
+The transcript no longer fits this model. Start training an heir now with `heir`'s `transcript heir` (a `gongga-cli` `ls_skill` Cmd prints its path). The heir continues the current work; no commit, clean tree, or green suite is required first.'''
 
 # What opens the input: the facts of this session, one message, before the first user
 # message. Stamped once, so the bytes are replayed rather than re-rendered.
@@ -192,14 +192,14 @@ Session `{{session}}` on `{{model}}`, harness gongga at `{{build}}`, {{now}}, in
 # because a session on this machine keeps the bytes it has already sent.
 # Occupies: {{session}}, {{build}}, {{now}}, {{cwd}}, {{remote}}, {{model}}
 dynamic_tail_remote = '''
-Session `{{session}}` on `{{model}}`, harness gongga at `{{build}}`, {{now}}, in `{{cwd}}` -- a directory on remote `{{remote}}`, not on the machine this server runs on. `exec` runs on that remote by default, and `remote` names another machine. The harness stays here: `gongga-cli` is this machine's, not the peer's. Read and edit the peer's files with `exec` on it; a tool that acts on the server itself acts here, never on the peer.'''
+Session `{{session}}` on `{{model}}`, harness gongga at `{{build}}`, {{now}}, in `{{cwd}}` -- a directory on remote `{{remote}}`, not on the machine this server runs on. `exec` runs on that remote by default, and `remote` names another machine. The harness stays here: `gongga-cli` is this machine's, not the peer's. Read and edit the peer's files with `exec` on it; a tool that acts on the server itself acts here, never on the peer. To run a program on this machine instead, give `exec` `remote: none`.'''
 
 # The same, when no directory was named for the session and the peer's shell has not
 # reported one yet. The first card is the one a session keeps, so it may not say
 # "in ``": naming no directory is the documented default, not a mistake.
 # Occupies: {{session}}, {{build}}, {{now}}, {{remote}}, {{model}}
 dynamic_tail_remote_unstated = '''
-Session `{{session}}` on `{{model}}`, harness gongga at `{{build}}`, {{now}}, working on remote `{{remote}}` -- not on the machine this server runs on. No directory was named there, so `exec` starts where that machine starts. The harness stays here: `gongga-cli` is this machine's, not the peer's. Read and edit the peer's files with `exec` on it; a tool that acts on the server itself acts here, never on the peer.'''
+Session `{{session}}` on `{{model}}`, harness gongga at `{{build}}`, {{now}}, working on remote `{{remote}}` -- not on the machine this server runs on. No directory was named there, so `exec` starts where that machine starts. The harness stays here: `gongga-cli` is this machine's, not the peer's. Read and edit the peer's files with `exec` on it; a tool that acts on the server itself acts here, never on the peer. To run a program on this machine instead, give `exec` `remote: none`.'''
 
 # What introduces the index of the references the first message named, and of the
 # `AGENTS.md` the session's own directory keeps: their text, each after the spelling
@@ -235,7 +235,7 @@ An entry above is out of date when a block below names it: the block replaces th
 # Why an image cannot be sent to this model, in the roster's own words.
 # Placeholders: {{model}}, {{modalities}}
 image_refusal = '''
-this model cannot look at images: the roster lists modalities = [{{modalities}}] for {{model}}, with no "image" in it. Use a model whose roster entry includes "image" (set_session --model <provider>/<model name>), or leave the image out.'''
+this model cannot look at images: the roster lists modalities = [{{modalities}}] for {{model}}, with no "image" in it. Use a model whose roster entry includes "image" (a `set_session` Cmd with `"model":"<provider>/<model name>"`), or leave the image out.'''
 
 # Spliced into capped tool output where the middle was cut, naming the file the
 # whole thing was written to. Placeholders: {{omitted}}, {{total}}, {{path}}
@@ -284,7 +284,7 @@ monitor_error = '''
 {{noted}}
 Read it back with:
 
-    gongga-cli get_messages --session {{session}} -40:-1
+    gongga-cli '{"name":"get_messages","args":{"session":"{{session}}","range":"-40:-1"}}'
 
 Your authorization is this session's error and nothing else: find the cause and fix it. A session whose model cannot run may be moved to another model of the same tier -- the tier is the setup's choice, never yours, so do not change it -- and nothing else about the session, its records or the file tree is yours to change. When that tier has nothing able to run, say so and stop instead of reaching for another one. If it is a harness bug, `@skill(self-control)` says how to restart the server without losing a turn. Report what you found and what you changed in one message.'''
 
@@ -376,7 +376,7 @@ name = "args"
 type = "array|object"
 items = "string"
 positional = 2
-sentence = '''Its words, one per element: the program's arguments. Omitted, the words `[channel.<name>]` declares are used. Only a program about to start takes them; a call that speaks to a running channel passes none. A list of words only -- `exec` runs programs, not server cmds; a cmd is called by its own name as a tool, its schema taught by a skill.'''
+sentence = '''Its words, one per element: the program's arguments. Omitted, the words `[channel.<name>]` declares are used. Only a program about to start takes them; a call that speaks to a running channel passes none. A list of words, or a table of named arguments each spoken as `--key value` -- `exec` runs programs, not server cmds; a cmd is called by its own name as a tool, its schema taught by a skill.'''
 
 [[tool.exec.parameters]]
 name = "input"
@@ -400,7 +400,7 @@ sentence = '''Read until this text appears, and answer with what came before it.
 name = "remote"
 hint = "name"
 completion = "remotes"
-sentence = '''Which machine it runs on, named by `[remotes]`. Omitted is the session's own; naming another is not a change of session.'''
+sentence = '''Which machine it runs on, named by `[remotes]`; `none` (or `local`) is the machine this server runs on. Omitted is the session's own, so a remote session names `none` to run the harness's own programs here. Naming another is not a change of session.'''
 
 [[tool.exec.parameters]]
 name = "cwd"
