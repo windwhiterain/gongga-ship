@@ -242,10 +242,10 @@ def _nested(row):
     tier = (row.get("cache_tier") or "").strip()
     if tier:
         model_config["cache_tier"] = tier
-    # A NULL remote is this machine, which is also what an absent one means.
+    # SPEC spells this machine `none` (Workspace.remote = none); a NULL row is
+    # that same fact, so it is read back as `none`, not dropped.
     remote = (row.get("remote") or "").strip()
-    if remote:
-        workspace["remote"] = remote
+    workspace["remote"] = remote or "none"
     cwd = (row.get("cwd") or "").strip()
     if cwd:
         workspace["cwd"] = cwd
