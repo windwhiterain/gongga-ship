@@ -24,8 +24,8 @@ SPEC 把这个 skill 的事写成四步。动手的只有 `spawn`：它把前两
 
 ```bash
 G=gongga-cli
-name="$($G skill subagent spawn impl --cwd /path/to/its/checkout \
-        --model "$($G skill model_pool pick --tier flash)")"
+model="$($G '{"name":"skill","args":{"name":"model_pool","args":["pick","--tier","flash"]}}')"
+name="$($G '{"name":"skill","args":{"name":"subagent","args":["spawn","impl","--cwd","/path/to/its/checkout","--model","'"$model"'"]}}')"
 echo "$name"          # main/impl，或者 main/impl/2
 ```
 
@@ -55,8 +55,8 @@ spawn impl --context_limit 20%    -> 同上，只换预算
 机器和目录也能改：`--remote <名字>` 换机器（`--remote none` 是服务端自己这台），`--cwd <路径>` 换目录。
 **换了机器就不继承目录**——调用者的目录在那台机器上才有意义；只换目录时机器照旧。
 
-gongga 里更短的一层是 `gongga-cli skill subagent spawn …`：它按名字找到这个包、把第一个词当函数、其余交给它，
-退出码就是入口的，所以 `name="$(gongga-cli skill subagent spawn impl --cwd …)"` 是同一件事。
+gongga 里更短的一层是 `gongga-cli '{"name":"skill","args":{"name":"subagent","args":["spawn",…]}}'`：它按名字找到这个包、把第一个词当函数、其余交给它，
+退出码就是入口的，所以 `name="$(gongga-cli '{"name":"skill","args":{"name":"subagent","args":["spawn","impl","--cwd",…]}}')"` 是同一件事。
 
 stdout 只有一行名字（给 `$(…)` 用）；哪个名字被占了、订阅了几号，都走 stderr。
 
@@ -79,7 +79,7 @@ stdout 只有一行名字（给 `$(…)` 用）；哪个名字被占了、订阅
 `spawn` 替你发的就是这一条：
 
 ```bash
-$G subscribe --pattern '^turn_end:main/impl$' --persistant true --cmd '{"name":"send_message","args":{"session":"main","message":"main/impl finished its turn"}}'
+$G '{"name":"subscribe","args":{"pattern":"^turn_end:main/impl$","persistant":"true","cmd":{"name":"send_message","args":{"session":"main","message":"main/impl finished its turn"}}}}'
 ```
 
 **订阅只做 SPEC 写的那一件事：匹配了就执行行里带的命令。** 服务端自己不替你说话，所以"通知"
@@ -104,7 +104,7 @@ main/impl finished its turn
 一条 `kind=subscription` 的日志行（`ok=false` 加原因）。查它：
 
 ```bash
-$G events --kind subscription --session "$GONGGA_SESSION" --since <派活前的 last_id>
+$G '{"name":"events","args":{"kind":"subscription","session":"'"$GONGGA_SESSION"'","since":"<派活前的 last_id>"}}'
 ```
 
 正在停的服务端是例外：`cancel` 会等回调跑完，那时寄出的 `send_message` 变成一条 pending 行，
@@ -119,11 +119,8 @@ $G events --kind subscription --session "$GONGGA_SESSION" --since <派活前的 
 ## 派活：`send_message`
 
 ```bash
-$G send_message --session "$name" "$(cat <<'BRIEF'
-实现 @file(docs/notes/plan.md) 里的第一步。约定见 @skill(whiting-dev)。
-验收：cargo test -p gongga-server 绿。不要动 docs/。
-BRIEF
-)"
+$G '{"name":"send_message","args":{"session":"'"$name"'","message":"实现 @file(docs/notes/plan.md) 里的第一步。约定见 @skill(whiting-dev)。
+验收：cargo test -p gongga-server 绿。不要动 docs/。"}}'
 ```
 
 brief 里有引号、反引号、多行，所以用 heredoc，不要单引号。`send_message` 在**回合被接收时
@@ -156,8 +153,8 @@ wait {time: 600000}
 没有回执，`wait` 就只会坐到超时。自己搭的子会话要么补订阅、要么别 `wait`，直接看状态：
 
 ```bash
-$G get_messages --session "$name" -1:     # data.status 是 idle 就已经结束
-$G events --kind turn_end --session "$name" --since <派活前的 last_id>
+$G '{"name":"get_messages","args":{"session":"'"$name"'","range":"-1:"}}'     # data.status 是 idle 就已经结束
+$G '{"name":"events","args":{"kind":"turn_end","session":"'"$name"'","since":"<派活前的 last_id>"}}'
 ```
 
 **shell 里没有阻塞的等了。** 原先的 `wait --kind turn_end` 已经退役：一个睡在 socket 上的
@@ -167,10 +164,10 @@ $G events --kind turn_end --session "$name" --since <派活前的 last_id>
 ## 读它：`get_messages`
 
 ```bash
-$G get_messages --session "$name" -20:     # 它最后 20 行（负数是倒数，闭区间）
-$G get_messages --session "$name" -1:       # 顺带看 data.status
-$G interrupt_session "$name"              # 别干了，丢掉这一轮
-$G del_session "$name"                    # 收尾：transcript、它名下的 channel 一起走
+$G '{"name":"get_messages","args":{"session":"'"$name"'","range":"-20:"}}'     # 它最后 20 行（负数是倒数，闭区间）
+$G '{"name":"get_messages","args":{"session":"'"$name"'","range":"-1:"}}'       # 顺带看 data.status
+$G '{"name":"interrupt_session","args":{"id":"'"$name"'"}}'              # 别干了，丢掉这一轮
+$G '{"name":"del_session","args":{"id":"'"$name"'"}}'                    # 收尾：transcript、它名下的 channel 一起走
 ```
 
 `status` 在 `cmd_result` 的 `data` 里，所以"它还忙不忙"不必查库。想一次看所有子会话
@@ -196,19 +193,19 @@ EOF
 真能跑、真有额度的，输出的就是 `<provider>/<model id>`：
 
 ```bash
-$G skill model_pool pick --tier flash   # 便宜活：读文件、跑测试、搬代码
-$G skill model_pool pick --tier pro     # 要判断：疑难实现、review 别人的改动
-$G skill model_pool pick --tier sota    # 一次错就全错：设计、核心 review
-$G skill model_pool status              # 每个模型：档位、能不能用、剩多少
+$G '{"name":"skill","args":{"name":"model_pool","args":["pick","--tier","flash"]}}'   # 便宜活：读文件、跑测试、搬代码
+$G '{"name":"skill","args":{"name":"model_pool","args":["pick","--tier","pro"]}}'     # 要判断：疑难实现、review 别人的改动
+$G '{"name":"skill","args":{"name":"model_pool","args":["pick","--tier","sota"]}}'    # 一次错就全错：设计、核心 review
+$G '{"name":"skill","args":{"name":"model_pool","args":["status"]}}'              # 每个模型：档位、能不能用、剩多少
 ```
 
 **档是派的活决定的，不是抽出来的**；`flash` 是价格档不是能力档。档内抽到哪个由额度决定，
 所以两条并行的子 agent 一般落在两个不同的 provider 上，正好不互相抢配额。它死在额度上时
-（transcript 里一行 403/429）：`$G skill model_pool mark <provider>/<model>` 挡一会儿再抽，
+（transcript 里一行 403/429）：`$G '{"name":"skill","args":{"name":"model_pool","args":["mark","<provider>/<model>"]}}'` 挡一会儿再抽，
 不要自己编一个模型名。
 
 不给 `--model` 时它跑**你**的模型（复制来的），不是服务端的默认模型：想让便宜活落到便宜档，
-在这条 `spawn` 上点名（`--model "$($G pick --tier flash)"`）。服务端的默认模型
+在这条 `spawn` 上点名（`--model "$($G '{"name":"skill","args":{"name":"model_pool","args":["pick","--tier","flash"]}}')"`）。服务端的默认模型
 （`DEFAULT_SESSION_MODEL`，这台机器是 `deepseek-official/deepseek-flash`）只在你
 `set_session` 一个什么都不新说的会话时才用得上；配置里的 `[model]` 是服务端自己想事情用的，
 永远不是任何会话的模型。
