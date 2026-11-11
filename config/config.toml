@@ -438,6 +438,8 @@ sentence = '''The agent-written summary of the segment since the previous checkp
 # name. The session is the call's own; the command layer fills it.
 [tool.ls_channel]
 cmd = "ls_channel"
+# A server cmd reached by name: an operator route, like skill, not a model-offered tool.
+offered = false
 summary = """List a session's channels: the name each one is called, what it runs, and how much of what it said nobody has read."""
 carrier = "here"
 tunneled = false
@@ -450,6 +452,8 @@ sentence = """The channels whose name starts this way. Omitted is every channel 
 
 [tool.del_channel]
 cmd = "del_channel"
+# A server cmd reached by name: an operator route, like skill, not a model-offered tool.
+offered = false
 summary = """End a channel's program and forget the name, and do the same for every channel under that path. A channel that had already ended is only forgotten."""
 carrier = "here"
 tunneled = false
