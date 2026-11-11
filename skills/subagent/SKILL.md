@@ -1,7 +1,7 @@
 ---
 name: subagent
-description: 把一块独立的工作交给另一个会话并行做——子 agent 不是一个工具，而是一个普通会话：自己的 transcript、自己的上下文与阈值、自己的 turn。本 skill 的 `spawn` 一次做完两件必须做的事：在调用者名下起一个撞不上、也不会选中别人的名字（`<父会话>/<角色>`，`set_session --must_create`），配置照调用者那一行整份复制（走 `self-control` 的 `new_session`，只传名字和覆盖），并替调用者订阅它的 `turn_end`，所以父会话不必轮询。派活用 `send_message`，等它用一个可选的 `wait`（工具，不是一个睡眠的 shell）。当你要并行推进两条互不相干的实现、把大块验证/探查丢出去而不涨自己的上下文、或者要一个只读的侦察兵时读这个。
-compatibility: 需要 Python 3、PATH 里的 gongga-cli，和同一个内容仓里的 self-control skill（spawn 复制调用者的配置走它的 new_session）
+description: 把一块独立的工作交给另一个会话并行做——子 agent 不是一个工具，而是一个普通会话：自己的 transcript、自己的上下文与阈值、自己的 turn。本 skill 的 `new_subagent(config, role)` 一次做完两件必须做的事：在调用者名下起一个撞不上、也不会选中别人的名字（`<父会话>/<角色>`，`new_session` 撞名就拒绝），并替调用者订阅它的 `turn_end`，所以父会话不必轮询。子会话的配置就是调用者自己那一行（`self_config()` 读回来）改几个键——想换模型就换 `model_config`——而不是重打一遍设置。派活用 `send_message`，等它用 `wait {time: …}`（工具，不是一个睡着的 shell）。当你要并行推进两条互不相干的实现、把大块验证/探查丢出去而不涨自己的上下文、或者要一个只读的侦察兵时读这个。
+compatibility: 需要 Python 3、PATH 里的 gongga-cli、能只读打开的 `$GONGGA_HOME/gongga.db`（`self_config` 读它），以及一个读得懂 SPEC 嵌套 `SessionConfig` 的服务端
 ---
 
 # 子 agent
@@ -10,53 +10,66 @@ compatibility: 需要 Python 3、PATH 里的 gongga-cli，和同一个内容仓�
 上下文与压缩阈值、自己的 turn。turn 的互斥锁是**每个会话一把**（`SessionHandle::gate`），
 不是全局，所以两个会话的模型请求是真的同时在路上。
 
-SPEC 把这个 skill 的事写成四步。动手的只有 `spawn`：它把前两步做成一条命令，因为第二步
-一旦要人记得做，父会话就会退回去轮询。
+SPEC 把这个 skill 的事写成四步。动手的只有 `new_subagent`：它把前两步做成一条命令，因为
+第二步一旦要人记得做，父会话就会退回去轮询。
 
 | 步骤 | 谁做 | 为什么不是随手一条命令 |
 | --- | --- | --- |
-| 在调用者名下建一个会话 | `spawn <角色>` | 名字会撞，而 `set_session` 撞名**不报错** |
-| 订阅它的 `turn_end` | `spawn` 顺手做 | 父会话要的是"它停了叫我"，不是"我每十秒问一次" |
+| 拿到自己的配置 | `self_config()` | 服务端没有"把我的 SessionConfig 给我"这条命令；只读自己那一行比抄一张字段表可靠 |
+| 在调用者名下建一个会话 | `new_subagent(cfg, role)` | 名字会撞，而 `set_session` 撞名**不报错** |
+| 订阅它的 `turn_end` | `new_subagent` 顺手做 | 父会话要的是"它停了叫我"，不是"我每十秒问一次" |
 | 派活：`send_message` | 你 | 命令行本来就够 |
 | 等它：`wait`（可选） | 你 | 等是回合里的一件事，不是一个睡着的进程 |
 
-## 起一个：`spawn` = 建会话 + 订阅
+## 起一个：`self_config()` → 改几个键 → `new_subagent`
+
+```python
+import model_pool, subagent
+
+cfg = subagent.self_config()                            # 我这一行，SPEC 的 SessionConfig
+cfg["model_config"] = model_pool.pick_config("flash")   # 便宜活：只换模型那三件
+name = subagent.new_subagent(cfg, role="impl")          # -> main/impl
+```
+
+**配置是一份 dict，不是一串开关。** 这是 SPEC 的 `SessionConfig`：
+
+```
+{"model_config": {"model": {"provider": ..., "model": ...},
+                  "thinking": ..., "ctx_limit": "70%", "cache_tier": ...},
+ "workspace": {"remote": ..., "cwd": ...},
+ "keep_alive": false}
+```
+
+`self_config(session=None)` 把你自己那一行**读**成这个形状：`$GONGGA_HOME` 的 `gongga.db`，
+名字取 `$GONGGA_SESSION`，`mode=ro` 打开、不持有（服务端正在同一个 home 上跑）。字段对得上：
+
+| 行里的列 | SessionConfig 里的键 |
+| --- | --- |
+| `model`（`<provider>/<model>`） | `model_config.model` = `{provider, model}` |
+| `thinking_effort` | `model_config.thinking` |
+| `context_limit`（整数百分比） | `model_config.ctx_limit` = `"N%"` |
+| `cache_tier` | `model_config.cache_tier` |
+| `cache_keepalive` | `keep_alive` |
+| `remote` / `cwd` | `workspace.remote` / `workspace.cwd` |
+
+**没设的项不会出现在 dict 里**，不是写成 `null`：缺一个键就是"用 provider 给这个模型的默认值"，
+而服务端读 `config` 时对某些 `null` 是直接拒绝的（`ctx_limit` 只收 `"70%"` 或数字）。
+`new_subagent` 发出前还会把整份 dict 里的 `null` 去掉——model_pool 的 `pick_config` 正是用
+`null` 表示"默认"，两种写法在那一刻合成一种。
+
+**`new_subagent(config, role="worker")` 只做两件事**：建会话，然后订阅。名字是
+`<父会话>/<role>`，撞了就 `/2`、`/3`……；建会话走服务端的 `new_session`（`id` 加一整份
+`config` JSON），撞名是**被拒绝**而不是"注进别人的会话"。订阅用 `^turn_end:<名字>$` 两端
+锚死，动作是发给你的一条 `send_message`（`persistant true`）。它自己读那一行、自己发
+`new_session`、自己订阅：不经过任何别的 skill，所以"子会话是什么"只有一处定义。
+
+命令行上同一件事（`config` 是一份 JSON，长到写不进一条命令行时就用 Python）：
 
 ```bash
 G=gongga-cli
-model="$($G '{"name":"skill","args":{"name":"model_pool","args":["pick","--tier","flash"]}}')"
-name="$($G '{"name":"skill","args":{"name":"subagent","args":["spawn","impl","--cwd","/path/to/its/checkout","--model","'"$model"'"]}}')"
-echo "$name"          # main/impl，或者 main/impl/2
+$G '{"name":"skill","args":{"name":"subagent","args":["self_config"]}}'   # 我这一行的 SessionConfig
+$G '{"name":"skill","args":{"name":"subagent","args":["new_subagent","--config","<一份 SessionConfig JSON>","--role","impl"]}}'
 ```
-
-它是个 Python 包，公开 API 就是 `spawn(role, remote=None, cwd=None, model=None,
-context_limit=None)`：命令行上第一个词是函数名，后面的词按参数名/顺序给它——所以
-`--context_limit 20%` 带下划线，就是那个参数名。Python 里直接
-`import subagent; name = subagent.spawn("impl", cwd="/path")`，同一个函数，不经命令行。
-
-**它的配置就是你的配置。** `spawn` 不给参数时，子会话是**调用者那一行的整份拷贝**：模型、
-思考档位、上下文预算、缓存档位与 keepalive、mode、机器、目录——一项项都不用重打，也不会
-漏掉其中几项。这张复制表只存在一处（`@skill(self-control)` 的 `new_session`，§4c），
-`spawn` 通过服务端的 `skill` 命令调它，只传名字、来源和你在下面点名的覆盖：
-
-```
-spawn impl                        -> <我>/impl，配置 == 我这一行
-spawn impl --model <别的模型>      -> 同上，只换模型（要便宜/更难的活就点名）
-spawn impl --context_limit 20%    -> 同上，只换预算
-```
-
-所以那个 skill 没装时 `spawn` 会**拒绝并说明**（不是悄悄少复制几项）：两个 skill 同属一个内容仓，
-正常安装不会只有一半。
-
-**它在哪儿干活，默认跟你一样。** 机器来自服务端给每个 shell 导出的 `GONGGA_REMOTE`，目录就是
-这个 shell 所在目录（显式写成 `--cwd`，sticky 里的 `cwd` 就挪不动它）。所以远端会话里派活，
-子会话默认也在那台远端、同一个目录，不用手写 `--remote`/`--cwd`；只换目录时机器照旧。
-
-机器和目录也能改：`--remote <名字>` 换机器（`--remote none` 是服务端自己这台），`--cwd <路径>` 换目录。
-**换了机器就不继承目录**——调用者的目录在那台机器上才有意义；只换目录时机器照旧。
-
-gongga 里更短的一层是 `gongga-cli '{"name":"skill","args":{"name":"subagent","args":["spawn",…]}}'`：它按名字找到这个包、把第一个词当函数、其余交给它，
-退出码就是入口的，所以 `name="$(gongga-cli '{"name":"skill","args":{"name":"subagent","args":["spawn","impl","--cwd",…]}}')"` 是同一件事。
 
 stdout 只有一行名字（给 `$(…)` 用）；哪个名字被占了、订阅了几号，都走 stderr。
 
@@ -68,15 +81,16 @@ stdout 只有一行名字（给 `$(…)` 用）；哪个名字被占了、订阅
 ```
 
 从 `main` 起的子 agent 叫 `main/impl`，它自己再起的叫 `main/impl/review`；跨父撞名不可能。
-名字就是它在会话列表树里的位置。**没有 `--parent`**：能自己指定父会话的调用方，就能把工作
-塞进别人的子树里、谎报出身。`--must_create true` 让服务端在同名已存在时**拒绝**这条命令，
-所以"选名字"和"占住名字"是一步，不存在"探测完、创建前"被别人抢走的窗口。
+名字就是它在会话列表树里的位置。**没有 `parent` 参数**：能自己指定父会话的调用方，就能把工作
+塞进别人的子树里、谎报出身。`new_session` 在同名已存在时**拒绝**这条命令（SPEC：
+`new_session` 就是"必须新建的 `set_session`"），所以"选名字"和"占住名字"是一步，不存在
+"探测完、创建前"被别人抢走的窗口。
 
 自己用 `set_session` 建的会话也能当子 agent 用，只是没有订阅——那就自己补一条（见下一节）。
 
 ## 它每一轮结束，你会收到一条消息
 
-`spawn` 替你发的就是这一条：
+`new_subagent` 替你发的就是这一条：
 
 ```bash
 $G '{"name":"subscribe","args":{"pattern":"^turn_end:main/impl$","persistant":"true","cmd":{"name":"send_message","args":{"session":"main","message":"main/impl finished its turn"}}}}'
@@ -93,7 +107,7 @@ main/impl finished its turn
 **通知是一声 ping，不是它的答案。** 动作的参数在 `subscribe` 那一刻就定死了（上面那句
 `main/impl finished its turn`），匹配时原样执行，**不带**这一轮的 `outcome` / `steps` / `answer`。
 要读它说了什么、做了什么，用 `get_messages --session main/impl`（见下）。模式两端锚死
-（`^…$`），所以 `main/impl` 不会听见 `main/impl/2` 的回合——那正是 `spawn` 替你拼的东西。
+（`^…$`），所以 `main/impl` 不会听见 `main/impl/2` 的回合——那正是 `new_subagent` 替你拼的东西。
 
 **动作直接走命令层，不起 shell。** 订阅匹配时服务端在自己的命令层里跑这个动作，所以没有
 `--bash`、没有 named shell、也没有 `GONGGA_EVENT_*` 环境变量——那些都是旧机制，已经退役。
@@ -138,7 +152,7 @@ wait {time: 600000}
 任何东西落到本会话它都返回（channel 结束的通知、订阅命中寄来的消息、人来消息），并且**什么都不消费**：
 消息仍然在下一个 step 边界按原路进 transcript。超时不是错误，只是"还没到"。
 
-**它会不会等空？不会，因为通知是回执。** `spawn` 在派活**之前**订阅并把回调装上，所以每一轮
+**它会不会等空？不会，因为通知是回执。** `new_subagent` 在派活**之前**订阅并把回调装上，所以每一轮
 `turn_end` 都必然给你寄一条：你忙，它作为一条排队的 inject 打断你正在等的 `wait`（实测：父会话
 在 `wait` 里，子会话 20 ms 跑完，工具当时就回 `1 row(s) arrived … (a subscribe match)`）；
 你闲，它就是把你叫起来的那条 user 消息。代价是这条回执要过一次命令层 dispatch（服务端里跑一次 send_message），不是直接写一行。所以"它早就结束了"不是 `wait` 能漏掉的事。
@@ -183,34 +197,41 @@ for name, status, tokens in db.execute("select name,status,context_tokens from s
 EOF
 ```
 
-## 模型：会话自己的，抽一次就记住
 
-`--model` 是 **sticky**：`set_session` 成功一次之后那个模型就存进客户端的 sticky，之后每条
-不点 `--model` 的 `set_session` 自动带上。所以正常用法是**开工前给这个会话抽一次**，而不是
-每条命令都写。
+## 模型：档是派的活决定的
 
-模型从 **model_pool** skill 拿：它在你点的那一档里、按各 provider 当前额度抽一个这台机器
-真能跑、真有额度的，输出的就是 `<provider>/<model id>`：
+**子会话的模型就是 `model_config` 里那个 `model`**，它从哪里来由你决定：`self_config()` 给的是
+你自己的模型，想让便宜活落到便宜档，就把 `model_config` 换成 model_pool 抽的那一份。
+
+`model_pool pick_config` 输出的正是 SPEC 的 `ModelConfig`：档内按各 provider 当前额度抽一个
+这台机器真能跑、真有额度的模型，另外三个字段是 `null`（SPEC 的 `provider_default()`）——
+换模型时思考档、上下文预算、缓存档本来就该重新默认，所以它不替你编。`pick` 是同一次抽签的
+另一种印法，输出 `<provider>/<model id>`：
 
 ```bash
-$G '{"name":"skill","args":{"name":"model_pool","args":["pick","--tier","flash"]}}'   # 便宜活：读文件、跑测试、搬代码
-$G '{"name":"skill","args":{"name":"model_pool","args":["pick","--tier","pro"]}}'     # 要判断：疑难实现、review 别人的改动
-$G '{"name":"skill","args":{"name":"model_pool","args":["pick","--tier","sota"]}}'    # 一次错就全错：设计、核心 review
-$G '{"name":"skill","args":{"name":"model_pool","args":["status"]}}'              # 每个模型：档位、能不能用、剩多少
+gongga-cli skill model_pool pick_config --tier flash
+gongga-cli skill model_pool pick --tier flash          # deepseek-official/deepseek-flash
+```
+
+```python
+cfg["model_config"] = model_pool.pick_config("flash")   # 便宜活：读文件、跑测试、搬代码
+cfg["model_config"] = model_pool.pick_config("pro")     # 要判断：疑难实现、review 别人的改动
+cfg["model_config"] = model_pool.pick_config("sota")    # 一次错就全错：设计、核心 review
 ```
 
 **档是派的活决定的，不是抽出来的**；`flash` 是价格档不是能力档。档内抽到哪个由额度决定，
 所以两条并行的子 agent 一般落在两个不同的 provider 上，正好不互相抢配额。它死在额度上时
-（transcript 里一行 403/429）：`$G '{"name":"skill","args":{"name":"model_pool","args":["mark","<provider>/<model>"]}}'` 挡一会儿再抽，
-不要自己编一个模型名。
+（transcript 里一行 403/429）：`gongga-cli skill model_pool mark <provider>/<model>` 挡一会儿
+再抽，不要自己编一个模型名。
 
-不给 `--model` 时它跑**你**的模型（复制来的），不是服务端的默认模型：想让便宜活落到便宜档，
-在这条 `spawn` 上点名（`--model "$($G '{"name":"skill","args":{"name":"model_pool","args":["pick","--tier","flash"]}}')"`）。服务端的默认模型
+不动 `model_config` 时它跑**你**的模型，不是服务端的默认模型。服务端的默认模型
 （`DEFAULT_SESSION_MODEL`，这台机器是 `deepseek-official/deepseek-flash`）只在你
 `set_session` 一个什么都不新说的会话时才用得上；配置里的 `[model]` 是服务端自己想事情用的，
 永远不是任何会话的模型。
 
-换模型就是一次 `set_session --model`：它的 transcript 还在，下一轮就换过去了。
+**建好之后再换模型**有两条等价的路：`set_session --model <provider>/<model>`（sticky，之后
+这个会话的 `set_session` 自动带上），或者只给一份带 `model_config` 的 `--config`——它的
+transcript 还在，下一轮就换过去了。
 
 ## brief 是它的第一句话：引用写进去
 
@@ -249,8 +270,8 @@ probe 的后一条 = "Now also look at @file(late.md) and @skill(late), then sto
    什么、验收标准、不许动什么，都写进去。把引用写进去是同一件事的省钱版本：不是把文件内容
    贴进 brief，而是让 index 替你贴。
 2. **一份工作树只有一个写者。** 两个会话同时改同一份文件会互相覆盖：给它 `git worktree add`
-   一份自己的，或者让它只读。名字也一样：**不要手写会话名**，用 `spawn`——`set_session`
-   撞名不会报错，会把你的 brief 注进别人的会话。
+   一份自己的，或者让它只读。名字也一样：**不要手写会话名**，用 `new_subagent`——它挑名字、
+   撞了就试下一个，而手写的 `set_session` 撞名不报错，会把你的 brief 注进别人的会话。
 3. **它的上下文记在它自己账上。** 父会话不会因为它干活而变大，这就是它的价值：一个会话承载
    全部工作时，上下文会一路涨到阈值以上几倍。反过来，它收到 `Context notice` 时也要立刻
    开始培养继承人，和你没有区别。

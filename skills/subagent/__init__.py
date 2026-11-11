@@ -1,25 +1,23 @@
-"""Start a subagent: a session under the caller's name, whose turns the caller hears about.
+"""Start a subagent: a session under the caller's own name, whose turns the caller hears about.
 
-    spawn(role, remote=None, cwd=None, model=None, context_limit=None)
+    config = self_config()                          # SPEC's SessionConfig, as the caller's row says
+    config["model_config"] = pick_config("flash")    # what the child should change, on that object
+    name = new_subagent(config, role="impl")         # -> <parent>/impl
 
-The child is a copy of its caller, not a second session configured from scratch:
-every setting this call was not told to change -- model, thinking level, context
-budget, cache tier and its keepalive, mode, machine, directory -- comes from the
-caller's own row. That table lives in `self-control`'s `new_session`, and this file
-runs it rather than restating it: a copy of an eight-field table is a copy that
-drifts, and a child that looks like its parent and is not is worse than a child
-that is told less.
+# Invariant
 
-The child lands where the caller works: its machine is the caller's (`GONGGA_REMOTE`
-in the shell the server started) and its directory is the shell's own, stated so a
-sticky `cwd` cannot move it. `remote`/`cwd` override them, and a directory is only
-inherited on the machine it means something on.
+A child differs from its caller only where the caller said so. `self_config` reads
+the caller's own row and answers it as SPEC's nested `SessionConfig`, so naming a
+different model, thinking level, context budget, cache tier, machine or directory
+is a key set on one dict -- not a flag list this skill would have to keep in step
+with the server's. The dict is the whole statement: what it does not name, the
+child takes from the configured defaults.
 
-SPEC's `## Skill: subagent` names four steps. Two of them are one call here,
+SPEC's `## Skill: subagent` names four steps, and `new_subagent` does the first two,
 because the second is worthless when it is a step somebody has to remember:
 
-1. **A new session under the caller session's name.** `set_session --id <name>
-   --must_create true` takes the name and refuses a name that already exists, so choosing and
+1. **A new session under the caller session's name.** `new_session` refuses a name
+   that already exists (SPEC: it is `set_session` that must create), so choosing and
    claiming are one step: a probe followed by a create leaves a window in which
    another caller takes the name, and the loser silently joins the winner's
    transcript.
@@ -32,10 +30,10 @@ because the second is worthless when it is a step somebody has to remember:
 The name is a path, `<parent>/<role>`, with `/2`, `/3`, ... added when it is taken:
 two callers asking for `main/impl` get `main/impl` and `main/impl/2`, and neither
 gets the other's context. The parent is `GONGGA_SESSION`, which the server exports
-to every shell it starts. There is no `parent`: a session that could name its
-parent could plant work in somebody else's subtree.
+to every shell it starts. There is no `parent` argument: a session that could name
+its parent could plant work in somebody else's subtree.
 
-The name is the answer, one string, so `name = spawn("impl", cwd=".")` is the whole
+The name is the answer, one string, so `name = new_subagent(config)` is the whole
 interface -- the command line prints it, a caller keeps it. What a human wants to
 know -- which name was skipped, which subscription was armed -- goes to stderr.
 """
@@ -44,6 +42,7 @@ import json
 import os
 import re
 import shutil
+import sqlite3
 import subprocess
 import sys
 
@@ -53,14 +52,21 @@ CANDIDATES = ("gongga-cli", "gongga")
 # How many names to try before giving up. Each attempt is one round trip, and a
 # parent with a thousand siblings is a bug in the caller, not a case to serve.
 ATTEMPTS = 1000
-# What the server says when `--must_create` refuses. Its answer is the only signal
-# that separates "name taken" from a real failure, so it is named once, here.
+# What the server says when it refuses a name that exists. Its answer is the only
+# signal that separates "name taken" from a real failure, so it is named once, here.
 TAKEN = "--must_create refuses"
-#: The skill that owns the copy table, and the entry that applies it. A child is
-#: the caller's settings with a different name and its own transcript, so the
-#: table is the sibling skill's (`self-control` §4c) and not a second copy here.
-COPY_SKILL = "self-control"
-COPY_ENTRY = "new_session"
+#: The caller's settings, in the `sessions` table's own spelling. SPEC puts the same
+#: facts in three nested groups; `_nested` is that reshaping, and this tuple is the
+#: whole of the read.
+COLUMNS = (
+    "model",
+    "thinking_effort",
+    "context_limit",
+    "cache_tier",
+    "cache_keepalive",
+    "remote",
+    "cwd",
+)
 
 
 def _die(message):
@@ -104,38 +110,132 @@ def _command(cmd):
     return done.returncode == 0, message, data
 
 
-def _copy(name, parent, overrides):
-    """The child, created by the entry that owns the copy table; (taken, what it said).
+def _caller():
+    """The session whose shell this is, or a refusal that names the missing export."""
+    name = (os.environ.get("GONGGA_SESSION") or "").strip()
+    if not name:
+        _die(
+            "GONGGA_SESSION is not set: only a shell the server started knows which "
+            'session it belongs to (check with: echo "$GONGGA_SESSION")'
+        )
+    return name
+
+
+def _row(name):
+    """One row of `sessions`, by name, read-only.
 
     # Invariant
 
-    The words are the name, the source session and the caller's overrides --
-    nothing else. Every setting not named here is the source row's, decided in one
-    place (`self-control` §4c), so a setting added to that table reaches children
-    without a line changing here.
-
-    The entry is asked through the server (`skill`), which is how one skill uses
-    another: the server resolves the name through the same three roots the `skill`
-    tool uses, and runs it with this session's environment -- its home, its key,
-    its name.
+    Read-only and outside the server: SPEC gives no command that answers a
+    session's configuration, and a connection that could write would be a second
+    writer of the row the server owns. A server is running on this home, so the
+    database is opened `mode=ro` and not held.
     """
-    words = [COPY_ENTRY, name, "--source", parent, *overrides]
-    accepted, message, _data = _command(
-        {"name": "skill", "args": {"session": parent, "name": COPY_SKILL, "args": words}}
-    )
-    if TAKEN in message:
-        return True, message
-    if not accepted:
-        # The one failure worth explaining: this skill is installed, the one whose
-        # table it copies is not, and the server's words alone would read as a typo.
-        if "no skill named" in message:
-            _die(
-                f"could not create a session: {COPY_SKILL} is not installed, and spawn "
-                f"copies the caller's configuration through its {COPY_ENTRY} -- the two "
-                f"ship together ({message})"
-            )
-        _die(f"could not create a session: {message or 'no answer from the server'}")
-    return False, message
+    home = (os.environ.get("GONGGA_HOME") or "").strip()
+    if not home:
+        _die("GONGGA_HOME is not set: it names the home whose gongga.db holds the row")
+    database = os.path.join(os.path.expanduser(home), "gongga.db")
+    if not os.path.isfile(database):
+        _die(f"no {database}: that home has never run a server")
+    try:
+        connection = sqlite3.connect(
+            "file:" + database.replace("\\", "/") + "?mode=ro", uri=True
+        )
+    except sqlite3.Error as refused:
+        _die(f"could not open {database} read-only: {refused}")
+    try:
+        found = connection.execute(
+            f"select {', '.join(COLUMNS)} from sessions where name = ?", (name,)
+        ).fetchone()
+    except sqlite3.Error as refused:
+        _die(f"could not read {name} from {database}: {refused}")
+    finally:
+        connection.close()
+    if found is None:
+        _die(f"no session named {name} in {database}")
+    return dict(zip(COLUMNS, found))
+
+
+def _percent(value):
+    """SPEC's `ctx_limit` from the row's stored limit: `"70%"`, or None when unset."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value.strip() or None
+    try:
+        return f"{int(value)}%"
+    except (TypeError, ValueError):
+        return None
+
+
+def _nested(row):
+    """SPEC's `SessionConfig` (`## Server Cmd`) from one `sessions` row.
+
+    # Invariant
+
+    An unset setting is an absent key, never `null`: an absent key is what "the
+    model's default" means to the server, and its `config` reading refuses some
+    nulls outright. `model` is stored spelled `<provider>/<model>`, the way the
+    roster names it, so it is split back into SPEC's `Model`.
+    """
+    model_config = {}
+    workspace = {}
+    spelled = (row.get("model") or "").strip()
+    if spelled:
+        provider, slash, model = spelled.partition("/")
+        model_config["model"] = (
+            {"provider": provider, "model": model} if slash and model else {"model": spelled}
+        )
+    thinking = (row.get("thinking_effort") or "").strip()
+    if thinking:
+        model_config["thinking"] = thinking
+    percent = _percent(row.get("context_limit"))
+    if percent:
+        model_config["ctx_limit"] = percent
+    tier = (row.get("cache_tier") or "").strip()
+    if tier:
+        model_config["cache_tier"] = tier
+    # A NULL remote is this machine, which is also what an absent one means.
+    remote = (row.get("remote") or "").strip()
+    if remote:
+        workspace["remote"] = remote
+    cwd = (row.get("cwd") or "").strip()
+    if cwd:
+        workspace["cwd"] = cwd
+    # The column is an integer flag; false is also the configured default.
+    return {
+        "model_config": model_config,
+        "workspace": workspace,
+        "keep_alive": bool(row.get("cache_keepalive")),
+    }
+
+
+def self_config(session=None):
+    """The caller's own settings as SPEC's nested `SessionConfig`, ready to change.
+
+    `session` is for a caller reading somebody else's row; the default is this
+    shell's own session, `GONGGA_SESSION`. A setting the row does not carry is left
+    out of the dict rather than written as `None`, so "unchanged" and "the model's
+    default" are one thing to the caller and to the server.
+    """
+    name = (session or "").strip() or _caller()
+    return _nested(_row(name))
+
+
+def _stated(value):
+    """`value` with every `None` removed, at every level.
+
+    The dict a caller builds is `self_config()` with model_pool's `pick_config`
+    dropped over one key, and that one spells a provider default as an explicit
+    `null`. "Default" is spelled by leaving the key out -- the server's `config`
+    reading refuses a null where it takes a percentage -- so this is where the two
+    spellings of one fact become one.
+    """
+    if isinstance(value, dict):
+        return {key: _stated(item) for key, item in value.items() if item is not None}
+    if isinstance(value, list):
+        return [_stated(item) for item in value]
+    return value
 
 
 #: The shell the callback runs in. Its own: the same name is the same queue, and a
@@ -178,71 +278,40 @@ def _subscribe(name):
     return pattern, message
 
 
-def _caller_place(parent):
-    """The caller session's own `remote` and `cwd`, as the shell's own facts.
+def new_subagent(config, role="worker"):
+    """Create the child session and arm its turn-end subscription; answer its name.
 
-    # Invariant
-
-    The server exports a session's model and remote to every shell it starts,
-    and a shell's own directory is its session's: that is what makes a child
-    inherit its parent's machine without the parent having to state it, and
-    what keeps this from guessing -- a wrong guess would start the child in a
-    directory that does not exist on the machine it lands on.
+    `config` is SPEC's `SessionConfig` as one dict -- in practice `self_config()`
+    with the keys this child should differ in set on it, which is how a child gets
+    a model its caller does not run. `role` is one name segment, and the child is
+    `<parent>/<role>`, with `/2` and onwards added while that name is taken.
     """
-    remote = os.environ.get("GONGGA_REMOTE", "").strip()
-    return {"remote": remote or None, "cwd": os.getcwd()}
-
-
-def spawn(role, remote=None, cwd=None, model=None, context_limit=None):
-    """Create the child session and arm its turn-end subscription; answer its name."""
+    if not isinstance(config, dict):
+        _die(
+            f"a config is SPEC's SessionConfig, one dict, not {type(config).__name__}: "
+            "start from self_config()"
+        )
     role = (role or "").strip().strip("/")
     if not role or "/" in role:
         _die(f"a role is one segment, not {role!r}: the path is built from it")
-    # The parent is the session whose shell this is, and the server says so. A name
-    # typed here would be a claim about where this work came from, and the whole
-    # point of the path is that the claim cannot be made.
-    parent = os.environ.get("GONGGA_SESSION", "").strip()
-    if not parent:
-        _die(
-            "GONGGA_SESSION is not set: only a shell the server started knows which "
-            'session it belongs to (check with: echo "$GONGGA_SESSION")'
-        )
-
-    # Where the caller works is where the child starts: the shell's own machine and
-    # directory, which the server exports and the filesystem answers.
-    place = _caller_place(parent)
-    # A remote names a machine; `none` names the server's own.
-    recorded = (place.get("remote") or "").strip()
-    recorded = None if recorded.lower() in ("", "none") else recorded
-    # No `--remote` means the caller's own machine; `--remote none` names the
-    # server's own, which is a different machine and says so.
-    named_remote = (remote or "").strip()
-    wanted = recorded if remote is None else (
-        None if named_remote.lower() in ("", "none") else named_remote
-    )
-    # A directory is the caller's to give away only on the caller's own machine.
-    same_machine = wanted == recorded
-    cwd = cwd if cwd is not None else (place.get("cwd") if same_machine else None)
-
-    # What the caller named, and only that: the rest is the copy's to carry.
-    overrides = []
-    if model:
-        overrides += ["--model", model]
-    if context_limit:
-        overrides += ["--ctx_limit", context_limit]
-    if wanted:
-        overrides += ["--remote", wanted]
-    # The working directory is the shell's own, stated so a sticky `cwd` entry
-    # cannot land the child somewhere its caller never worked.
-    if cwd:
-        overrides += ["--cwd", cwd]
+    parent = _caller()
+    try:
+        # One JSON document, because SPEC's `config` argument is one: what a
+        # caller can run by hand and what this sends are the same object.
+        payload = json.dumps(_stated(config))
+    except (TypeError, ValueError) as unusable:
+        _die(f"the config is not JSON: {unusable}")
 
     for attempt in range(ATTEMPTS):
         name = f"{parent}/{role}" if attempt == 0 else f"{parent}/{role}/{attempt + 1}"
-        taken, _ = _copy(name, parent, overrides)
-        if taken:
-            print(f"spawn: {name} is taken; trying the next segment", file=sys.stderr)
+        accepted, message, _data = _command(
+            {"name": "new_session", "args": {"id": name, "config": payload}}
+        )
+        if TAKEN in message:
+            print(f"new_subagent: {name} is taken; trying the next segment", file=sys.stderr)
             continue
+        if not accepted:
+            _die(f"could not create a session: {message or 'no answer from the server'}")
         pattern, said = _subscribe(name)
         if pattern is None:
             # A child nobody hears from is worse than no child: it runs work the
@@ -257,7 +326,6 @@ def spawn(role, remote=None, cwd=None, model=None, context_limit=None):
                     else f"and could not delete {name}: it exists and is unheard"
                 )
             )
-        print(f"spawn: {said}", file=sys.stderr)
+        print(f"new_subagent: {said}", file=sys.stderr)
         return name
     _die(f"gave up after {ATTEMPTS} names under {parent}/{role}: nothing was created")
-
