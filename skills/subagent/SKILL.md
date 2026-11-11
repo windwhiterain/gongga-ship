@@ -1,7 +1,7 @@
 ---
 name: subagent
 description: 把一块独立的工作交给另一个会话并行做——子 agent 不是一个工具，而是一个普通会话：自己的 transcript、自己的上下文与阈值、自己的 turn。本 skill 的 `new_subagent(config, role)` 一次做完两件必须做的事：在调用者名下起一个撞不上、也不会选中别人的名字（`<父会话>/<角色>`，`new_session` 撞名就拒绝），并替调用者订阅它的 `turn_end`，所以父会话不必轮询。子会话的配置就是调用者自己那一行（`self_config()` 读回来）改几个键——想换模型就换 `model_config`——而不是重打一遍设置。派活用 `send_message`，等它用 `wait {time: …}`（工具，不是一个睡着的 shell）。当你要并行推进两条互不相干的实现、把大块验证/探查丢出去而不涨自己的上下文、或者要一个只读的侦察兵时读这个。
-compatibility: 需要 Python 3、PATH 里的 gongga-cli、能只读打开的 `$GONGGA_HOME/gongga.db`（`self_config` 读它），以及一个读得懂 SPEC 嵌套 `SessionConfig` 的服务端
+compatibility: 需要 Python 3、本 home 的 Python 客户端 `gongga.py`（`$GONGGA_SKILL_LIB` 或 `$GONGGA_HOME/lib`，服务端自己写的那个模块）、能只读打开的 `$GONGGA_HOME/gongga.db`（`self_config` 读它），以及一个读得懂 SPEC 嵌套 `SessionConfig` 的服务端
 ---
 
 # 子 agent
@@ -72,6 +72,11 @@ $G '{"name":"skill","args":{"name":"subagent","args":["new_subagent","--config",
 ```
 
 stdout 只有一行名字（给 `$(…)` 用）；哪个名字被占了、订阅了几号，都走 stderr。
+
+**这些命令是给你在 shell 里手敲的；skill 自己不走命令行。** 它 `import gongga`（本 home 的
+Python 客户端，`gongga.connect()` 自己读 home 的 key 和端口），一次 `call` 拿回一个 `Reply`。
+子进程 `gongga-cli` 那条路在 Windows 上根本不成立：PATH 上的 `gongga-cli` 是**客户端**，它
+对一条命令的回答是"a command belongs to gongga-cli"。
 
 **名字是路径**，父会话是 `$GONGGA_SESSION`（服务端给每个会话的每个 shell 注入的那个）：
 

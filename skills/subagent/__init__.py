@@ -41,14 +41,12 @@ know -- which name was skipped, which subscription was armed -- goes to stderr.
 import json
 import os
 import re
-import shutil
 import sqlite3
-import subprocess
 import sys
 
-# `gongga-cli` first: the bundle `gongga` carries a window, and a window refuses
-# client-side commands. A script wants the one that answers.
-CANDIDATES = ("gongga-cli", "gongga")
+#: The one connection this run talks through, dialled on first use (`_connection`).
+_CONNECTION = None
+
 # How many names to try before giving up. Each attempt is one round trip, and a
 # parent with a thousand siblings is a bug in the caller, not a case to serve.
 ATTEMPTS = 1000
@@ -74,40 +72,89 @@ def _die(message):
     raise RuntimeError(message)
 
 
-def _program():
-    found = next((name for name in CANDIDATES if shutil.which(name)), None)
-    if found is None:
-        _die("neither gongga-cli nor gongga is on PATH")
-    return found
+def _library():
+    """The directory holding this home's `gongga.py`, or None when nothing names one.
+
+    # Invariant
+
+    The module beside *this* home, never an installed copy elsewhere: the client
+    and the server it dials are one build, and the server is what wrote it. Two
+    places name that directory, and a skill gets one of them from whatever started
+    it -- `GONGGA_SKILL_LIB` from a skill runner, `GONGGA_HOME` from a shell the
+    server started.
+    """
+    for directory in (
+        os.environ.get("GONGGA_SKILL_LIB"),
+        os.path.join(os.environ.get("GONGGA_HOME") or "", "lib"),
+    ):
+        if directory and os.path.isfile(os.path.join(directory, "gongga.py")):
+            return directory
+    return None
+
+
+def _module():
+    """The harness's own client module, imported from the home that serves this shell."""
+    directory = _library()
+    if directory is None:
+        _die(
+            "no gongga.py to import: this needs GONGGA_HOME (a shell the server "
+            "started has it) or GONGGA_SKILL_LIB"
+        )
+    if directory not in sys.path:
+        sys.path.insert(0, directory)
+    try:
+        import gongga
+    except Exception as unusable:
+        _die(f"could not import {os.path.join(directory, 'gongga.py')}: {unusable}")
+    return gongga
+
+
+def _connection(gongga):
+    """This home's server, dialled once and kept for the length of the run.
+
+    # Invariant
+
+    One connection for the whole run: a spawn is several calls (the create, the
+    subscription, an undo), and a handshake before each is a round trip before
+    each. A connection the server has since dropped fails its call, which is a
+    refusal the caller sees -- not something to paper over by redialling.
+    """
+    global _CONNECTION
+    if _CONNECTION is None:
+        try:
+            _CONNECTION = gongga.connect()
+        except gongga.Unreachable as unreachable:
+            _die(str(unreachable))
+        except OSError as missing:
+            _die(f"no key to dial with: {missing}")
+    return _CONNECTION
 
 
 def _command(cmd):
     """Runs one Cmd, returning (accepted, the message, the `data` it answered).
 
-    SPEC's `Cmd := {name, args}`: `gongga-cli` reads one JSON object. A server's
-    refusal is the caller's answer too: it leaves non-zero and prints the same
-    sentence to stderr, so the two are one fact and are read as one.
+    # Invariant
+
+    In process, through the home's own client -- never through a command line. On
+    Windows `gongga-cli` on PATH is the client, whose answer to a command is that
+    the command belongs to `gongga-cli`; reading printed lines back would also make
+    this a second copy of a contract `gongga.connect` already answers with a
+    `Reply`. An argument travels as the wire spells it, so SPEC's `config` and
+    `subscribe`'s `cmd` are dicts here.
+
+    A refusal is the caller's answer too: the client reports it as `ok` false with
+    the server's own sentence, so "it ran and said no" and "it said yes" keep one
+    shape.
     """
-    done = subprocess.run([_program(), json.dumps(cmd)], capture_output=True, text=True)
-    events = []
-    for line in done.stdout.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            events.append(json.loads(line))
-        except json.JSONDecodeError:
-            continue
-    message = ""
-    data = None
-    for event in events:
-        if event.get("t") == "cmd_result":
-            message = event.get("message") or ""
-            data = event.get("data")
-    if done.returncode != 0 and not message:
-        why = (done.stderr or done.stdout).strip().splitlines()
-        _die(f"{cmd['name']} left with {done.returncode}: {why[-1] if why else 'no answer'}")
-    return done.returncode == 0, message, data
+    gongga = _module()
+    server = _connection(gongga)
+    try:
+        reply = server.call(cmd["name"], **cmd.get("args", {}))
+    except gongga.Unreachable as unreachable:
+        _die(str(unreachable))
+    except OSError as missing:
+        _die(f"no key to dial with: {missing}")
+    return reply.ok, reply.message, reply.data
 
 
 def _caller():
