@@ -79,45 +79,29 @@ stdout 只有一行名字（给 `$(…)` 用）；哪个名字被占了、订阅
 `spawn` 替你发的就是这一条：
 
 ```bash
-$G subscribe main/impl '^turn_end:main/impl$' --persistant true \
-  --bash notice --cmd 'gongga-cli send_message --session "$GONGGA_SESSION" \
-    --message "$GONGGA_EVENT_KIND $GONGGA_EVENT_SESSION: $GONGGA_EVENT_PAYLOAD"'
+$G subscribe --pattern '^turn_end:main/impl$' --persistant true --cmd '{"name":"send_message","args":{"session":"main","message":"main/impl finished its turn"}}'
 ```
 
 **订阅只做 SPEC 写的那一件事：匹配了就执行行里带的命令。** 服务端自己不替你说话，所以"通知"
-是这条命令寄出来的——`send_message` 发给 `$GONGGA_SESSION`，也就是你（服务端给每个会话的每个
-shell 都注入它，所以不用把名字写死）。它落到你的 transcript 里就是一条普通的 user 消息：
+是这条命令寄出来的——动作就是一个 `send_message`，发给你（订阅者）。它落到你的 transcript 里
+就是一条普通的 user 消息：
 
 ```
-subagent turn_end main/impl: {"kind":"turn_end","session":"main/impl","payload":{"outcome":"done","steps":0,"answer":"……它这一轮说的话……"}}
+main/impl finished its turn
 ```
 
-三个变量是服务端在你那条命令**前面**加的赋值，整条命令跑在一个子 shell 里，所以读得到、
-跑完也不留在你的 shell 里：
+**通知是一声 ping，不是它的答案。** 动作的参数在 `subscribe` 那一刻就定死了（上面那句
+`main/impl finished its turn`），匹配时原样执行，**不带**这一轮的 `outcome` / `steps` / `answer`。
+要读它说了什么、做了什么，用 `get_messages --session main/impl`（见下）。模式两端锚死
+（`^…$`），所以 `main/impl` 不会听见 `main/impl/2` 的回合——那正是 `spawn` 替你拼的东西。
 
-| 变量 | 是什么 |
-| --- | --- |
-| `GONGGA_EVENT_KIND` | 事件名；对日志行就是它的 `kind`（`turn_end`、`exit`、`trigger_event` 起的任意名字） |
-| `GONGGA_EVENT_SESSION` | 事件关于哪个会话；与你无关的事件是空串 |
-| `GONGGA_EVENT_PAYLOAD` | 整条事件的 JSON；`turn_end` 里就带着 `outcome` / `steps` / `answer` |
+**动作直接走命令层，不起 shell。** 订阅匹配时服务端在自己的命令层里跑这个动作，所以没有
+`--bash`、没有 named shell、也没有 `GONGGA_EVENT_*` 环境变量——那些都是旧机制，已经退役。
+动作能调的就是这个会话能调的命令，越不过命令层；它跑在服务端里，不依赖哪台机器上有没有
+`gongga-cli`。
 
-写的时候按普通变量写（`"$GONGGA_EVENT_PAYLOAD"`）。别写成 `VAR=x 你的命令 "$VAR"`——那是
-shell 的坑：一条简单命令的词在它自己的赋值生效**之前**就展开了，你会读到空值。
-
-`outcome` 是这一轮真正的结论（`done` / `cancelled` / 失败），`steps` 是它走了几步，`answer`
-是**它这一轮自己的话**——所以汇报直接到通知里，不必再 `get_messages` 跑一趟。答案太长时这一行
-只带开头（32k 字符封顶），剩下的在 transcript 里。模式两端锚死（`^…$`），所以 `main/impl` 不会
-听见 `main/impl/2` 的回合——那正是 `spawn` 替你拼的东西。
-
-**回调跑在你所在的机器上**：它用的是你（订阅者）的 shell，所以本地的你什么都不用准备；
-会话在远端时，那台机器上得真有 `gongga-cli` 和能连上的地址，否则寄不出去。
-
-**回调跑在它自己的 shell 里（`--bash notice`），不借你干活的 `default`。** 同名 shell 就是一条
-队：回调要是排在你正在跑的长命令后面，通知会晚几分钟。这个 shell 由回调在**第一次匹配时**
-自己拉起来，不需要事先 `bash --name notice`。
-
-**回调也会失败，那时它不响。** 寄信要一次 `gongga-cli` 进程加一次回连：机器上没有它、key 不
-对、服务端没应答，都只会留下一条 `kind=subscription` 的日志行（`ok=false` 加原因）。查它：
+**动作也会失败，那时它不响。** 命令层跑这个动作，失败（比如 `send_message` 被拒）只留下
+一条 `kind=subscription` 的日志行（`ok=false` 加原因）。查它：
 
 ```bash
 $G events --kind subscription --session "$GONGGA_SESSION" --since <派活前的 last_id>
@@ -151,17 +135,16 @@ brief 里有引号、反引号、多行，所以用 heredoc，不要单引号。
 派完就接着干别的，那条通知会自己找上门。如果你这一刻**只想等这一轮**，用 `wait` 工具：
 
 ```
-wait {timeout_ms: 600000}
+wait {time: 600000}
 ```
 
-任何东西落到本会话它都返回（后台任务报告、订阅命中、人来消息），并且**什么都不消费**：
+任何东西落到本会话它都返回（channel 结束的通知、订阅命中寄来的消息、人来消息），并且**什么都不消费**：
 消息仍然在下一个 step 边界按原路进 transcript。超时不是错误，只是"还没到"。
 
 **它会不会等空？不会，因为通知是回执。** `spawn` 在派活**之前**订阅并把回调装上，所以每一轮
 `turn_end` 都必然给你寄一条：你忙，它作为一条排队的 inject 打断你正在等的 `wait`（实测：父会话
 在 `wait` 里，子会话 20 ms 跑完，工具当时就回 `1 row(s) arrived … (a subscribe match)`）；
-你闲，它就是把你叫起来的那条 user 消息。代价是这条回执要过一次回调（一个进程 + 一次回连，
-约 1 秒），不是服务端直接写一行。所以"它早就结束了"不是 `wait` 能漏掉的事。
+你闲，它就是把你叫起来的那条 user 消息。代价是这条回执要过一次命令层 dispatch（服务端里跑一次 send_message），不是直接写一行。所以"它早就结束了"不是 `wait` 能漏掉的事。
 
 **但回执已经在你眼前时不要 `wait`。** `wait` 等的是"下一件"，不是"上一件"：那条通知如果已经
 是这一轮的输入（它把你叫起来的，或上一步边界已经投递的），`wait` 里什么都等不到，只会坐满
@@ -187,7 +170,7 @@ $G events --kind turn_end --session "$name" --since <派活前的 last_id>
 $G get_messages --session "$name" -20:     # 它最后 20 行（负数是倒数，闭区间）
 $G get_messages --session "$name" -1:       # 顺带看 data.status
 $G interrupt_session "$name"              # 别干了，丢掉这一轮
-$G del_session "$name"                    # 收尾：transcript、background 作业一起走
+$G del_session "$name"                    # 收尾：transcript、它名下的 channel 一起走
 ```
 
 `status` 在 `cmd_result` 的 `data` 里，所以"它还忙不忙"不必查库。想一次看所有子会话
@@ -274,14 +257,14 @@ probe 的后一条 = "Now also look at @file(late.md) and @skill(late), then sto
 3. **它的上下文记在它自己账上。** 父会话不会因为它干活而变大，这就是它的价值：一个会话承载
    全部工作时，上下文会一路涨到阈值以上几倍。反过来，它收到 `Context notice` 时也要立刻
    开始培养继承人，和你没有区别。
-4. **通知带着它这一轮的答案，不替它担保。** `turn_end` 那一行里有 `answer`：它说了什么，
-   通知里就有，不必再 `get_messages`。但那是**它的话**，不是**它做对了**——要看它改了什么、
-   走了哪条路，读 transcript；别把"outcome: done"当成"活干对了"。
+4. **通知是一声 ping，不替它担保。** 那条 `send_message` 只说"它这一轮结束了"，不带答案。
+   它说了什么、改了什么、走了哪条路，都要 `get_messages` 读 transcript 才知道；别把"回合结束"
+   当成"活干对了"。
 5. **它和你抢同一个 provider 配额。** 并发越多，单个请求越慢；开到你自己读得过来的数量，
    并用 model_pool 把它们摊到不同 provider 上。
 6. **它先留着，删不删你说了算。** 子 agent 的 transcript 是**返工时唯一能读的东西**：活没干好，
    你要读它走过的路、把它叫醒重做，或者换个角色再来一遍，都靠这份 transcript。所以**不要在
-   收工时顺手 `del_session`**——它连 transcript 和 background 作业一起删，删了就没了。
+   收工时顺手 `del_session`**——它连 transcript 和它名下的 channel 一起删，删了就没了。
    什么时候删由你决定：确认交付、不再需要它了，再删。
    删掉的如果是 `main/impl`，它名下的会话 `main/impl/review` 不会跟着走——它们按名字挂着，
    树只要还有一层在就仍然画得出来——但 `main/impl` 名下的**订阅**会跟着走，所以 `review`

@@ -141,24 +141,20 @@ file is read at startup.
 
 ## Use the endpoint
 
-A session with a remote has shells on **two machines**: `bash` on this one and
-`remote_bash` on the peer. It has one directory, and that directory belongs to the
-peer. The word is `remote` everywhere: `set_session --remote`, `configure --remote`,
-`[remotes.<name>]`.
+A session with a remote runs its programs on the peer: `exec` starts a channel there
+by default, and `remote` names another machine from `[remotes]` when a call asks for one.
+It has one directory, and that directory belongs to the peer. The word is `remote`
+everywhere: `set_session --remote`, `configure --remote`, `[remotes.<name>]`.
 
 The agent is told where it stands. The session's start card (`dynamic_tail_remote`
 in the shipped config) names the peer beside the directory, so a model asked to run
-something knows that a plain path in a message is a path there, and reaches for
-`remote_bash` first instead of being surprised by `bash`. `remote_bash` also declares
-`target`: writing this session's own peer name is accepted and changes nothing, and
-any other name is refused -- a session works on one machine, and moving it is
-`set_session --remote`, not a tool argument.
+something knows that a plain path in a message is a path there, and that `exec` already
+runs on the peer. The harness itself stays on the server machine: `gongga-cli`, the
+home's skills and the roster are not on the peer.
 
 ```bash
-gongga-cli set_session --id build --model provider/model --remote build \
-    --cwd /home/build/project
-gongga-cli send_message --session build --message \
-    'Run pwd there with remote_bash, then read this machine with bash.'
+gongga-cli set_session --id build --model provider/model --remote build --cwd /home/build/project
+gongga-cli send_message --session build --message 'Run pwd with exec; it runs on the peer. The harness stays on the server machine.'
 ```
 
 `--cwd` belongs to the **peer** and must already exist there; omit it to use the peer's
@@ -168,7 +164,7 @@ Windows path for a Windows peer and a POSIX path for a POSIX peer. A relative re
 path is relative to the runner's starting directory, so an absolute path is clearer.
 
 `--remote none` moves a session back to this machine; omitting the flag leaves the
-machine as it is. Both end every shell on the machine being left. A move asked for
+machine as it is. Both end every channel on the machine being left. A move asked for
 while a turn is running is queued, not refused: it is applied when that turn ends, and
 the command says so.
 
@@ -180,37 +176,32 @@ explicitly and verify its size, or ask the remote shell to `git clone` it.
 
 ## What works, and what is refused
 
-Everything the harness does on this machine keeps working in a session with a remote,
-because `bash` still runs here: `gongga-cli`, the home's skills (`heir`, `subagent`,
-`evolve`, `image`), the roster and the key never leave this machine. `remote_bash` is
-the peer's shell for the peer's files.
+Everything the harness does on the server machine keeps working in a session with a
+remote, because the harness stays there: `gongga-cli`, the home's skills (`heir`,
+`subagent`, `evolve`, `image`), the roster and the key never leave this machine. `exec`
+on the peer is how the peer's files are read and edited.
 
-- `check_bash`, `del_bash` and `list_bash` take a name, not a machine: a name is one
-  shell, and the answer says which machine holds it. `default` is the directory-owning
-  machine's, so a session with a remote has `default` on the peer.
-- A reference is read on the machine that printed it, so `@image(...)` and `@file(...)` in
-  a `remote_bash` result are the peer's, and the same reference in a `bash` result is
-  this machine's. The prompt's index reads the peer's `AGENTS.md`.
-- Not offered, and refused with advice if written anyway: `background`
-  on `remote_bash` (the job's scratch file and its completion watcher are this
-  machine's), and a capped remote output is not spilled to a path.
+- A channel is named by its `id`, not by a machine: `exec` reads the output nobody has
+  read yet, `ls_channel` lists the live ones, `del_channel` ends one. The answer says
+  which machine holds it; a session with a remote has its default channel on the peer.
+- A reference is read on the machine that printed it, so `@image(...)` and `@file(...)`
+  in an `exec` result on the peer are the peer's, and the same reference in a result on
+  this machine is this machine's. The prompt's index reads the peer's `AGENTS.md`.
 
-Nothing in a local session's tool list mentions a remote: the `remote_*` tools are not
-offered there at all, and neither is the `remote` argument of the file tools. A model
-that wants to know whether this session has a peer asks for this skill; that is the
-one place the answer is written. A local session
-that wants to work on another machine either moves there (`set_session --remote`, which
-is a command and takes effect when its turn ends, not in the turn that asked) or drives
-the peer through SSH from `bash`; this skill's own launcher only installs and verifies
-an endpoint, it runs nothing there.
+Nothing in a local session's tool list mentions a remote: `exec` is offered there
+without its `remote` argument, so a local call cannot name a peer. A model that wants
+to know whether this session has a peer asks for this skill; that is the one place the
+answer is written. A local session that wants to work on another machine either moves
+there (`set_session --remote`, which is a command and takes effect when its turn ends,
+not in the turn that asked) or drives the peer through SSH from `exec`; this skill's own
+launcher only installs and verifies an endpoint, it runs nothing there.
 
 The project is not synchronised either way: a file on the peer is not here, and a
 checkout is not copied for you.
 
 ## Inspect and remove
 
-`get_messages` reads the local transcript as usual. `list_bash` only shows live named
-shells; a retired command reports through its completion message. `list --check` was
+`get_messages` reads the local transcript as usual. `ls_channel` only shows live channels; one that ended reports through its channel-end notice. `list --check` was
 in step 0: it changes nothing and answers whether each remote still answers. If setup fails,
 read the command's error and the local server log rather than falling back to a local
 shell.

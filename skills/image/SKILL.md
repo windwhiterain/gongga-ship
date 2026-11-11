@@ -1,6 +1,6 @@
 ---
 name: image
-description: 让模型看一张图（截图、图表、设计稿、照片）。用本 skill 目录下的 `show` 打印 `@image(<路径>)`，harness 会自动上传并作为图片交给模型——不要用 bash + base64 自己拼。当你要断言"这个界面/图表/图里是什么"、或需要读一张磁盘上的图片时用它。
+description: 让模型看一张图（截图、图表、设计稿、照片）。用本 skill 目录下的 `show` 打印 `@image(<路径>)`，harness 会自动上传并作为图片交给模型——不要用 exec + base64 自己拼。当你要断言"这个界面/图表/图里是什么"、或需要读一张磁盘上的图片时用它。
 compatibility: 需要 Python 3（入口脚本自己挑一个能用的解释器）
 metadata:
   entry: show
@@ -75,4 +75,4 @@ python -c "..." > /tmp/x.png     # 或者截图、导出图表
 "$SKILL_DIR/show" /tmp/x.png
 ```
 
-第 2 步的输出会作为这条 bash 结果的一部分回到你面前，同时图被附上。
+第 2 步的输出会作为这条 exec 结果的一部分回到你面前，同时图被附上。

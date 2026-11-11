@@ -12,21 +12,20 @@ harness 给你四类杠杆：**回合**（turn）、**进程**（谁能收尸）
 这份文件只讲**怎么用**这个 harness。**改它的源码、把它换成新的自己**，是 `evolve` skill 的事，
 不在这里混着写。
 
-先记住贯穿全文的一个问题：**谁回来收这活？** 有主的东西才谈得上"停"；无主的东西只有
-`del_bash` 停得住，而本回合被换掉时没有任何人回来。
+先记住贯穿全文的一个问题：**谁回来收这活？** 有主的东西才谈得上"停"；channel 归会话所有，`del_channel` 停得住，而本回合被换掉时没有任何人回来。
 
 ---
 
-## 0. 一个 shell，一条命令层
+## 0. 一个 channel，一条命令层
 
 系统提示只留了身份和一句话：能跑命令、别问、别留垃圾、程序去 skill 里找。下面这些是它
 原来顺带说的事，现在住在这里。
 
-**shell 是持久的，且跨调用**：`bash` 每次调用都在同一个 shell 里跑，工作目录、环境变量、
-shell 函数、导出的东西都留着，第一次调用就已经在会话的工作目录（也就是项目所在处）。
-所以要 `pwd` 一次、之后写相对路径；要改环境就 `export`，下一个调用还在。
-两个例外会把它换掉：回合被取消、命令超时——那时同名 shell 是新的一个，cwd 回到会话目录
-（§1、§3 有细节），别假设 export 还在。
+**channel 是持久的，且跨调用**：`exec` 起的程序一直在跑，工作目录、环境变量、shell 函数、
+导出的东西都留着，第一次调用就已经在会话的工作目录（也就是项目所在处）。所以要 `pwd` 一次、
+之后写相对路径；要改环境就 `export`，下一个调用还在。给它一个 `id`，之后同一个 `exec` 带
+那个 `id` 就是对它说话（读新输出或写一行 input）。回合被取消或 `del_channel` 会结束它
+（§1 有细节），别假设一个被结束的 channel 还在。
 
 **`gongga-cli` 是这台服务端的命令层**，就在 `PATH` 首位，给人敲的。一条命令打印
 **每行一个 JSON 事件**，最后一行是 `cmd_result`——所以 `| jq`、`| grep` 只拿你要的那部分，
@@ -34,7 +33,7 @@ shell 函数、导出的东西都留着，第一次调用就已经在会话的�
 `$GONGGA_SESSION` 是你自己的会话名，
 `$GONGGA_SERVER`、`$GONGGA_HOME` 都在环境里；`gongga-cli` 裸跑列出这个服务端发布了什么。
 
-**别把 `/xxx` 当命令**：交互输入行里的 `/` 是另一层语法，脚本和 bash 里只写裸名字
+**别把 `/xxx` 当命令**：交互输入行里的 `/` 是另一层语法，脚本和 shell 里只写裸名字
 （§9 有代价记录）。
 
 ---
@@ -90,110 +89,72 @@ answer = ask("mentor", "我当时是怎么写的？")
 
 ---
 
-## 1. 进程：三种 ownership
+## 1. 进程：channel 归会话，cancel 决定去留
 
-同一个 `bash` 工具，`background` 改的不是"等不等"，是**所有权**。
+`exec` 起的程序是一个 **channel**：归这个会话所有，跨调用活着，`id` 是它的名字。
+没有第二个工具去「读」它——同一个 `exec` 带 `id` 就是读它没人读过的新输出。
 
-| 模式 | 谁拥有 | 输出去哪 | 谁结束它 | 服务端停时 |
+| 谁 | 拥有什么 | 输出 | 谁结束它 | 服务端停时 |
 |---|---|---|---|---|
-| 默认（前台） | 本回合 | 工具结果，流式 | 命令结束 / 回合取消（连进程树一起杀） | 被中断，shell 换新 |
-| `background`（remote） | 那个 shell | shell 的未读缓冲，`check_bash` 取走 | `del_bash` 随 shell 一起消失 | 随服务端死：它是 shell 的 job，不是独立进程 |
-| `background`（本机） | **没人** | 只有它自己的日志文件 | **只有 `del_bash`** | **`cancel` 放生并被下次启动 adopt；signal / 关窗 / kill 都杀死** |
+| 会话 | 它名下的每个 channel | `exec` 每次取走未读窗口 | `del_channel`，或会话被删 | `cancel` 默认结束全部 channel；`keep_alive` 留下，下次启动 adopt |
 
-实测（本会话）：
+- channel 的生死绑在**会话**上，不在回合上：回合结束它还在跑；`del_channel`、`del_session`、
+  或 `cancel`（不带 keep_alive）才带走它。
+- 想「活得比服务端久」→ `cancel --keep_alive true`：channel 被 detach，下次启动 adopt；
+  被杀或 adopt 不上的 channel 会留下一条 channel end notice。signal / 关窗 / kill 不带
+  keep_alive，channel 随服务端死。
+- 想「卡住就回来」→ `exec` 的 `wait`（毫秒）或 `wait` 工具（见 §3），不要自己 `&` 加轮询。
 
-- `background` 起了个每 1s 追加一行的循环 → `del_bash` 之后行数还在涨（13→15）；
-  `list_bash` 把它单列在 `background[]` 里，带 `pid` / `log` / `running`。
-- `del_bash --name_regex '^demo-detached$'` → 行数 15→15 停住，`background[]` 变空。
-- `del_bash` 的回执会明说：「1 background job(s) from them are still running and were not
-  stopped」——它不会假装帮你停。
-
-推论：
-
-- `background` 的生死绑在 **shell** 上，不在回合上：回合结束后它还在跑；`del_bash`、
-  服务端退出、或"取消时正卡在这条 shell 的前台命令里"（那条命令连同整棵进程树被杀）
-  才会带走它。
-- 想"后台跑、但我一收工就死" → `background`，然后别再 `del_bash` 那个 shell。
-- 想"活得比我久"（守护进程、替身服务端、长跑基准）→ `background`，然后**记下 job 号或 pid**，
-  否则下一任的你会看到一个孤儿。
-- 想"卡住就回来" → 前台 + `timeout_ms`（见 §3），不要自己 `&` 加轮询。
-
-`background` 的内部约束（读码）：独立进程组、`kill_on_drop(false)`、pid 写进 `detached_jobs` 表；
-新服务端启动时 `adopt()`，但**绝不**接管 pid 等于自己或自己祖先的行——否则 `del_bash`
-就成了服务端自杀按钮。
+`background` / `timeout_ms` / `max_output` 这些旧 tunnel 参数已经不在 `exec` / `wait` 上：
+channel 本身就是「后台」，`wait` 就是调用自己的时钟。
 
 ---
 
-## 2. 回合：三种"停"，区别全在"谁记得这活"
+## 2. 回合：两种「停」，区别在「下次启动记不记得」
 
-| 动作 | 语义 | transcript | `pending_tasks` 行 | background 作业 | 谁接着干 |
-|---|---|---|---|---|---|
-| `interrupt_session <n>` | 别干了，丢掉 | 停在断点 | **删** | 不动 | 没人 |
-| `cancel`（服务端命令） | 停，剩下的下次接着干 | 停在断点 | **留** | 不动 | 下一个启动的服务端 |
-| 从外面 `taskkill` / 杀进程 | 硬死 | 停在断点 | 留 | 不动 | 下一个启动的服务端 |
+| 动作 | 语义 | transcript | 重启后 | 谁接着干 |
+|---|---|---|---|---|
+| `interrupt_session <n>` | 别干了 | 停在断点，已收到的都存进上下文 | **不**自动续 | 没人（要你手动再派） |
+| `cancel`（服务端命令） | 停，下次接着干 | 停在断点 | 自动续 | 下一个启动的服务端 |
 
-### 最关键的一条：resume 不给任何提示
+`cancel` 给每个**正在跑**的会话写一个 flag，重启据此继续：
 
-`resume_pending` 起的 turn 是 `turn(session, user_text = None)` —— **不写任何 instruction**，
-不追加"你被中断了，继续"。它只是拿 transcript 再请求一次模型。
+- 不在 `wait` 里的 → **canceled** flag：下次启动直接续这个 turn。
+- 正在 `wait` 里的 → **waiting** flag（带等到几时）：下次启动把那段等待按剩余时间续上。
 
-所以：**cancel 之前，把意图写进 transcript 或写进文件。** 否则接着干的那个你，手上只有
-半截工具结果，它不知道你想干什么。可用的两种写法：
+flag 才是记忆，不是 pending 行的装饰：canceled 的会话即使没有 pending 行也会续。
 
-1. 发一条消息给自己（见 §5），它会在下一个 step 边界落进 transcript；
-2. 写文件（`.agents/notes/`、或待办文件），并在 cancel 前用一句话把它读进 transcript。
+### 最关键的一条：续跑不给任何提示
 
-### pending 行就是"欠下的活"
-
-`pending_tasks` 里 `kind=turn` 表示"消息已在 transcript，只欠一个 turn"；`kind=inject`
-表示"消息还没落库，谁消费谁负责写"。表里有行 = 下次启动欠着。判断自己会不会被重放：
-
-```bash
-python - <<'EOF'
-import sqlite3, os
-c = sqlite3.connect(f"file:{os.path.expanduser('~/.gongga/gongga.db')}?mode=ro", uri=True)
-for r in c.execute("select id, session, kind, created_at from pending_tasks"): print(r)
-EOF
-```
+续起的 turn 不写任何 instruction，不追加「你被中断了，继续」，只是拿 transcript 再请求一次。
+所以 **cancel 之前，把意图写进 transcript 或文件**，否则接着干的你手上只有半截工具结果。
+两种写法：发一条消息给自己（§5，下一个 step 边界落库）；或写文件并在 cancel 前读进 transcript。
 
 ### `cancel` 不会立刻杀你
 
-`cancel` 先 `cancel_and_preserve()`，等 250ms 让回执发出去，再触发 shutdown token；监听循环
-随后等 `active` 归零，**没有上限**（每 10s 打一条 warn，是观测不是砍断）。你在 select 点
-（模型流、工具调用、重试退避、压缩）看到 token 才退出，所以：
+`cancel` 先记下每个会话的 flag，触发 token，等回执发出去再 shutdown；监听循环等 active 归零。
+你在 select 点（模型流、工具调用、重试退避）看到 token 才退出：正卡在 `exec` 前台等输出 →
+带着「已取消」的结果退出；正在写文件 → 那一步跑完再退出。
 
-- 你正卡在前台 `bash` 里 → 那条命令连同进程树被杀，你带着「已取消、退出码未知」的结果退出；
-- 你正在写文件 → 那一步会跑完，然后退出。
-
-想"立刻死、不要了"用 `interrupt_session`；想"停在这里，下次从完整 transcript 原样恢复"用 `cancel`。
+想「立刻死、不要了」用 `interrupt_session`；想「停在这里、下次原样恢复」用 `cancel`。
+只有 protocol `cancel`（含优雅 signal，它走的就是 cancel）会写 flag；从外面硬杀
+（`taskkill /F`）不写，所以没人接。
 
 ---
 
-## 3. 时间：等待可以被两件事打断，命令都不会被杀
+## 3. 时间：等待是调用自己的时钟
 
-前台 `bash` 的等待有两个触发源，**两个都只结束等待，不结束命令**：
+`exec` 的 `wait`（毫秒）决定这次调用等多久输出：省略用服务端默认，`0` 立刻返回已有的。
+等待到点就返回已到的输出，**程序不被杀**——它还在 channel 里跑，下次 `exec` 接着读。
 
-| 触发 | 回执开头 | 谁等的 |
-|---|---|---|
-| `timeout_ms` 到（默认 120s） | `still running after <n>ms, so the wait ended` | 你自己设的期限 |
-| **有人给本会话发消息** | `a message arrived for this session, so the wait ended and it was handed to the background` | 不是你能预知的 |
+要「等到某件事发生」用 `wait` 工具（不是一个 sleep 的 shell）：`wait {time: <毫秒>}`。
+任何东西落到本会话它就返回（channel 结束的通知、订阅命中寄来的消息、人来消息），
+**什么都不消费**，消息仍在下一个 step 边界按原路进 transcript。超时不是错误，只是「还没到」，
+返回值是它实际等了多久。
 
-第二种是 2026-10-24 加的，也是更常见的那个。实测：先让一个 background 作业 5 秒后
-`send_message` 给我，同时前台跑 `sleep 40` —— 调用 **3 秒就返回了**，40 秒的命令自己跑满，
-输出（`done after 40s`）之后作为 inbox 消息投回来。
-
-所以：**你不需要为了"能被打断"去开短 timeout**。它就是会断。反过来说，
-长命令被交给后台是**正常现象**，不是故障——不要因为它提前返回就以为命令失败了。
-
-两种情况下，**同名 shell 都换成了新 spawn 的一个，cwd 回到会话目录**。所以之后不要假设
-`cd` 还在；长任务的前缀请写成绝对路径或一句 `cd` 重来。
-
-由此：
-
-- 等待不是预算，也不是 kill。要真停就在前台等它被杀（取消），或 `del_bash`（background）。
-- 默认 `timeout_ms` 是 120s；`background` 忽略它。
-- **没有步数上限**：一个 turn 跑到活干完。所以"我会不会失控"这件事上，harness 不给你预算，
-  自我控制只能来自你：小步验证、及时落盘、别开无法收尾的长链。
+- 等待不是预算，也不是 kill。要真停就 `interrupt_session`（丢这一轮）或 `del_channel`（结束程序）。
+- **没有步数上限**：一个 turn 跑到活干完。harness 不给你预算，自我控制只能来自你：
+  小步验证、及时落盘、别开无法收尾的长链。
 
 ---
 
@@ -219,8 +180,8 @@ EOF
   `skill`（不带 `name`）列出来——否则新会话根本不会看见它。
 - WIP 按仓库约定写 `.agents/notes/<date>-<slug>.md`。
 - 长输出溢出的全文在 `~/.gongga/outputs/`，文件名是 `<session>-<shell>-<description>-<callid>`
-  ——所以 `bash` 的 `description` 参数是给"未来的自己"和读 dump 的人的索引，不是装饰：
-  它还会印在那一行工具调用上（`bash·check the state`），所以写的是这次要干嘛，不是命令本身。
+  ——所以 `exec` 的 `description` 参数是给"未来的自己"和读 dump 的人的索引，不是装饰：
+  它还会印在那一行工具调用上（`exec·check the state`），所以写的是这次要干嘛，不是命令本身。
   默认超过 8000 字符就只回头尾，回执里有路径：用 `sed -n` / `grep` 读，**别 cat**。
 
 ---
@@ -398,7 +359,7 @@ gongga-cli skill self-control new_session <新名字> [--source <来源会话>] 
 会话正忙时 `send_message` 不排队第二个 turn，而是写一条 `kind=inject` 的行，由当前 turn
 在**下一个 step 边界**读进 transcript。这就是"给自己留一句不会丢的话"。
 
-你自己（agent）在 bash 里直接敲 `gongga-cli` —— 服务端把这条命令装进 `<home>/bin`，并把它
+你自己（agent）在 shell 里直接敲 `gongga-cli` —— 服务端把这条命令装进 `<home>/bin`，并把它
 放进你 shell 的 `PATH` 最前面：
 
 ```
@@ -410,16 +371,13 @@ gongga-cli send_message --session test1 --message "SELF-NOTE: ..."
 那是同一个程序，不需要路径也不需要第二个变量。**Python 脚本不这么写**：`server.call("send_message", …)`
 是同一个动作，而且知道有没有送到（§0b）。
 
-**它现在还能叫醒你**（2026-10-24 起）：前台 `bash` 正等一条长命令时，消息一到，等待就结束、
-命令交给后台继续跑（见 §3）。所以这不是"留言"，是一条**打断**——`sleep 40` 实测 3 秒返回。
+**它还能叫醒你**：你正在 `wait`（或 `exec` 的 `wait`）里等时，消息一到，等待就结束、
+程序还在 channel 里继续跑（见 §3）。所以这不是"留言"，是一条**打断**。
 两面的用法：
 
-- 想让长命令早点放手 → 从别处发一条消息，不用干等。
+- 想让等待早点放手 → 从别处发一条消息，不用干等。
 - 小心：你自己发的消息同样会打断自己正在等的东西，别在关键写入中途插自己。
-  而"叫醒自己正在等的那条前台命令"现在是**做得到**的 —— 把要等的东西放进后台，再发那条消息：
-  `sleep 8 & gongga send_message $GONGGA_SESSION "醒一下"`。
-  实测：这条 `bash` 0.4 秒返回，日志写着「handed a command to the background: a message is
-  waiting」，八秒后它的输出作为完成通知自己回来。工具时代做不到 —— 一个 turn 一次只能调一个工具。
+  程序不被杀：它还在 channel 里跑，输出之后用 `exec` 接着读，或等它的 channel end notice。
 
 规矩：
 
@@ -449,11 +407,11 @@ gongga-cli send_message --session test1 --message "SELF-NOTE: ..."
 
 | 动作 | 不可逆的部分 |
 |---|---|
-| `del_session <n>` | 删 transcript、删 pending，**并停掉该会话的 background 作业**（`cancel` 不这么干） |
+| `del_session <n>` | 删 transcript、删 pending，**并停掉该会话名下的 channel** |
 | 从外面杀服务端 | 本回合没人接，等于丢了一次未落盘的判断 |
-| 没有继任者就 `cancel` | home 空着，直到有人手动起服务端才 `resume_pending` |
-| `del_bash` | 进程没了；日志文件还在，但状态没了 |
-| `del_bash` | 那个 shell 的 cwd / export / 函数全清零（后台作业一起死） |
+| 没有继任者就 `cancel` | home 空着，直到有人手动起服务端才按 flag 续跑 |
+| `del_channel` | 程序没了；溢出的输出文件还在，但 channel 状态没了 |
+| `del_channel` | 那个 channel 的 cwd / export / 函数全清零 |
 
 ---
 
@@ -461,8 +419,8 @@ gongga-cli send_message --session test1 --message "SELF-NOTE: ..."
 
 | 想知道 | 怎么看 |
 |---|---|
-| 我有几个 shell、谁还有没读的输出、有哪些 background | `list_bash`（`unread_bytes`、`background_jobs`、`detached[]`） |
-| 后台作业跑到哪了 | `check_bash --name <shell>`，**读即清空**，同一段不会给两次 |
+| 我有几个 channel、谁还有没读的输出 | `ls_channel` |
+| channel 跑到哪了 | `exec` 带那个 `id`，**读即取走未读窗口**，同一段不会给两次 |
 | 我刚才到底做了什么、上一条命令的原文 | `get_messages --session <s> <a>:<b>`（1 基、两端含，`-1` 最新一条，如 `-5:` 取最后五条；省略范围是全部） |
 | 会话状态 / 模型 / 压缩阈值 / 消息数 | 只读查库（下面） |
 | 我哪些工具调用在失败 | `tool_calls` 表按 `name,status` 汇总 |
@@ -485,20 +443,19 @@ EOF
 
 ## 9. 别做这些（都有代价记录）
 
-- **一个命令一个 shell 名。** 一个名字 = 一个常驻进程；每次新名字会留下一个空转进程。
-  默认就用 `default`，并在 `description` 里写清这次在干嘛。
-- **把 `timeout_ms` 当 kill。** 它不杀；命令还在那个 shell 里跑，输出稍后自己回来。
-- **超时后假设 cwd 没变。** 同名 shell 已经换成新的、回到会话目录。
+- **一个程序一个 channel id。** 一个 id = 一个常驻程序；每次新 id 会留下一个空转程序。
+  默认就用 `/<bin>/default`，并在 `description` 里写清这次在干嘛。
+- **把 `exec` 的 `wait` 当 kill。** 它不杀；程序还在那个 channel 里跑，输出稍后自己回来。
 - **`cat` 溢出文件。** 它们可能很大；用 `sed -n` / `grep`。
-- **第二次 `check_bash` 期待同样输出。** 读即清空；第二次只会拿到新的部分。
-- **在 bash 里 `gongga-cli /cancel`。** `/` 只属于交互式输入行；这里 `/cancel` 会被
+- **第二次 `exec` 读期待同样输出。** 读即取走；第二次只会拿到新的部分。
+- **在 shell 里 `gongga-cli /cancel`。** `/` 只属于交互式输入行；这里 `/cancel` 会被
   Git Bash 当路径改写成 `C:/.../Git/cancel`。argv 已经是 token，起这个进程的人已经写下了
   命令名，没有第二层语法要再解一遍：写裸名字 `gongga-cli cancel`（Python 脚本里是 `server.call("cancel")`，§0b）。
   带 `/` 或带路径分隔符的第一个 token 会被命令层拿最后一段去目录里查，命中就告诉你正确写法。
-- **`bash` 传 `cmd`。** 参数名是 `command`。多余键被忽略，缺 required 会被拒并提示
-  「did you mean `command`?」。
-- **在 bash 里 `kill <pid>` 停 background。** MSYS pid 不等于 Windows pid，`taskkill` 认不出来；
-  用 `del_bash`。
+- **给 `exec` 传表格 `args`。** `args` 是一列词；表格（named arguments）会被拒。起程序用
+  `bin` + `args`，对跑着的 channel 说话用 `input`。
+- **在 shell 里 `kill <pid>` 停 channel。** MSYS pid 不等于 Windows pid，`taskkill` 认不出来；
+  用 `del_channel`。
 - **用 `send_message` 记日志。** 它会永久留在 transcript 里并进入笔记，而且**会打断
   你正在等的命令**（见 §5）。
 
@@ -513,7 +470,7 @@ EOF
 
 动手前问四句：
 
-1. **这活谁收？** 我死/被停之后，谁还需要它？→ 决定要不要 `background`。
+1. **这活谁收？** 我死/被停之后，谁还需要它？→ 决定 `cancel` 要不要带 `keep_alive`。
 2. **我要停的是哪一种？** 丢掉（`interrupt_session`）、留着下次干（`cancel`）、还是永不回来
    （外部杀进程）？
 3. **接着干的那个我，凭什么知道该干什么？** 意图进 transcript 或进文件了吗？
@@ -525,15 +482,15 @@ EOF
 
 | 结论 | 怎么来的 |
 |---|---|
-| 三种 bash 模式的存活语义（含 `del_bash` 后 background 继续、`del_bash` 停住） | 本会话实测 |
-| 超时只结束等待、输出随后回投、shell 被替换 | 本会话实测 |
-| **消息打断等待**、命令不被杀、输出随后回投 | 本会话实测（`sleep 40` / 5 秒后发消息 → 3 秒返回，命令跑满 40s 并回投） |
+| channel 归会话、`cancel` 默认结束 / `keep_alive` 留下并 adopt | 读 `commands.rs::cancel`、`tools/channel.rs` |
+| `exec` 的 `wait` 只结束等待、程序不被杀 | 读 `tools/exec.rs` |
+| **消息打断 `wait`**、程序不被杀 | 读 `tools/mod.rs`（wait）、`commands.rs::send_message` |
 | 忙时 `send_message` 在下一个 step 边界投递 | 本会话实测 |
 | 两个会话的 turn 真的并行（互斥锁每会话一把） | 2026-10-30 实测：`main` 与 `sub1` 相隔 8ms 起 turn、两次请求并行、两次 turn end 同时回来 |
-| `cancel` 保留 pending、`interrupt_session` 删 pending、`del_session` 连带停 background | 读 `crates/server/src/commands.rs` |
+| `cancel` 写 canceled/waiting flag、`interrupt_session` 只停不续、`del_session` 连带停 channel | 读 `crates/server/src/commands.rs` |
 | resume 不带任何 instruction | 读 `agent.rs::turn_inner`（`user_text: None` 不写行） |
 | 阈值 70% / transcript 不改写 / 只有 `heir` 培养继承人时移动 | 读 `agent.rs`、`store.rs` |
-| `evolve.sh swap` 的完整换手 | **实跑 9 次**，其中 02:24 那次**丢了回合**（pending 行被 `resume_pending` 的收尾无条件删除），修好后 3 次全部 resume 成功 |
+| `evolve.sh swap` 的完整换手 | **实跑 9 次**，其中 02:24 那次**丢了回合**（pending 行被续跑收尾无条件删除），修好后 3 次全部 resume 成功 |
 | 只读 sqlite 自查 | 本会话实测 |
 | 包只发布 `ask` / `new_session`；`--dry_run` 只打印不建会话；重名、未知 remote、无来源都退出 2 且库里无新行；新行逐字段等于来源行 | 2026-11-06 实跑：临时 home + 真服务端 + fake_llm 探针，外加 `test_new_session.py` 表驱动单测 |
 | `ask` / `new_session` 走 in-process 客户端（`import` home 的 `lib/gongga.py`，不起 `gongga-cli`），包形态与脚本形态都答出对方原话 | 2026-11-07 实跑 `scripts/selfcontrol_selftest.sh`：临时 home + 真服务端 + fake_llm，PASS |
@@ -576,7 +533,7 @@ frontmatter 的 `metadata.entry`（即使写了也不读，所以本文件不写
 `evolve` 不在任何桶里：它要从自己的路径往上找 `Cargo.toml` 并 stage 二进制，装进 home
 就找不到仓库，所以它住在 gongga checkout 自己的 `.agents/skills/evolve/`。
 
-home 的两个桶来自一个独立的 ship 仓库，服务端 pin 它的一个 commit：启动时把内容装进去，
+home 的两个桶来自一个独立的 ship 仓库，服务端按它读的 `protocol` 取最新 commit：启动时把内容装进去，
 用 git 三方合并把上游更新和你的本地修改合起来——你改过的不被覆盖，合不上就报错而不是硬合。
 
 要点（这几条从旧机制继承，仍然成立）：
