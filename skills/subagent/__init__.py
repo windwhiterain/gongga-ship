@@ -75,13 +75,14 @@ def _program():
     return found
 
 
-def _command(args):
-    """Runs one command, returning (accepted, the message, the `data` it answered).
+def _command(cmd):
+    """Runs one Cmd, returning (accepted, the message, the `data` it answered).
 
-    A server's refusal is the caller's answer too: `gongga-cli` leaves non-zero and
-    prints the same sentence to stderr, so the two are one fact and are read as one.
+    SPEC's `Cmd := {name, args}`: `gongga-cli` reads one JSON object. A server's
+    refusal is the caller's answer too: it leaves non-zero and prints the same
+    sentence to stderr, so the two are one fact and are read as one.
     """
-    done = subprocess.run([_program(), *args], capture_output=True, text=True)
+    done = subprocess.run([_program(), json.dumps(cmd)], capture_output=True, text=True)
     events = []
     for line in done.stdout.splitlines():
         line = line.strip()
@@ -99,7 +100,7 @@ def _command(args):
             data = event.get("data")
     if done.returncode != 0 and not message:
         why = (done.stderr or done.stdout).strip().splitlines()
-        _die(f"{args[0]} left with {done.returncode}: {why[-1] if why else 'no answer'}")
+        _die(f"{cmd['name']} left with {done.returncode}: {why[-1] if why else 'no answer'}")
     return done.returncode == 0, message, data
 
 
@@ -120,7 +121,7 @@ def _copy(name, parent, overrides):
     """
     words = [COPY_ENTRY, name, "--source", parent, *overrides]
     accepted, message, _data = _command(
-        ["skill", "--session", parent, "--name", COPY_SKILL, "--args", json.dumps(words)]
+        {"name": "skill", "args": {"session": parent, "name": COPY_SKILL, "args": words}}
     )
     if TAKEN in message:
         return True, message
@@ -156,26 +157,21 @@ def _subscribe(name):
     """
     pattern = f"^turn_end:{re.escape(name)}$"
     parent = os.environ.get("GONGGA_SESSION", "")
-    action = json.dumps(
-        {
-            "name": "send_message",
-            "args": {"session": parent, "message": f"{name} finished its turn"},
-        }
-    )
+    action = {
+        "name": "send_message",
+        "args": {"session": parent, "message": f"{name} finished its turn"},
+    }
     accepted, message, _data = _command(
-        [
-            "subscribe",
-            "--pattern",
-            pattern,
-            "--cmd",
-            action,
-            "--id",
-            name,
-            "--session",
-            parent,
-            "--persistant",
-            "true",
-        ]
+        {
+            "name": "subscribe",
+            "args": {
+                "pattern": pattern,
+                "cmd": action,
+                "id": name,
+                "session": parent,
+                "persistant": "true",
+            },
+        }
     )
     if not accepted:
         return None, message
@@ -252,7 +248,7 @@ def spawn(role, remote=None, cwd=None, model=None, context_limit=None):
             # A child nobody hears from is worse than no child: it runs work the
             # parent will never be told is finished. Undo it, and say what is left
             # behind if the undo fails too.
-            _, undone, _data = _command(["del_session", "--path", name])
+            _, undone, _data = _command({"name": "del_session", "args": {"path": name}})
             _die(
                 f"could not subscribe {parent} to {name}'s turn ends ({said}); "
                 + (
