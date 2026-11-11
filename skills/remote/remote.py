@@ -635,7 +635,7 @@ def server_verdict(name: str, timeout: float = 30) -> dict:
     if command is None:
         return {"asked": False, "reason": "this machine has no command layer"}
     try:
-        result = run(command + ["list_paths", "--remote", name], timeout=timeout)
+        result = run(command + [json.dumps({"name": "list_paths", "args": {"remote": name}})], timeout=timeout)
     except Failure as error:
         return {"asked": True, "usable": None, "reason": str(error)}
     answer = None
