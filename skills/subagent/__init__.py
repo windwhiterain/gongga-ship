@@ -242,11 +242,9 @@ def _nested(row):
     tier = (row.get("cache_tier") or "").strip()
     if tier:
         model_config["cache_tier"] = tier
-    # SPEC's Workspace.remote is optional and defaults to none -- Python None,
-    # not a string: a local session carries no remote, so the key stays absent.
-    remote = row.get("remote")
-    if remote:
-        workspace["remote"] = remote
+    # SPEC's Workspace.remote is optional, default none -- Python None. The key
+    # is present with value None for a local session: not dropped, not a string.
+    workspace["remote"] = row.get("remote")
     cwd = (row.get("cwd") or "").strip()
     if cwd:
         workspace["cwd"] = cwd
