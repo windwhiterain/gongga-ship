@@ -218,7 +218,10 @@ def learner_message(session, mentor, kept):
         "again. The command waits for the answer and prints it; the mentor also sends it to "
         "this session, so keep working and read it when it lands.\n"
         "Nothing about the task changed and no clean state is required: continue the current work "
-        "from the lesson's next action."
+        "from the lesson's next action.\n"
+        "The lesson separates what was observed from what was concluded: a claim marked as settled "
+        "carries the command and the output that settle it. Anything it lists as `未结案` is yours "
+        "to finish -- it is not a fact, and asking the mentor is cheaper than trusting it."
     )
 
 
