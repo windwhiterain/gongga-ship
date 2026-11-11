@@ -52,10 +52,11 @@ name = subagent.new_subagent(cfg, role="impl")          # -> main/impl
 | `cache_keepalive` | `keep_alive` |
 | `remote` / `cwd` | `workspace.remote` / `workspace.cwd` |
 
-**没设的项不会出现在 dict 里**，不是写成 `null`：缺一个键就是"用 provider 给这个模型的默认值"，
-而服务端读 `config` 时对某些 `null` 是直接拒绝的（`ctx_limit` 只收 `"70%"` 或数字）。
-`new_subagent` 发出前还会把整份 dict 里的 `null` 去掉——model_pool 的 `pick_config` 正是用
-`null` 表示"默认"，两种写法在那一刻合成一种。
+**`remote` 键总在，本地会话的值是 `None`**：SPEC `Workspace.remote` 是 `optional[Remote] = none`，
+`none` 就是 Python 的 `None`——不是字符串 `"none"`，也不是缺键。其余没设的项（`thinking`/
+`ctx_limit`/`cache_tier`）不出现在 dict 里：缺一个键就是"用 provider 给这个模型的默认值"。
+`new_subagent` 把整份 config 原样发出，不做删减——服务端把 `null` 字段读成默认值，所以
+model_pool 的 `pick_config` 用 `null` 表示"默认"，可以照发。
 
 **`new_subagent(config, role="worker")` 只做两件事**：建会话，然后订阅。名字是
 `<父会话>/<role>`，撞了就 `/2`、`/3`……；建会话走服务端的 `new_session`（`id` 加一整份

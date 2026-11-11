@@ -268,22 +268,6 @@ def self_config(session=None):
     return _nested(_row(name))
 
 
-def _stated(value):
-    """`value` with every `None` removed, at every level.
-
-    The dict a caller builds is `self_config()` with model_pool's `pick_config`
-    dropped over one key, and that one spells a provider default as an explicit
-    `null`. "Default" is spelled by leaving the key out -- the server's `config`
-    reading refuses a null where it takes a percentage -- so this is where the two
-    spellings of one fact become one.
-    """
-    if isinstance(value, dict):
-        return {key: _stated(item) for key, item in value.items() if item is not None}
-    if isinstance(value, list):
-        return [_stated(item) for item in value]
-    return value
-
-
 #: The shell the callback runs in. Its own: the same name is the same queue, and a
 #: callback behind the parent's long command is news that arrives minutes late.
 def _subscribe(name):
@@ -344,7 +328,9 @@ def new_subagent(config, role="worker"):
     try:
         # One JSON document, because SPEC's `config` argument is one: what a
         # caller can run by hand and what this sends are the same object.
-        payload = json.dumps(_stated(config))
+        # SPEC keeps a None-valued key (remote: none is None); the server reads a
+        # null field as its default, so the config is sent verbatim, not stripped.
+        payload = json.dumps(config)
     except (TypeError, ValueError) as unusable:
         _die(f"the config is not JSON: {unusable}")
 
