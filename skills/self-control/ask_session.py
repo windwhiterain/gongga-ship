@@ -102,7 +102,7 @@ def _read(client, session, since):
 
 def _deliver(client, session, question):
     """Puts the question into the session's hands."""
-    reply = client.call("send_message", name=session, message=question)
+    reply = client.call("send_message", session=session, message=question)
     if not reply.ok:
         _die(reply.message or f"the question did not reach {session}")
 
