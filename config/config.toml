@@ -363,7 +363,7 @@ tunneled = false
 # waits this long, and returns whatever the program has said by then. A read gives up
 # only at the program's end or at the text `[channel.<name>]` ends a reply with.
 timeout_ms = 4000
-summary = '''Run a program as a channel, or read the one already running. `bin` and `args` start it; the `id` it answers by is how a later call speaks to it again, with no `bin`. Each call takes the output nobody has read yet -- a window that moves, so what one call took the next does not see. Long output is capped, the whole of it kept in a file the answer names.'''
+summary = '''Run a program as a channel, or read the one already running. `bin` and `args` start it; the `id` it answers by is how a later call speaks to it again, with no `bin`. Each call takes the output nobody has read yet -- a window that moves, so what one call took the next does not see. Long output is capped, the whole of it kept in a file the answer names. A table of named `args` calls a server cmd instead of a program.'''
 
 [[tool.exec.parameters]]
 name = "bin"
@@ -376,7 +376,7 @@ name = "args"
 type = "array|object"
 items = "string"
 positional = 2
-sentence = '''Its words, one per element: the program's arguments. Omitted, the words `[channel.<name>]` declares are used. Only a program about to start takes them; a call that speaks to a running channel passes none. A list of words only -- a table of named arguments is refused.'''
+sentence = '''Its words, one per element: the program's arguments. Omitted, the words `[channel.<name>]` declares are used. Only a program about to start takes them; a call that speaks to a running channel passes none. A table instead of a list is a server cmd: its `cmd` key names the command, the rest are its arguments, and it runs in this session.'''
 
 [[tool.exec.parameters]]
 name = "input"
