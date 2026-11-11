@@ -51,13 +51,15 @@ def _die(message):
 
 
 def _unwrapped(message):
-    """The event one message carries.
+    """The event one message carries, from the stream or from the transcript.
 
-    `python/gongga.py` keeps what it read as it read it: an event arrives wrapped
-    as `{"t": "event", "v": {"seq": n, "event": {...}}}`, while a reply's own rows
-    name their kind outside.
+    `python/gongga.py` keeps what it read as it read it: the stream wraps an event
+    as `{"t": "event", "v": {"seq": n, "event": {...}}}`, and a replay wraps a
+    stored row holding that same event as `{"t": "row", "v": {"seq": n, "event":
+    {...}}}`. Both carry one event, and `_wait` needs the stored one, so both are
+    unwrapped here.
     """
-    if message.get("t") == "event":
+    if message.get("t") in ("event", "row"):
         payload = message.get("v")
         if isinstance(payload, dict) and isinstance(payload.get("event"), dict):
             return payload["event"]
@@ -134,6 +136,18 @@ def _answer_in(rows, session):
 def _wait(client, session, since, timeout, poll):
     """The session's turn ends, and what it said since the question is the answer.
 
+    # Invariant
+
+    The answer is the last output row the transcript *stores*, read once the session
+    is no longer running. A turn still being written sends pieces, each its own event
+    with `done` false, so the newest piece is never the answer; the stored row that
+    holds the same text says `done` true, and it is what the window shows afterwards.
+
+    The stored row is read from the transcript again rather than kept from the poll
+    that first saw it: the cursor counts rows, so the poll that saw the row while it
+    was still open moved past it, and a later read of the window never carries it.
+    The re-read starts at the row the question produced.
+
     The marker is remembered, not re-read: the cursor moves past the question on the
     poll that sees it, so a window that asks again would never see it, and a question
     answered one poll later would never be answered at all -- measured: the operator's
@@ -142,6 +156,9 @@ def _wait(client, session, since, timeout, poll):
     """
     deadline = time.time() + timeout
     asked, said = False, []
+    # Where the transcript stood before the question: the rows this ask is about are
+    # the ones the question made, and the stored answer is the last of them.
+    after = since
     while True:
         rows, since, status = _read(client, session, since)
         marker, texts = _answer_in(rows, session)
@@ -149,7 +166,20 @@ def _wait(client, session, since, timeout, poll):
             asked, said = True, []
         said.extend(texts)
         if asked and said and status != "running":
-            return said[-1]
+            final = client.call(
+                "get_messages", session=session, range=f"{after + 1}:", replay="true"
+            )
+            whole = [
+                event["text"].strip()
+                for event in (_rows(final) if final.ok else [])
+                if event.get("t") == "response"
+                and event.get("session") == session
+                and event.get("part") == "output"
+                and event.get("done") is True
+                and isinstance(event.get("text"), str)
+                and event["text"].strip()
+            ]
+            return whole[-1] if whole else said[-1]
         if time.time() >= deadline:
             return None
         time.sleep(poll)
