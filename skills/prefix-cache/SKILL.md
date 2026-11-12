@@ -1,6 +1,6 @@
 ---
 name: prefix-cache
-description: 让 provider 的前缀缓存替你付文件的钱——把要读的文件和技能用 `@file(<路径>)` / `@skill(<名字>)` 写进消息，它就进 index、随系统提示只收一次费；讲清哪条消息能进 index、拼写规则、写错的后果（静默失效）。开子 agent 写 brief、培养继承人写第一课、或者"这个文件我到底该用 exec 读还是引用"的时候读这个。
+description: 让 provider 的前缀缓存替你付文件的钱——把要读的文件和技能用 `@file(<路径>)` / `@skill(<名字>)` 写进消息，它就进 index、随系统提示只收一次费；讲清哪条消息能进 index、拼写规则、写错的后果（静默失效）。开子 agent 写 brief、交接上下文写笔记、或者"这个文件我到底该用 exec 读还是引用"的时候读这个。
 ---
 
 # 引用写进消息，前缀缓存只替你付一次
@@ -30,7 +30,7 @@ index，也不会追加新 prompt 行——index 里永远是第一句话那一�
 
 | 消息 | `@file(...)` | `@skill(...)` |
 | --- | --- | --- |
-| 会话的**第一条** user 消息（新会话、刚被 `heir` 清空、刚 spawn 的 subagent 的 brief） | 进 index；消息里保持字面 | 进 index；消息里换成指针 `@skill(<名字>) (<它 SKILL.md 的路径>)` |
+| 会话的**第一条** user 消息（新会话、刚被 `handoff` 清空、刚 spawn 的 subagent 的 brief） | 进 index；消息里保持字面 | 进 index；消息里换成指针 `@skill(<名字>) (<它 SKILL.md 的路径>)` |
 | 之后的普通消息 | 不进 index（已经写定）；消息里就是一个路径字面 | 不进 index；消息里换成同一个指针，正文得模型自己去读 |
 
 表格第二行是唯一容易踩的坑：`@skill(...)` 只认"第一句话"。所以**技能要在开场就点名**，
@@ -38,7 +38,7 @@ index，也不会追加新 prompt 行——index 里永远是第一句话那一�
 
 同一条规则也解释了两件常见的事：
 
-- `heir` 的第一课、spawn 的 brief 都是第一条消息，所以它们点名的技能正文才进 index；
+- `handoff` 的交接笔记、spawn 的 brief 都是第一条消息，所以它们点名的技能正文才进 index；
   `Context notice` 是轮中注入的 user 消息，index 已经写定，它点名的技能只剩指针。
 - 一个已经进了 index 的 skill，它的正文里再写 `@skill(bar)`，`bar` 的正文也跟着进——
   所以这份文件可以被别的 skill 引用一次，正文只存一遍。
@@ -74,5 +74,5 @@ index，也不会追加新 prompt 行——index 里永远是第一句话那一�
 
 - **spawn 一个子 agent**：`send_message --session <子会话> <brief>` 的 brief 就是它的第一条 user 消息。
   把 brief 要它读的文件、要用的技能都写成引用（见 `@skill(subagent)`）。
-- **`heir` 的第一课**：`--note` 由脚本用 `send_message` 发给刚清空的会话，所以它也是
-  第一条 user 消息。第一课里写 `@file(<路径>)`，继承人下一次请求就带着正文，不必再读一遍。
+- **`handoff` 的交接笔记**：`--note` 由脚本用 `send_message` 发给刚清空的会话，所以它也是
+  第一条 user 消息。笔记里写 `@file(<路径>)`，接手方下一次请求就带着正文，不必再读一遍。

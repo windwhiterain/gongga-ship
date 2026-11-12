@@ -1,27 +1,26 @@
 #!/usr/bin/env python3
-"""Read a session and start training an heir from its transcript.
+"""Read a session and hand off its transcript.
 
-Training an heir is a decision about work only the agent has seen, so the server
-does not take it: it measures the context and says so (`Context notice`), and
-this script is how the agent starts immediately.
+Handing off is a decision about work only the agent has seen, so the server does
+not take it: it measures the context and says so (`Context notice`), and this
+script is how the agent hands off once its materials are in order.
 
     transcript.py read     [--after SEQ] [--limit N] [--preview]
-    transcript.py heir     [--mentor M] --note TEXT
+    transcript.py handoff  [--mentor M] --note TEXT
 
 Both read the caller's own session from `GONGGA_SESSION`, which the server exports
 to every shell it starts. There is no `--session`: a caller that may name any
 session is a caller that can empty someone else's transcript, and no check on the
 name is as strong as not having the parameter.
 
-`heir` empties the current session so it continues as the heir: it copies the
-whole transcript into a mentor session, verifies the copy, deletes the original
-rows, and answers the call in flight with the heir's next instructions. The
-heir continues the current work from its first lesson; no clean state is needed.
+`handoff` empties the current session so it continues with a fresh context: it
+copies the whole transcript into a mentor session, verifies the copy, deletes the
+original rows, and answers the call in flight with the continuation's next
+instructions. The work continues from the handoff note; no clean state is needed.
 
-The lesson is a message: it goes to the session with `send_message`, exactly as
-an operator's would, so the server reads it as a first user message -- its
-references become index roots, and nothing has to teach the server what a lesson
-is.
+The note is a message: it goes to the session with `send_message`, exactly as an
+operator's would, so the server reads it as a first user message -- its references
+become index roots, and nothing has to teach the server what a note is.
 
 Reading returns what a conversation is made of -- the model's own messages and
 anything injected into the session. Tool calls, tool results and reasoning are
@@ -158,14 +157,14 @@ def command_result(stdout):
     return None
 
 
-def send_lesson(session, lesson):
-    """Puts the heir's first lesson in the session as an ordinary message.
+def send_note(session, note):
+    """Puts the handoff note in the session as an ordinary message.
 
     # Invariant
 
-    A failure here never loses the lesson: it is printed, which is what the call's
-    result carries into the heir's own transcript -- the session is already empty,
-    so that result is the only copy left.
+    A failure here never loses the note: it is printed, which is what the call's
+    result carries into the continuation's own transcript -- the session is already
+    empty, so that result is the only copy left.
 
     Returns what the command said it did, because whether a message is delivered now
     or at the next step boundary is the server's answer, not this script's.
@@ -180,7 +179,7 @@ def send_lesson(session, lesson):
     else:
         try:
             sent = subprocess.run(
-                [cli, json.dumps({"name": "send_message", "args": {"session": session, "message": lesson}})],
+                [cli, json.dumps({"name": "send_message", "args": {"session": session, "message": note}})],
                 capture_output=True,
                 text=True,
             )
@@ -197,19 +196,19 @@ def send_lesson(session, lesson):
                 or f"the command exited {sent.returncode}"
             )
     die(
-        f"the transcript was copied to a mentor and emptied, but the lesson could not be "
+        f"the transcript was copied to a mentor and emptied, but the note could not be "
         f"sent to {session!r} ({detail}). It is repeated here because this result is now "
         f"the only place it exists; continue from it, and from now on carry it as your "
-        f"own message:\n\n{lesson}"
+        f"own message:\n\n{note}"
     )
 
 
-def learner_message(session, mentor, kept):
-    """What the heir reads as the answer to the command that started it."""
+def continuation_message(session, mentor, kept):
+    """What the continuation reads as the answer to the command that started it."""
     return (
-        f"You are now the heir in `{session}`, and `{mentor}` holds the complete transcript. "
+        f"You are continuing `{session}` with a fresh context, and `{mentor}` holds the complete transcript. "
         f"This session is empty {'down to the call you are reading this from' if kept else 'for your next request'}. "
-        "Your first lesson is the message that follows this one: it carries the current objective, "
+        "Your handoff note is the message that follows this one: it carries the current objective, "
         "state, failed attempts, and next action. Everything else remains readable in the mentor.\n"
         f"  read it:  gongga-cli '{json.dumps({'name':'get_messages','args':{'session':mentor,'range':'1:'}})}'\n"
         f"  ask it:   gongga-cli '{json.dumps({'name':'run_skill','args':{'id':'harness/self-control','cmd':{'args':['ask',mentor,'<your question>']}}})}'\n"
@@ -218,22 +217,22 @@ def learner_message(session, mentor, kept):
         "again. The command waits for the answer and prints it; the mentor also sends it to "
         "this session, so keep working and read it when it lands.\n"
         "Nothing about the task changed and no clean state is required: continue the current work "
-        "from the lesson's next action.\n"
-        "The lesson separates what was observed from what was concluded: a claim marked as settled "
+        "from the note's next action.\n"
+        "The note separates what was observed from what was concluded: a claim marked as settled "
         "carries the command and the output that settle it. Anything it lists as `未结案` is yours "
         "to finish -- it is not a fact, and asking the mentor is cheaper than trusting it."
     )
 
 
-def mentor_message(learner):
-    """The mentor's duty while the heir continues the current work."""
+def mentor_message(continuation):
+    """The mentor's duty while the continuation carries on the current work."""
     return (
-        f"You are the mentor of `{learner}`: its complete transcript was copied into "
-        "this session row for row, and this row answers its last call. The heir is "
+        f"You are the mentor of `{continuation}`: its complete transcript was copied into "
+        "this session row for row, and this row answers its last call. It is "
         "continuing the current work there. Answer only what it asks, and answer it in one "
-        f"message: read its questions with `gongga-cli '{json.dumps({'name':'get_messages','args':{'session':learner,'range':'1:'}})}'`, "
-        f"reply with `gongga-cli '{json.dumps({'name':'send_message','args':{'message':'<your answer>','session':learner}})}'`. "
-        "Put the whole answer in your own turn as well: that turn is what the heir's "
+        f"message: read its questions with `gongga-cli '{json.dumps({'name':'get_messages','args':{'session':continuation,'range':'1:'}})}'`, "
+        f"reply with `gongga-cli '{json.dumps({'name':'send_message','args':{'message':'<your answer>','session':continuation}})}'`. "
+        "Put the whole answer in your own turn as well: that turn is what the continuation's "
         "`ask_session` reads, and a message alone leaves that reader with your receipt. "
         "Do not start work of your own here."
     )
@@ -242,8 +241,8 @@ def mentor_message(learner):
 def established(conn, name):
     """Whether `name` is a session that already holds rows.
 
-    A mentor an earlier handover used is an archive, not a scratch pad: training
-    another heir into it would put two archives in one transcript, and the heir
+    A mentor an earlier handover used is an archive, not a scratch pad: handing
+    off into it again would put two archives in one transcript, and the continuation
     reads that transcript from its first row.
     """
     row = conn.execute("select id from sessions where name = ?", (name,)).fetchone()
@@ -271,7 +270,7 @@ def free_name(conn, wanted):
 
 
 def ensure_mentor(conn, name, source):
-    """The mentor's id, creating the session with the learner's model and directory.
+    """The mentor's id, creating the session with the continuation's model and directory.
 
     A mentor is an ordinary session: the agent reads it and talks to it with the
     same commands every client has, which is the whole reason it is a session and
@@ -292,11 +291,11 @@ def ensure_mentor(conn, name, source):
     return conn.execute("select id from sessions where name = ?", (name,)).fetchone()["id"], True
 
 
-def cmd_heir(args):
+def cmd_handoff(args):
     if not args.note.strip():
         die(
-            "refusing to train an heir with an empty lesson: the mentor holds the archive, "
-            "but this lesson is what the heir actually sends"
+            "refusing to hand off with an empty note: the mentor holds the archive, "
+            "but this note is what the continuation actually sends"
         )
     conn = connect()
     # The mentor a handover makes room for: the asked-for name when nothing holds it,
@@ -315,7 +314,7 @@ def cmd_heir(args):
         (sid,),
     ).fetchall()
     if not rows:
-        die(f"{args.session} has no transcript for the heir's mentor; nothing was written")
+        die(f"{args.session} has no transcript to hand off; nothing was written")
 
     # The server runs a call the moment it streams, so the last row is this
     # command's own call and its result does not exist yet. That pair stays -- a
@@ -326,8 +325,8 @@ def cmd_heir(args):
     moved = rows[:-1] if kept is not None else rows
     through = moved[-1]["seq"] if moved else 0
     marker = (
-        f"[heir] `{args.session}` started training an heir through seq {through} "
-        f"({len(moved)} rows), keeping the call in flight. The heir may read this mentor "
+        f"[handoff] `{args.session}` handed off through seq {through} "
+        f"({len(moved)} rows), keeping the call in flight. The continuation may read this mentor "
         "with get_messages and ask it with send_message."
     )
 
@@ -363,7 +362,7 @@ def cmd_heir(args):
                 ),
             )
 
-        # The archive is checked before the original is touched: an heir that
+        # The archive is checked before the original is touched: a handoff that
         # deleted first would turn a half-written copy into lost work.
         copied = conn.execute(
             """select kind, content, display, call_id from messages
@@ -444,7 +443,7 @@ def cmd_heir(args):
                 sid,
                     json.dumps(
                         {
-                            "mechanism": "heir",
+                            "mechanism": "handoff",
                             "mentor": mentor,
                             "mentor_created": created,
                             "rows": len(rows),
@@ -464,15 +463,15 @@ def cmd_heir(args):
             # old to have the table, or a write that fails, must not undo the
             # copy -- and it must not be silent either.
             print(
-                f"warning: heir training succeeded but was not recorded ({e})",
+                f"warning: handoff succeeded but was not recorded ({e})",
                 file=sys.stderr,
             )
 
     # The session is empty now, so this is the first user message it will carry.
     # Sent from here rather than written into the database: a row inserted between
     # the call in flight and its result is a transcript no provider accepts, and
-    # `send_message` is what puts a lesson where an operator's message would go.
-    delivery = send_lesson(args.session, args.note)
+    # `send_message` is what puts a note where an operator's message would go.
+    delivery = send_note(args.session, args.note)
 
     print(
         json.dumps(
@@ -485,9 +484,9 @@ def cmd_heir(args):
                 "kept_call": json.loads(kept["content"])["call_id"] if kept is not None else None,
                 "mentor_rows": len(copied) + 1 + (1 if kept is not None else 0),
                 "deleted": len(moved),
-                "lesson_chars": len(args.note),
-                "lesson_delivery": delivery,
-                "you": learner_message(args.session, mentor, kept is not None),
+                "note_chars": len(args.note),
+                "note_delivery": delivery,
+                "you": continuation_message(args.session, mentor, kept is not None),
             },
             ensure_ascii=False,
             indent=2,
@@ -505,18 +504,18 @@ def main():
     read.add_argument("--preview", action="store_true", help="one line per message")
     read.set_defaults(func=cmd_read)
 
-    heir = sub.add_parser(
-        "heir",
-        help="start training an heir: save the transcript with --mentor, verify it, and empty this session",
+    handoff = sub.add_parser(
+        "handoff",
+        help="hand off: save the transcript with --mentor, verify it, and empty this session",
     )
-    heir.add_argument(
+    handoff.add_argument(
         "--mentor",
         help="where the archive goes: `<your session>/mentor` when omitted. A name that "
         "already holds a transcript is not reused -- `2`, `3`, ... is added under it -- "
         "so one archive never becomes two.",
     )
-    heir.add_argument("--note", required=True, help="the heir's first lesson: objective, state, failures and next action")
-    heir.set_defaults(func=cmd_heir)
+    handoff.add_argument("--note", required=True, help="the handoff note: objective, state, failures and next action")
+    handoff.set_defaults(func=cmd_handoff)
 
     args = parser.parse_args()
     # The caller is the session whose shell this is, and the server says so: a name
@@ -535,7 +534,7 @@ def main():
     else:
         # An archive is written where the caller can see it and nowhere else. The
         # rule is structural -- under this session's path -- so it needs no list of
-        # reserved names: `@monitor` training an heir gets `@monitor/mentor`, which
+        # reserved names: `@monitor` handing off gets `@monitor/mentor`, which
         # is its own child, and nobody can make it write outside its own subtree.
         under = f"{args.session}/"
         if not args.mentor.startswith(under) or args.mentor == under:

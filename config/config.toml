@@ -78,7 +78,7 @@ max_output_chars = 8000
 # No step limit: a turn runs until the work is done.
 # This server does not shorten the transcript for you. When a request carries
 # more than this many input tokens, it injects one message telling the
-# agent so, and the agent acts with the script the `heir` skill ships:
+# agent so, and the agent acts with the script the `handoff` skill ships:
 # hand the whole transcript to a mentor session and empty itself.
 # 0 disables the
 # notice. Only used when the model's context window is not in the
@@ -128,7 +128,7 @@ window = 64
 # What a template can never do is rewrite history: the rows of a session
 # already under way are replayed as stored. Changing what a session remembers
 # is the agent's own act, from a shell -- handing the transcript to a mentor
-# and clearing itself with `heir`.
+# and clearing itself with `handoff`.
 [prompts]
 
 # The system instructions, sent as `instructions` on every request. No
@@ -153,21 +153,23 @@ The user has already authorised running commands: do not ask for confirmation, a
 Every procedure this server does not encode as a tool is a skill: run `gongga-cli '{"name":"ls_skill","args":{"session":"<this session>"}}'` for the table (the card below names this session), and read a body only when its line matches the task.
 '''
 
-# What the agent is told when a request gets big: begin training immediately;
-# unfinished work and a dirty tree are current state, not prerequisites to fix.
+# What the agent is told when a request gets big: hand off soon, but first put the
+# handoff materials in order; unfinished work is current state, not a prerequisite to fix.
 # Placeholders: {{session}}, {{tokens}}, {{budget}}
 context_notice = '''
-Context notice for `{{session}}`: {{tokens}} input tokens against a threshold of {{budget}}. Start training your heir now. The heir continues the current work; do not finish the task, commit, clean the tree, or make the tests pass first.
+Context notice for `{{session}}`: {{tokens}} input tokens against a threshold of {{budget}}. Hand off soon -- but not this instant. First put the handoff materials in order, then run the handoff; do not start new work.
 
-A mentor is a session that keeps this transcript and can answer later questions. Your `--note` is the heir's first lesson: the current objective, what was tried, what worked or failed, the current state, and the next action.
+Before you hand off, get these in order: commit your work in progress and tidy the tree; write down what only exists in your head (the objective, what was tried, what worked or failed and why, the real state of files/processes/branches/tests, the next action); and gather the documents and references the continuation will need.
 
-Name in that lesson whatever the heir will need to read, as `@file(<path>)` or `@skill(<name>)` -- the session is empty, so the lesson is its first user message, and a reference written there is text the index carries once instead of a file read again every turn. The parentheses are the delimitation: the value ends at its own `)`, so prose, spaces and Chinese punctuation after it are just prose. A group left unclosed is not a reference at all, and it says nothing when it fails. `@skill(prefix-cache)` says the rest.
+A mentor is a session that keeps this transcript and can answer later questions. Your `--note` is the handoff note: the current objective, what was tried, what worked or failed, the current state, and the next action.
 
-Run `gongga-cli '{"name":"ls_skill","args":{"session":"{{session}}"}}'` for `heir`; `<heir>` below is the path it prints. Then run this command now:
+Name in that note whatever the continuation will need to read, as `@file(<path>)` or `@skill(<name>)` -- the session is empty, so the note is its first user message, and a reference written there is text the index carries once instead of a file read again every turn. The parentheses are the delimitation: the value ends at its own `)`, so prose, spaces and Chinese punctuation after it are just prose. A group left unclosed is not a reference at all, and it says nothing when it fails. `@skill(prefix-cache)` says the rest.
 
-<heir>/transcript heir --note '<objective, tried, worked, failed, current state, next action>'
+Run `gongga-cli '{"name":"ls_skill","args":{"session":"{{session}}"}}'` for `handoff`; `<handoff>` below is the path it prints. Then run:
 
-Uncommitted changes and failing tests are valid state: record them instead of fixing them first. Every request made before the heir starts is paid for at this size.'''
+<handoff>/transcript handoff --note '<objective, tried, worked, failed, current state, next action>'
+
+Failing tests and unfinished work are valid state: record them, do not fix them first. Every request made before the handoff is paid for at this size.'''
 
 # What the agent is told about a tool call that never returned: verify, do not
 # assume. Static.
@@ -179,7 +181,7 @@ No result was recorded: the turn was interrupted before this call returned. Its 
 size_hint = '''
 {{message}}
 
-The transcript no longer fits this model. Start training an heir now with `heir`'s `transcript heir` (a `gongga-cli` `ls_skill` Cmd prints its path). The heir continues the current work; no commit, clean tree, or green suite is required first.'''
+The transcript no longer fits this model. Hand off with `handoff`'s `transcript handoff` (a `gongga-cli` `ls_skill` Cmd prints its path): first put the handoff materials in order, then run it. Failing tests and unfinished work are valid state; no green suite is required first.'''
 
 # What opens the input: the facts of this session, one message, before the first user
 # message. Stamped once, so the bytes are replayed rather than re-rendered.

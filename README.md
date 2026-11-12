@@ -35,8 +35,8 @@ safe to be a merge target at all.
 
 ## Two buckets, and why they are not one
 
-A harness skill speaks about *this server*: `heir` trains a successor from the
-current transcript and its mentor session, `image` uses the harness's own
+A harness skill speaks about *this server*: `handoff` hands the current transcript to a
+mentor session and continues from a note, `image` uses the harness's own
 attachment channel, `self-control` governs the turn, `subagent` hands work to
 another session. Those belong to a home, because a home is the thing they act
 on -- and because two harnesses of different versions on one machine should not
@@ -98,7 +98,7 @@ An edit here is invisible until it is pushed: a harness installs the newest comm
 `main` that speaks its protocol, at its own start. So publish it --
 
 ```bash
-scripts/ship.sh -m "heir: name the mentor in the guide"
+scripts/ship.sh -m "handoff: name the mentor in the guide"
 ```
 
 -- and a running server picks it up when it restarts (`evolve` in gongga). Nothing in

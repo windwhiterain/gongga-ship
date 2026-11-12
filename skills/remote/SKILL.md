@@ -177,7 +177,7 @@ explicitly and verify its size, or ask the remote shell to `git clone` it.
 ## What works, and what is refused
 
 Everything the harness does on the server machine keeps working in a session with a
-remote, because the harness stays there: `gongga-cli`, the home's skills (`heir`,
+remote, because the harness stays there: `gongga-cli`, the home's skills (`handoff`,
 `subagent`, `evolve`, `image`), the roster and the key never leave this machine. `exec`
 on the peer is how the peer's files are read and edited.
 
