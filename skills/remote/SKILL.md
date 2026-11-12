@@ -26,9 +26,9 @@ when that exact content-addressed distribution is already on the peer.
 ## Set up one endpoint
 
 Find this skill's own directory -- `@skill(...)`'s expansion names it in parentheses,
-and so does the `path` column of `skill` -- then call its `remote` launcher.
+and so does the `path` column of `ls_skill` -- then call its `remote` launcher.
 These examples use `R="$SKILL_DIR/remote"`, not a command assumed to be on `PATH`.
-In gongga, `gongga-cli '{"name":"skill","args":{"name":"remote","args":["<command>"]}}'` is the same launcher, shorter.
+In gongga, `gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"args":["<command>"]}}}'` is the same launcher, shorter.
 
 ```bash
 SKILL_DIR=<the directory this SKILL.md is in>

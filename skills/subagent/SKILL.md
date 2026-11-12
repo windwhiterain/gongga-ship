@@ -68,8 +68,8 @@ model_pool 的 `pick_config` 用 `null` 表示"默认"，可以照发。
 
 ```bash
 G=gongga-cli
-$G '{"name":"skill","args":{"name":"subagent","args":["self_config"]}}'   # 我这一行的 SessionConfig
-$G '{"name":"skill","args":{"name":"subagent","args":["new_subagent","--config","<一份 SessionConfig JSON>","--role","impl"]}}'
+$G '{"name":"run_skill","args":{"id":"harness/subagent","cmd":{"args":["self_config"]}}}'   # 我这一行的 SessionConfig
+$G '{"name":"run_skill","args":{"id":"harness/subagent","cmd":{"args":["new_subagent","--config","<一份 SessionConfig JSON>","--role","impl"]}}}'
 ```
 
 stdout 只有一行名字（给 `$(…)` 用）；哪个名字被占了、订阅了几号，都走 stderr。

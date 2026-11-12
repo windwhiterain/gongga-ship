@@ -1,6 +1,6 @@
 ---
 name: skill
-description: The two skill commands SPEC gives — `ls_skill`, which lists every skill one session can open as `<bucket>/<name>` rows, and `run_skill`, which calls one function of a skill that is a Python package. Read it before writing either call by guess — which arguments are required, why `harness` is a subtree while `har` is nothing, what a row contains, why `session` must be spelled out every time, which skills are read instead of run, which are started by the `skill` tool instead, and what each refusal sentence means.
+description: The two skill commands SPEC gives — `ls_skill`, which lists every skill one session can open as `<bucket>/<name>` rows, and `run_skill`, which runs one skill: the function a Python package publishes, or the entry a script skill declares. Read it before writing either call by guess — which arguments are required, why `harness` is a subtree while `har` is nothing, what a row contains, why `session` must be spelled out every time, how a call’s words reach the skill, which skills are read instead of run, and what each refusal sentence means.
 ---
 
 # The two commands over one skill namespace
@@ -13,11 +13,10 @@ fn ls_skill(path: path, session: Session)
 fn run_skill(id: Skill, cmd: Cmd, session: Session)
 ```
 
-`ls_skill` answers **what exists and what to call it by**. `run_skill` **calls one
-function of one of them** and answers with what the function returned. Nothing else
-re-reads the namespace: the `skill` tool's table, an `@skill(...)` reference and these two
-commands all walk the same roots and print the same `id`, so a path one lists is a path the
-other takes. A skill that is a Python package can also be imported from a skill's own
+`ls_skill` answers **what exists and what to call it by**. `run_skill` **runs one of
+them** and answers with what it printed and the exit code it left with. Nothing else
+re-reads the namespace: an `@skill(...)` reference and these two commands all walk the same
+roots and print the same `id`, so a path one lists is a path the other takes. A skill that is a Python package can also be imported from a skill's own
 Python — same functions, same binding rules — which is what SPEC's `## Skill` means by
 "API can be called by harness cmd or python import".
 
@@ -41,8 +40,8 @@ frontmatter's `name:` when it has one and the directory's name otherwise.
 An `id` is `<bucket>/<name>` — SPEC's `Skill := path` spelled out. The bucket is part of
 the word because a name is not always enough: two layers can hold the same name, and those
 are two different skills. `run_skill` takes the `id` and never the bare name for exactly
-this reason — a path names one row, a name may name two, and the `skill` tool refuses to
-pick between them ("is installed more than once and is never resolved silently").
+this reason: a path names one row, a name may name two, and `ls_skill` prints both rows
+rather than hiding one behind the other.
 
 ## ls_skill
 
@@ -90,19 +89,25 @@ run_skill(id, cmd, session)   # server command; all three required
 | argument | positional | required | what it is |
 | --- | --- | --- | --- |
 | `id` | first | **yes** | the skill, spelled the way `ls_skill` spells it: `<bucket>/<name>` |
-| `cmd` | second | **yes** | the call: a function name on its own, or the whole call as `{"name": "<function>", "args": {...}}` |
+| `cmd` | second | **yes** | the call: a word on its own, or the whole call as `{"name": "<word>", "args": {...}}` — its words, in the order they reach the skill |
 | `session` | third | **yes** | the session it runs as: its directory is where the package is imported, and the call is that session's work |
 
-`cmd` is the same shape `subscribe` uses to name the command a match runs, and the same
-parser reads it: anything that does not begin with `{` is one function name with no
-arguments; an object needs a `name`, and each of its `args` entries reaches the function as
-`--key value`.
+`cmd` is SPEC's `Cmd := {name, args}`: a name, then its arguments. Anything that does not
+begin with `{` is one word and no more; an object carries a `name` and its `args`, and those
+`args` are spelled either way a call needs:
 
-That is the whole translation: `run_skill` builds the words
-`["<function>", "--<key>", "<value>", ...]` and hands them to the `skill` tool, which
-imports the package from its own directory and binds those words to the function's
-parameters. `python/gongga_skill.py` is the contract both readers share, and it is worth
-reading once, because the binding rules are the part a caller otherwise guesses:
+- **as an object**, `{"tier": "flash"}`: each entry reaches the skill as two words,
+  `--tier flash`. That is how a package function is called by parameter name, and the
+  order of the object does not matter.
+- **as a list**, `["pick_config", "--tier", "flash"]`: every word passed through as
+  written. That is how an entry skill takes a subcommand and its flags, and how a package
+  function takes its arguments by position.
+
+The words are the name first, then the args. For a package, `python/gongga_skill.py`
+imports the module from its own directory and binds them: the first word names the
+function, the rest are its arguments. For an entry skill there is nothing to bind: every
+word is the script's argv. `python/gongga_skill.py` is the contract both readers share, and
+it is worth reading once, because the binding rules are the part a caller otherwise guesses:
 
 - a value arrives as a **word**, never as a Python object: an argument written `3` arrives
   as `"3"`, a list or an object arrives as their JSON text. Only a parameter annotated
@@ -117,41 +122,42 @@ reading once, because the binding rules are the part a caller otherwise guesses:
   helper stays out of the API by being named `_helper`, or by importing its module and
   calling it through the module. `__all__` is not consulted.
 
-What the function answers is what this call answers, rendered the way `skill` renders an
-entry: `None` means it ran with nothing to print, a string prints as it is, an `int` is an
-exit code, and anything else is printed as JSON. Output is capped like any other tool result.
+What the function answers is what this call answers: `None` means it ran with nothing to
+print, a string prints as it is, an `int` is an exit code, and anything else is printed as
+JSON. An entry skill's answer is simply what it printed. Either way the call ends with
+`[exit status <n>]`, and a non-zero code is the skill failing, not this command. Output is
+capped like any other tool result.
 
 ### Which skills it accepts, and what each refusal means
 
-`run_skill` calls functions, so its target has to be a **Python package**: a skill whose own
-directory holds an `__init__.py`. A body has no functions to choose between, and a script
-entry has exactly one thing to run, so both are refused here and pointed at the door that
-opens — the `skill` tool, which starts what a skill declares. The row `ls_skill` prints does
-not say which of the three shapes a skill has; `SKILL.md` says, and each refusal repeats it
+`run_skill` runs whatever the row it names is: a **package** runs the function its first
+word names, an **entry** skill starts the file its frontmatter declares with those same
+words as argv, and a **body** -- a `SKILL.md` and neither of the other two -- is refused,
+because there is nothing to start and reading is what it is for. The row `ls_skill` prints
+does not say which of the three a skill is; its `SKILL.md` says, and each refusal repeats it
 in the caller's terms. The sentences, as the server writes them, so a reader can tell which
 mistake was made:
 
 | answer | what to do about it |
 | --- | --- |
 | `no skill is "<id>" here; ls_skill lists <ids>` | the `id` names no row for that session: wrong bucket, wrong name, or a layer this machine does not read. Run `ls_skill` and copy a row it printed. |
-| ``<id> is not a Python package with functions: skill --name <name> starts what it declares`` | the skill is a body or a script entry. Read its `path` if it is a body; start its declared entry with those same words if it is a script. |
-| `run_skill calls a function: run_skill <id> {"name": "<function>", "args": {}}` | `cmd` was empty: the call has to name the function. |
-| `skill` answering `<name> has no function "<fn>"; it publishes: ...` | the package is right and the name is wrong; take one from the list it prints. |
+| `<name> is a body and nothing to run: read <path> and do what it says` | there is nothing to start: open that `SKILL.md` and do what the prose says. This file is one. |
+| `run_skill needs a cmd: the words the skill runs with, ...` | `cmd` was empty. Spell the call: a word, or `{"name": ..., "args": ...}`. |
+| `<name> has no function "<fn>"; it publishes: ...` | a package skill, right package, wrong function: take a name from the list it prints. |
+| `[exit status <n>]` under `ok: false` | the skill ran and failed. Its own output is above that line, and the code is the skill's, not this command's. |
 
 ## Three shapes of skill, three ways to use them
 
 | shape | what makes one | how you use it |
 | --- | --- | --- |
-| **body** | only a `SKILL.md`: no `__init__.py`, no `metadata.entry` | read the `path` `ls_skill` gives and do what the prose says. `skill` on it answers "is a body and nothing to run: read `<path>` and do what it says". This file is one. |
-| **entry** | `metadata.entry:` in the frontmatter, naming a file inside that skill's own directory | the `skill` tool starts that file with your words as argv. `run_skill` refuses it and names this call instead. |
-| **package** | an `__init__.py` in the skill's own directory | `run_skill` one of its functions, or import it from a skill's own Python. |
+| **body** | only a `SKILL.md`: no `__init__.py`, no `metadata.entry` | read the `path` `ls_skill` gives and do what the prose says. `run_skill` refuses it, naming that path. This file is one. |
+| **entry** | `metadata.entry:` in the frontmatter, naming a file inside that skill's own directory | `run_skill` starts that file, and `cmd`'s words are its argv -- no shell, so a word holding a space, a quote or a `$` arrives whole. |
+| **package** | an `__init__.py` in the skill's own directory | `run_skill` one of its functions (`cmd`'s first word names it), or import it from a skill's own Python. |
 
-The two forms can sit in one directory, and each caller picks differently, so say it
-plainly: `run_skill` refuses a skill whose frontmatter declares an entry, even when that
-directory also holds an `__init__.py`; the `skill` tool, which is what starts it, runs the
-package whenever `__init__.py` is there, entry declared or not. Its reason, written in
-`crates/skill/src/entry.rs`, is that discovering the functions is the point of that form. So
-a skill that wants its functions reachable by `run_skill` declares no entry.
+A directory can hold both a declared entry and an `__init__.py`. `run_skill` runs the
+**package** then, because discovering the functions is the point of that form (the reason is
+written in `crates/skill/src/entry.rs`), and the declared entry is what the local runner
+`gongga-cli skill <name>` starts. A skill that wants one answer declares one form.
 
 ## Examples
 
@@ -168,20 +174,21 @@ gongga-cli '{"name":"ls_skill","args":{"session":"<session>"}}'
 gongga-cli '{"name":"ls_skill","args":{"path":"harness","session":"<session>"}}'
 gongga-cli '{"name":"ls_skill","args":{"path":"harness/self-control","session":"<session>"}}'
 
-# one function of a package skill: the whole call, its arguments by name
-gongga-cli '{"name":"run_skill","args":{"id":"general/model_pool","cmd":{"name":"pick_config","args":{"tier":"flash"}},"session":"<session>"}}'
+# an entry skill: every word of cmd is the entry's argv
+gongga-cli '{"name":"run_skill","args":{"id":"general/model_pool","cmd":{"args":["pick_config","--tier","flash"]},"session":"<session>"}}'
+
+# a package skill, its arguments by name
+gongga-cli '{"name":"run_skill","args":{"id":"harness/self-control","cmd":{"name":"ask","args":{"session":"<another session>","question":"<what to ask>"}},"session":"<session>"}}'
 
 # the same call with no arguments: cmd spelled as the bare function name
 gongga-cli '{"name":"run_skill","args":{"id":"<bucket>/<name>","cmd":"<function>","session":"<session>"}}'
 ```
 
-The `model_pool` call is the shape to aim at, and it also shows the table above working: as
-installed, that skill declares an entry script and a set of modules rather than an
-`__init__.py`, so the answer comes back
-`general/model_pool is not a Python package with functions: skill --name model_pool starts
-what it declares`. The words are right for that entry — `pick_config`, `--tier flash` are its
-subcommand and one of its flags — and its own `SKILL.md` is what says which words it takes;
-they just reach it through `skill`, not through `run_skill`.
+The `model_pool` call is the shape to aim at: as installed it declares an entry script
+rather than an `__init__.py`, so `pick_config --tier flash` are the words that entry is
+started with — a subcommand and one of its flags, which its own `SKILL.md` is what documents.
+One spelling reaches both shapes, because a package reads its first word as the function and
+an entry reads all of them as argv.
 
 From a skill's own Python the same two commands are methods on the connection (see
 `docs/notes/python-client.md`), with the one wire rule that matters here: an argument that is
@@ -191,7 +198,7 @@ these commands parse.
 ```python
 server.ls_skill(path="harness", session="main")
 server.run_skill(id="general/model_pool",
-                 cmd={"name": "pick_config", "args": {"tier": "flash"}},
+                 cmd={"args": ["pick_config", "--tier", "flash"]},
                  session="main")
 ```
 
@@ -201,7 +208,8 @@ server.run_skill(id="general/model_pool",
   callable by command or by import, `## Sticky` for why these two spell `session` outright.
 - `docs/notes/server-commands.md`: "ls_skill", "run_skill", and "How an argument is spelled,
   and what a `path` means" for the component rule.
-- `docs/notes/server-tools-skill.md`: the table, the roots, and how an entry is started.
+- `docs/notes/server-tools-skill.md`: the roots, the three shapes, and how a skill is
+  started.
 - `python/gongga_skill.py`: the publishing, binding and answer rules that both readers share.
 - `crates/server/src/commands.rs`: the two schemas whose argument names, order and
   requirements this file copies.
