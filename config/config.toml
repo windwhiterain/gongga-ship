@@ -329,6 +329,76 @@ A gongga server has less disk room left on {{machine}} than this machine declare
 {{read_back}}{{reach}}
 Report the skill's own measurements -- the freed bytes and its exit code -- not a narrative of what you think it did. This server said this once for the whole time the disk stays this low: answer in one message with what was freed and what is left.'''
 
+# What a session is told when its mode becomes explore: a reminder, not a jail.
+explore_notice = '''
+This session is now in explore mode -- a reminder, not a jail. The write-shaped tools are refused while you explore, and a program that writes anyway is reported to you before you answer. Read freely; to write, switch the session to work mode.'''
+
+# The same when the mode becomes work: it may write, and nothing is reported.
+work_notice = '''
+This session is now in work mode: it may write, and nothing is reported.'''
+
+# What a workspace a program's call changed is reported with. {{tool}}, {{changed}}.
+explore_changed = '''
+While this session explores, `{{tool}}` changed the workspace:
+{{changed}}
+Explore mode is a promise not to write; this is what differed after the call. Account for it before you answer.'''
+
+# Why a write-shaped call was refused while the session explores. {{tool}}.
+explore_refusal = '''
+`{{tool}}` was refused: this session is in explore mode, which does not write. To make this change, switch the session to work mode first.'''
+
+# How a finished job is announced. {{job}}, {{tool}}, {{spent}}.
+job_report_finished = '''
+Background job {{job}} (`{{tool}}`) finished ok after {{spent}}. Its output is ready to read.'''
+
+# The same announcement for a job that ended with an error. {{job}}, {{tool}}, {{spent}}.
+job_report_failed = '''
+Background job {{job}} (`{{tool}}`) ended with an error after {{spent}}. Read its output to see what failed.'''
+
+# A job the stopped server never reported. {{job}}, {{tool}}, {{named}}, {{waited}}.
+job_lost = '''
+Background job {{job}} (`{{tool}}`){{named}} was lost when the server stopped, after {{waited}}. Its outcome is unknown -- re-check before relying on it.'''
+
+# A job that ended before the stop, with nobody having collected it. {{job}}, {{tool}}, {{named}}.
+job_left_owed = '''
+Background job {{job}} (`{{tool}}`){{named}} ended before the server stopped, but nobody collected its result. It is still owed to you; read its output.'''
+
+# How a detached bash's end is announced. {{name}}, {{pid}}, {{how}}, {{log}}.
+detached_ended = '''
+Detached bash `{{name}}` (pid {{pid}}) ended: {{how}}. Its output is at {{log}}.'''
+
+# The how of detached_ended when the exit status is known. {{code}}.
+detached_exit = '''
+it exited with code {{code}}'''
+
+# The same when it ended with no status anyone can read.
+detached_no_exit = '''
+it ended with no exit status anyone can read'''
+
+# The same for one adopted across a restart: the pid is all that survived.
+detached_adopted = '''
+it was adopted across a restart, and the pid is all that survived; it is now gone'''
+
+# How a detached bash that is gone is reported. {{name}}, {{pid}}, {{why}}, {{command}}, {{log}}.
+detached_gone = '''
+Detached bash `{{name}}` (pid {{pid}}) is gone: {{why}}. {{command}}Its output is at {{log}}.'''
+
+# The command a gone bash was running, or empty. {{command}}.
+detached_running = '''
+It was running `{{command}}`. '''
+
+# What a session is told about notices the stopped server took with it. {{notices}}.
+lost_notices = '''
+The server stopped while these notices were owed to you and took them with it. They are said again here so they are not lost:
+{{notices}}'''
+
+# What asks a session to fold its context: the live compaction interval.
+live_compact_notice = '''
+The live-compaction interval has elapsed. Call `live_compact` with a summary of what a later turn cannot recover from the transcript: the decisions taken, the paths and identifiers the next step needs, the open question, and the facts it depends on. The server keeps the latest complete tool-call round and every earlier summary verbatim, so do not restate them. The summary may also cite a file as `@file(<path>)`: the citation embeds that file whole into the summary, so a later turn reads the content without opening it again -- at the cost of carrying it in every later request. Keep it short. Do not use handoff and do not delete transcript rows.'''
+
+# The text a turn boundary is written with when the provider refused the transcript.
+thinking_mark = '''
+The provider refused the previous request because a step was written without thinking. This mark records that refusal at the turn boundary; continue with thinking.'''
 [tools.arguments]
 description = '''What this call is for, in a few words -- it is read right after the tool's name, so say what the run is for, not what the command is (`check the state`, not `bash`). Optional, and never executed: it also names the file that a too-long output is spilled to, so that later you (and whoever reads the dumps) can tell one run from another. Example: `run the server tests`.'''
 
