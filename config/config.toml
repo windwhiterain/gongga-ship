@@ -155,9 +155,9 @@ Every procedure this server does not encode as a tool is a skill: run `gongga-cl
 
 # What the agent is told when a request gets big: hand off soon, but first put the
 # handoff materials in order; unfinished work is current state, not a prerequisite to fix.
-# Placeholders: {{session}}, {{tokens}}, {{budget}}
+# Placeholders: {{session}}, {{tokens}}, {{budget}}, {{window}}
 context_notice = '''
-Context notice for `{{session}}`: {{tokens}} input tokens against a threshold of {{budget}}. Hand off soon -- but not this instant. First put the handoff materials in order, then run the handoff; do not start new work.
+Context notice for `{{session}}`: {{tokens}} input tokens of {{window}} total (handoff threshold {{budget}}). Hand off soon -- but not this instant. First put the handoff materials in order, then run the handoff; do not start new work.
 
 Before you hand off, get these in order: commit your work in progress and tidy the tree; write down what only exists in your head (the objective, what was tried, what worked or failed and why, the real state of files/processes/branches/tests, the next action); and gather the documents and references the continuation will need.
 
