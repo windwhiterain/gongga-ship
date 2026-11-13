@@ -452,9 +452,9 @@ sentence = '''The program to run: a name on this machine's PATH, or a path to it
 
 [[tool.exec.parameters]]
 name = "args"
-type = "list[str] | dict[str]"
+type = "list[str]"
 positional = 2
-sentence = '''Its words, one per element: the program's arguments. Omitted, the words `[channel.<name>]` declares are used. Only a program about to start takes them; a call that speaks to a running channel passes none. A list of words, or a table of named arguments each spoken as `--key value` -- `exec` runs programs, not server cmds; a server cmd is run by the `gongga_cli` tool, its schema taught by a skill.'''
+sentence = '''Its words, one per element: the program's arguments. Omitted, the words `[channel.<name>]` declares are used. Only a program about to start takes them; a call that speaks to a running channel passes none. A list of words, one per element, never a JSON-encoded string -- `exec` runs programs, not server cmds; a server cmd is run by the `gongga_cli` tool, its schema taught by a skill.'''
 
 [[tool.exec.parameters]]
 name = "input"
