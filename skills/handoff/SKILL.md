@@ -33,6 +33,7 @@ metadata:
 ```bash
 # 从本 skill 的目录运行：`@skill(...)` 展开里是 `@skill(<名字>) (<path>)`，取 `<path>` 的父目录；
 # gongga 里更短：`gongga-cli '{"name":"run_skill","args":{"id":"harness/handoff","cmd":{"args":["read"]}}}'`。
+# ——`run_skill` 的 id、命令字的拼法和退出码是 `@skill(skill)` 的事，这里只写本 skill 的命令字。
 SKILL_DIR=<本 SKILL.md 所在目录>
 T="$SKILL_DIR/transcript"
 

@@ -72,6 +72,8 @@ $G '{"name":"run_skill","args":{"id":"harness/subagent","cmd":{"args":["self_con
 $G '{"name":"run_skill","args":{"id":"harness/subagent","cmd":{"args":["new_subagent","--config","<一份 SessionConfig JSON>","--role","impl"]}}}'
 ```
 
+`run_skill` 的 id、命令字的拼法和退出码是 `@skill(skill)` 的事；这里只写本 skill 自己的函数名与参数。
+
 stdout 只有一行名字（给 `$(…)` 用）；哪个名字被占了、订阅了几号，都走 stderr。
 
 **这些命令是给你在 shell 里手敲的；skill 自己不走命令行。** 它 `import gongga`（本 home 的

@@ -29,6 +29,9 @@ Find this skill's own directory -- `@skill(...)`'s expansion names it in parenth
 and so does the `path` column of `ls_skill` -- then call its `remote` launcher.
 These examples use `R="$SKILL_DIR/remote"`, not a command assumed to be on `PATH`.
 In gongga, `gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"args":["<command>"]}}}'` is the same launcher, shorter.
+The id it answers by, how its words are spelled and what an exit status means are
+the `@skill(skill)` skill's business: this file only names the commands `remote`
+itself takes.
 
 ```bash
 SKILL_DIR=<the directory this SKILL.md is in>
