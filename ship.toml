@@ -20,7 +20,9 @@
 # 9: the command line spells SPEC's argument names (`--id`, `--session`, `--path`),
 # and a protocol-8 server reads the old ones -- so the skills that name a flag are
 # content this build cannot share with one that has not moved.
-protocol = 9
+# 10: live_compact's checkpoint is two parts, `settled` (required) and `next` --
+# a protocol-9 server reads a single `summary` and cannot store this shape.
+protocol = 10
 
 # Which path in this repository is the home's config.
 config = "config/config.toml"

@@ -394,7 +394,7 @@ The server stopped while these notices were owed to you and took them with it. T
 
 # What asks a session to fold its context: the live compaction interval.
 live_compact_notice = '''
-The live-compaction interval has elapsed. Call `live_compact` with a summary of what a later turn cannot recover from the transcript: the decisions taken, the paths and identifiers the next step needs, the open question, and the facts it depends on. The server keeps the latest complete tool-call round and every earlier summary verbatim, so do not restate them. The summary may also cite a file as `@file(<path>)`: the citation embeds that file whole into the summary, so a later turn reads the content without opening it again -- at the cost of carrying it in every later request. Keep it short. Do not use handoff and do not delete transcript rows.'''
+The live-compaction interval has elapsed. Call `live_compact` with two parts. `settled`: the closed record of what a later turn cannot recover from the transcript -- the decisions taken, the paths and identifiers the next step needs, and the facts it depends on. Write only what is decided: it accumulates across checkpoints, so an open question left here is reopened every later turn. `next`: the tasks still to do -- placed after the checkpoint and cut at the next one, so put the open work here, not in `settled`. The server keeps the latest complete tool-call round and every earlier `settled` verbatim, so do not restate them. `settled` may cite a file as `@file(<path>)`: the citation embeds that file whole, so a later turn reads it without opening it again -- at the cost of carrying it in every later request. Keep both short. Do not use handoff and do not delete transcript rows.'''
 
 # The text a turn boundary is written with when the provider refused the transcript.
 thinking_mark = '''
@@ -496,15 +496,19 @@ sentence = '''Give up after this many milliseconds. This is a limit on waiting, 
 
 [tool.live_compact]
 cmd = "live_compact"
-summary = '''Write the checkpoint summary requested by the server. Summarize everything since the previous checkpoint, including the latest ordinary tool-call round. The server retains that complete round separately and keeps every checkpoint summary. The summary may also cite a file as `@file(<path>)`: the citation embeds that file whole into the summary, so a later turn reads the content without opening it again -- at the cost of carrying it in every later request. Keep it short.'''
+summary = '''Write the checkpoint requested by the server, in two parts. `settled` is the closed record of the segment since the previous checkpoint: the decisions taken, the paths and identifiers the next step needs, and the facts it depends on. It accumulates across checkpoints, so write only what is decided, never what is still open. `next` is the open part: the tasks still to do. It is placed after the checkpoint and cut at the next one, so it never accumulates. The server retains the latest complete tool-call round separately. `settled` may cite a file as `@file(<path>)`: the citation embeds that file whole into the summary, so a later turn reads the content without opening it again -- at the cost of carrying it in every later request. Keep both short.'''
 carrier = "here"
 # SPEC's live_compact is a summary call: it takes no tunnel arguments.
 tunneled = false
 
 [[tool.live_compact.parameters]]
-name = "summary"
+name = "settled"
 required = true
-sentence = '''The agent-written summary of the segment since the previous checkpoint. File and skill references are embedded directly in the stored checkpoint.'''
+sentence = '''The closed record of the segment since the previous checkpoint: decisions taken, paths and identifiers the next step needs, and the facts it depends on. Accumulates across checkpoints, so write only what is decided. File and skill references are embedded directly in the stored checkpoint.'''
+
+[[tool.live_compact.parameters]]
+name = "next"
+sentence = '''The open tasks still to do, placed after the checkpoint as the opening of the next segment. Cut at the next live_compact, so it never accumulates. Omit when nothing is open.'''
 
 # SPEC's channel commands, offered as tools: the model lists and ends channels by
 # name. The session is the call's own; the command layer fills it.
