@@ -61,7 +61,6 @@ max_retries = 0
 retry_base_ms = 1000
 
 [tools.bash]
-timeout_ms = 120000
 # Output longer than this is capped: head and tail come back, the
 # whole thing lands in ~/.gongga/outputs/. 0 disables the cap.
 max_output_chars = 8000
@@ -186,8 +185,6 @@ Besides the arguments its own row lists, a tool call may carry these, and every 
 
 - `description`: one sentence saying what this call is for, in your own words. It is read on the call's own row -- a folded call shows it after its name -- and it names the file a capped answer was written to. Write it on every call: a call whose purpose nobody can read is a call nobody can review.
 - `max_output`: the longest answer this call returns. Past it the middle is cut and the whole of it goes to a file the answer names.
-- `timeout_ms`: how long this call may hold the turn. Past it the work carries on as a background job, which this session is told about when it ends.
-- `background`: run this call so the turn is free while it works; `check_job` collects what it answers.
 '''
 
 # What opens the input: the facts of this session, one message, before the first user
@@ -430,18 +427,16 @@ spawn = ["-u", "-i"]
 write = "{{input}}\n"
 until = ">>> "
 
-# The two tools a channel is spoken through. Everything about them is here: no
-# tunnel arguments, because a channel already is the thing `background` used to mean,
-# and `wait` is the call's own clock.
+# The two tools a channel is spoken through. Everything about them is here, and
+# their waits are their own: `exec`'s `wait` is how long a call stays to listen.
 # One verb for both halves: `bin` starts a program, and the `id` it answers by is how
 # every later call speaks to it -- there is no second verb for reading.
 [tool.exec]
 cmd = "exec"
-tunneled = false
-# Four seconds: enough for a program to say its first line. A call that states no `wait`
-# waits this long, and returns whatever the program has said by then. A read gives up
-# only at the program's end or at the text `[channel.<name>]` ends a reply with.
-timeout_ms = 4000
+# A call that states no `wait` waits `config::DEFAULT_EXEC_WAIT` (four seconds:
+# enough for a program to say its first line) and returns whatever the program has said
+# by then. A read gives up only at the program's end or at the text
+# `[channel.<name>]` ends a reply with.
 summary = '''Run a program as a channel, or read the one already running. `bin` and `args` start it; the `id` it answers by is how a later call speaks to it again, with no `bin`. Each call takes the output nobody has read yet -- a window that moves, so what one call took the next does not see. Long output is capped, the whole of it kept in a file the answer names.'''
 
 [[tool.exec.parameters]]
@@ -491,13 +486,8 @@ sentence = '''Where the program starts. Omitted: this session's directory when i
 
 [tool.wait]
 cmd = "wait"
-# Waiting is this tool's whole work, so a call's own `time` is the answer to
-# "how long", not a clock the turn puts on it: without this the row's `timeout_ms`
-# is all a call can ever get.
-owns_its_wait = true
+# Waiting is this tool's whole work: a call's own `time` is the answer to "how long".
 summary = '''Stay in this turn until something arrives for this session: the notice of a channel that ended, or a message -- a person's, or one a subscription's action sent. It consumes nothing: whatever arrived is delivered at the next step boundary, the same way every other queued message is, so this is how an agent waits without giving up its turn and without polling. Nothing wakes an idle session on its own: a `subscribe` reaches this one only through what its action sends, which is why a session that has just armed one has nothing else to do. `time` is the ceiling, and the answer is how long it waited: SPEC gives `wait` a `time` back, so a call whose ceiling passed and one a message cut are the same kind of answer, told apart by the number.'''
-timeout_ms = 120000
-tunneled = false
 
 [[tool.wait.parameters]]
 name = "time"
@@ -507,9 +497,7 @@ sentence = '''Give up after this many milliseconds. This is a limit on waiting, 
 [tool.live_compact]
 cmd = "live_compact"
 summary = '''Write the checkpoint requested by the server, in two parts. `settled` is the closed record of the segment since the previous checkpoint: the decisions taken, the paths and identifiers the next step needs, and the facts it depends on. It accumulates across checkpoints, so write only what is decided, never what is still open. `next` is the open part: the tasks still to do. It is placed after the checkpoint and cut at the next one, so it never accumulates. The server retains the latest complete tool-call round separately. `settled` may cite a file as `@file(<path>)`: the citation embeds that file whole into the summary, so a later turn reads the content without opening it again -- at the cost of carrying it in every later request. Keep both short.'''
-carrier = "here"
 # SPEC's live_compact is a summary call: it takes no tunnel arguments.
-tunneled = false
 
 [[tool.live_compact.parameters]]
 name = "settled"
@@ -526,8 +514,6 @@ sentence = '''The open tasks still to do, placed after the checkpoint as the ope
 [tool.gongga_cli]
 cmd = "gongga_cli"
 offered = true
-carrier = "here"
-tunneled = false
 summary = '''Run one server command, named by the call: SPEC's `Cmd`, `{"name": "<command>", "args": {...}}`. Its schema is the `self-control` skill's; the session it acts on is this call's own unless its `args` name another. The answer is the command's, shaped like `exec`'s `Result`: `output`, `time`, `exit`.'''
 
 [[tool.gongga_cli.parameters]]
@@ -545,8 +531,6 @@ cmd = "ls_channel"
 # A server cmd the model calls by name: the command layer runs it (SPEC fn <tool>).
 offered = true
 summary = """List a session's channels: the name each one is called, what it runs, and how much of what it said nobody has read."""
-carrier = "here"
-tunneled = false
 
 [[tool.ls_channel.parameters]]
 name = "path"
@@ -559,8 +543,6 @@ cmd = "del_channel"
 # A server cmd the model calls by name: the command layer runs it (SPEC fn <tool>).
 offered = true
 summary = """End a channel's program and forget the name, and do the same for every channel under that path. A channel that had already ended is only forgotten."""
-carrier = "here"
-tunneled = false
 
 [[tool.del_channel.parameters]]
 name = "id"

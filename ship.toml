@@ -22,7 +22,10 @@
 # content this build cannot share with one that has not moved.
 # 10: live_compact's checkpoint is two parts, `settled` (required) and `next` --
 # a protocol-9 server reads a single `summary` and cannot store this shape.
-protocol = 10
+# 11: a tool row no longer declares the tunnel's arguments (`tunneled`, `carrier`,
+# `timeout_ms`, `owns_its_wait`, `handles_background`) or `[tools.arguments]`: the
+# call layer stopped offering them, so a protocol-10 server cannot read these rows.
+protocol = 11
 
 # Which path in this repository is the home's config.
 config = "config/config.toml"
