@@ -445,13 +445,13 @@ sentence = '''The program to run: a name on this machine's PATH, or a path to it
 
 [[tool.exec.parameters]]
 name = "args"
-type = "array|object"
-items = "string"
+type = "list[str] | dict[str]"
 positional = 2
 sentence = '''Its words, one per element: the program's arguments. Omitted, the words `[channel.<name>]` declares are used. Only a program about to start takes them; a call that speaks to a running channel passes none. A list of words, or a table of named arguments each spoken as `--key value` -- `exec` runs programs, not server cmds; a cmd is called by its own name as a tool, its schema taught by a skill.'''
 
 [[tool.exec.parameters]]
 name = "input"
+type = "optional[str]"
 sentence = '''One line to write to the program, through the spelling `[channel.<name>]` gives.'''
 
 [[tool.exec.parameters]]
@@ -461,21 +461,24 @@ sentence = '''The name it answers by, in this session's namespace. Omitted: `/<b
 
 [[tool.exec.parameters]]
 name = "wait"
-type = "integer"
+type = "optional[time]"
 sentence = '''Milliseconds to wait for output. Omitted is this server's default; `0` returns at once with whatever has arrived.'''
 
 [[tool.exec.parameters]]
 name = "until"
+type = "optional[str]"
 sentence = '''Read until this text appears, and answer with what came before it. Omitted, `[channel.<name>]` may name one.'''
 
 [[tool.exec.parameters]]
 name = "remote"
+type = "optional[str]"
 hint = "name"
 completion = "remotes"
-sentence = '''Which machine it runs on, named by `[remotes]`; `none` (or `local`) is the machine this server runs on. Omitted is the session's own, so a remote session names `none` to run the harness's own programs here. Naming another is not a change of session.'''
+sentence = '''Which machine it runs on, named by `[remotes]`; `none` (or a stated `null`) is the machine this server runs on. Omitted is the session's own, so a remote session names `none` to run the harness's own programs here. Naming another is not a change of session.'''
 
 [[tool.exec.parameters]]
 name = "cwd"
+type = "optional[path]"
 hint = "path"
 sentence = '''Where the program starts. Omitted: this session's directory when it asked for this session's machine, else that machine's own.'''
 
@@ -491,7 +494,7 @@ tunneled = false
 
 [[tool.wait.parameters]]
 name = "time"
-type = "integer"
+type = "time"
 sentence = '''Give up after this many milliseconds. This is a limit on waiting, not on the news: passing it returns what has not arrived, and nothing is lost.'''
 
 [tool.live_compact]
