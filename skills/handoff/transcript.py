@@ -14,9 +14,10 @@ session is a caller that can empty someone else's transcript, and no check on th
 name is as strong as not having the parameter.
 
 `handoff` empties the current session so it continues with a fresh context: it
-copies the whole transcript into a mentor session, verifies the copy, deletes the
-original rows, and answers the call in flight with the continuation's next
-instructions. The work continues from the handoff note; no clean state is needed.
+copies the whole transcript into a mentor session, verifies the copy, cuts the
+original rows from the tail (context only has append/cut), and answers the call
+in flight with the continuation's next instructions. The work continues from the
+handoff note; no clean state is needed.
 
 The note is a message: it goes to the session with `send_message`, exactly as an
 operator's would, so the server reads it as a first user message -- its references
@@ -408,10 +409,33 @@ def cmd_handoff(args):
                 ),
             )
 
-        if kept is None:
-            conn.execute("delete from messages where session_id = ?", (sid,))
-        else:
-            conn.execute("delete from messages where session_id = ? and seq < ?", (sid, kept["seq"]))
+        # Context only has append/cut, and a cut may only take the tail: the
+        # `context_cut_tail_only` trigger aborts deleting any row below the
+        # session's newest. So the transcript is cut one row at a time, newest
+        # first. The call in flight is itself the tail, so it is cut with the rest
+        # and appended back verbatim: its `call_id` is what the result the server
+        # is about to write pairs with, and a result without its call is a request
+        # no provider accepts.
+        for row in reversed(rows):
+            conn.execute(
+                "delete from messages where session_id = ? and seq = ?",
+                (sid, row["seq"]),
+            )
+        if kept is not None:
+            conn.execute(
+                """insert into messages (session_id, seq, kind, content, display, call_id, created_at)
+                    values (?, (select coalesce(max(seq), 0) + 1 from messages where session_id = ?),
+                            ?, ?, ?, ?, ?)""",
+                (
+                    sid,
+                    sid,
+                    kept["kind"],
+                    kept["content"],
+                    kept["display"],
+                    kept["call_id"],
+                    kept["created_at"],
+                ),
+            )
         # context_tokens counted a transcript that no longer exists: leaving it
         # would have the server measure this session as still full and remind on
         # every single step.

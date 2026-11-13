@@ -14,7 +14,7 @@ metadata:
 
 | | `handoff` |
 |---|---|
-| 做的事 | 全份存进 mentor → 校验 → **删空当前会话**（留在飞的那个 call）→ 用 `send_message` 把交接笔记发给自己 |
+| 做的事 | 全份存进 mentor → 校验 → **从尾部剪空当前会话**（在飞的 call 剪掉再 append 回来）→ 用 `send_message` 把交接笔记发给自己 |
 | 原文还在当前会话吗 | 不在，完整副本在 mentor 会话里 |
 | 下一次请求发什么 | 你这条 call 和它的结果、交接笔记这条消息，就这些 |
 
@@ -88,7 +88,9 @@ gongga-cli '{"name":"run_skill","args":{"id":"harness/self-control","cmd":{"args
 
 ## 为什么删之前要校验
 
-`handoff` 在一个事务里：追加到 mentor → 逐行比对 `(kind, content, display, call_id)` → 才删。任何一行对不上就整体回滚，当前会话不会先空。
+`handoff` 在一个事务里：追加到 mentor → 逐行比对 `(kind, content, display, call_id)` → 才剪。任何一行对不上就整体回滚，当前会话不会先空。
+
+上下文只有 **append/cut** 两种操作，且 cut 只能从尾部剪（服务端 `context_cut_tail_only` 触发器挡住任何剪掉非最新行的删除）。所以原 transcript 是从最新一行往回逐行剪掉的；在飞的那个 call 本身就是尾部，会随历史一起被剪掉、再原样 append 回来——`call_id` 不变，服务端随后写的 result 靠它配对——落在 seq 1。
 
 ## 为什么这是一个脚本而不是服务端工具
 
@@ -140,7 +142,7 @@ index（笔记是空会话的第一条消息），写 `docs/notes/plan.md` 只�
 - **笔记发不出去就整体报告出来**：会话此时已空，脚本会把笔记原样写进结果（也就是这条 call 的 tool_result）并非零退出。那不是丢笔记，是换了个位置存。
 - **笔记里的引用要用 `@file(...)`/`@skill(...)`**，括号写全：它是整份 transcript 被清空之后唯一的一条消息，写对了只付一次费，写错了模型只能自己再去读。
 - **先整理再交接，但不要求 clean state**：先 commit、写下状态、归拢引用；未完成和失败如实记录，不要先修复或验证再运行命令。
-- **`handoff` 之后 `seq` 从 1 重新开始**（没有在飞的 call 时），笔记就是第 1 行；没有隐藏边界，也没有"笔记列"。不要自己手写 SQL 动这张表。
+- **`handoff` 之后 `seq` 从 1 重新开始**：留在飞的 call 时，它被剪掉再原样 append 回 seq 1，result 与笔记依次随后；没有在飞的 call 时笔记就是第 1 行。没有隐藏边界，也没有"笔记列"。不要自己手写 SQL 动这张表。
 - **不要频繁交接**：每次都要重新写笔记；但收到新的 `Context notice` 时仍应尽快行动。
 - 图片的 provider 侧 `file_id` 随原行走；接手方需要再次发送同一张图时要重新上传。
 - 成功后 `context_tokens` 归零是正常的，下一次请求会重新测量。
