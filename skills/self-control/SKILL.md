@@ -59,15 +59,16 @@ command line a person types in a window: there, positional arguments bind in the
 published, then named ones as `--name value`. The examples here are JSON, so neither
 order nor spelling can go wrong.
 
-**Every argument travels as a string.** A JSON boolean, number or object in place of a
-string is sent as its own JSON text, which is how `config` and a subscription's `cmd`
-travel: `true` arrives as the text `true`, and `70` as the text `70`.
+**An argument is the JSON value its type says.** A boolean is `true`, a count is `70`,
+an object stays an object -- `config` and a subscription `cmd` are objects, not JSON
+text. A stated `null` is the empty value of that type (no remote, no directory, no
+count) and is a different instruction from leaving the argument out, which takes its
+default.
 
-**`session` arguments carry the kind `session`.** A window fills a missing one from its
-sticky `session` entry (`set_sticky --type session --value <name>`) and the two tool
-doors fill it with the calling session; `gongga-cli` and `server.call` do not -- they
-send exactly the arguments they are given. So every `session` argument below is
-required in practice unless the command says it falls back to the caller.
+**`session` defaults to the caller.** SPEC writes `session: Session = caller()`: a window
+fills a missing one from its sticky `session` entry (`set_sticky --type session --value
+<name>`), and `gongga-cli`, `server.call` and the two tool doors pass the session the call
+was run from (`$GONGGA_SESSION`). A call that names a session acts on that one.
 
 **The server checks required arguments before it runs the command** and refuses with the
 missing names: `send_message is missing required argument(s): session`. An argument the

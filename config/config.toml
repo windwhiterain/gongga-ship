@@ -518,7 +518,7 @@ summary = '''Run one server command, named by the call: SPEC's `Cmd`, `{"name": 
 
 [[tool.gongga_cli.parameters]]
 name = "cmd"
-type = "object"
+type = "Cmd"
 required = true
 positional = 1
 hint = "json"
