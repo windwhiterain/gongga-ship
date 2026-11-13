@@ -308,7 +308,7 @@ def _subscribe(name):
     return pattern, message
 
 
-def new_subagent(config, role="worker"):
+def new_subagent(config: dict, role: str = "worker"):
     """Create the child session and arm its turn-end subscription; answer its name.
 
     `config` is SPEC's `SessionConfig` as one dict -- in practice `self_config()`
@@ -325,14 +325,15 @@ def new_subagent(config, role="worker"):
     if not role or "/" in role:
         _die(f"a role is one segment, not {role!r}: the path is built from it")
     parent = _caller()
+    # Sent as the object it is: SPEC's `Cmd.args` is `dict[str, any]` end to end, so the
+    # server reads `config` as the table it was given. Serialised here it would arrive as
+    # a string and be refused. SPEC keeps a None-valued key (remote: none is None); the
+    # server reads a null field as its default, so the config is sent verbatim.
     try:
-        # One JSON document, because SPEC's `config` argument is one: what a
-        # caller can run by hand and what this sends are the same object.
-        # SPEC keeps a None-valued key (remote: none is None); the server reads a
-        # null field as its default, so the config is sent verbatim, not stripped.
-        payload = json.dumps(config)
+        json.dumps(config)
     except (TypeError, ValueError) as unusable:
         _die(f"the config is not JSON: {unusable}")
+    payload = config
 
     for attempt in range(ATTEMPTS):
         name = f"{parent}/{role}" if attempt == 0 else f"{parent}/{role}/{attempt + 1}"
