@@ -176,11 +176,25 @@ size_hint = '''
 
 The transcript no longer fits this model. Hand off with `handoff`'s `transcript handoff` (a `gongga-cli` `ls_skill` Cmd prints its path): first put the handoff materials in order, then run it. Failing tests and unfinished work are valid state; no green suite is required first.'''
 
+# What every call may carry besides the arguments its own row lists, one message,
+# before the card. The tool schemas state the four names and no sentence, so this
+# section is the only place a model reads what they are for: said once, rather than
+# the same paragraph in every tool's schema of every request. Constant text, stamped
+# with the card. See `docs/notes/server-prompts.md`.
+general_parameters = '''
+Besides the arguments its own row lists, a tool call may carry these, and every tool takes them:
+
+- `description`: one sentence saying what this call is for, in your own words. It is read on the call's own row -- a folded call shows it after its name -- and it names the file a capped answer was written to. Write it on every call: a call whose purpose nobody can read is a call nobody can review.
+- `max_output`: the longest answer this call returns. Past it the middle is cut and the whole of it goes to a file the answer names.
+- `timeout_ms`: how long this call may hold the turn. Past it the work carries on as a background job, which this session is told about when it ends.
+- `background`: run this call so the turn is free while it works; `check_job` collects what it answers.
+'''
+
 # What opens the input: the facts of this session, one message, before the first user
 # message. Stamped once, so the bytes are replayed rather than re-rendered.
 # Placeholders: {{session}}, {{build}}, {{now}}, {{cwd}}, {{model}}
 dynamic_tail = '''
-Session `{{session}}` on `{{model}}`, harness gongga at `{{build}}`, time {{now}}, worksapce `{{cwd}}`.'''
+Session `{{session}}` on `{{model}}`, harness gongga at `{{build}}`, time {{now}}, workspace `{{cwd}}`.'''
 
 # The same card when the workspace is not on this machine. It is a second template
 # rather than a clause in the one above because a template has no conditional, and
