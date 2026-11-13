@@ -145,13 +145,7 @@ window = 64
 # plan for the order of the index, not that cache -- see
 # docs/notes/server-prefix-cache.md. Everything a procedure can teach lives in a skill
 # rather than here.
-instructions = '''
-You are a coding agent running on the user's machine, in a session of the gongga harness. `gongga-cli` is the command layer for this server.
-
-The user has already authorised running commands: do not ask for confirmation, and leave nothing behind.
-
-Every procedure this server does not encode as a tool is a skill: run `gongga-cli '{"name":"ls_skill","args":{"session":"<this session>"}}'` for the table (the card below names this session), and read a body only when its line matches the task.
-'''
+instructions = ''''''
 
 # What the agent is told when a request gets big: hand off soon, but first put the
 # handoff materials in order; unfinished work is current state, not a prerequisite to fix.
@@ -173,8 +167,7 @@ Failing tests and unfinished work are valid state: record them, do not fix them 
 
 # What the agent is told about a tool call that never returned: verify, do not
 # assume. Static.
-interrupted_call = '''
-No result was recorded: the turn was interrupted before this call returned. Its outcome is unknown -- re-check before relying on it.'''
+interrupted_call = '''tool call interrupted'''
 
 # The one instruction a provider's size refusal leaves out: how to make it fit.
 # Placeholders: {{message}}
@@ -187,28 +180,28 @@ The transcript no longer fits this model. Hand off with `handoff`'s `transcript 
 # message. Stamped once, so the bytes are replayed rather than re-rendered.
 # Placeholders: {{session}}, {{build}}, {{now}}, {{cwd}}, {{model}}
 dynamic_tail = '''
-Session `{{session}}` on `{{model}}`, harness gongga at `{{build}}`, {{now}}, in `{{cwd}}`.'''
+Session `{{session}}` on `{{model}}`, harness gongga at `{{build}}`, time {{now}}, worksapce `{{cwd}}`.'''
 
 # The same card when the workspace is not on this machine. It is a second template
 # rather than a clause in the one above because a template has no conditional, and
 # because a session on this machine keeps the bytes it has already sent.
 # Occupies: {{session}}, {{build}}, {{now}}, {{cwd}}, {{remote}}, {{model}}
 dynamic_tail_remote = '''
-Session `{{session}}` on `{{model}}`, harness gongga at `{{build}}`, {{now}}, in `{{cwd}}` -- a directory on remote `{{remote}}`, not on the machine this server runs on. `exec` runs on that remote by default, and `remote` names another machine. The harness stays here: `gongga-cli` is this machine's, not the peer's. Read and edit the peer's files with `exec` on it; a tool that acts on the server itself acts here, never on the peer. To run a program on this machine instead, give `exec` `remote: none`.'''
+Session `{{session}}` on `{{model}}`, harness gongga at `{{build}}`, time {{now}}, workspace `{{cwd}}` on remote `{{remote}}`.'''
 
 # The same, when no directory was named for the session and the peer's shell has not
 # reported one yet. The first card is the one a session keeps, so it may not say
 # "in ``": naming no directory is the documented default, not a mistake.
 # Occupies: {{session}}, {{build}}, {{now}}, {{remote}}, {{model}}
 dynamic_tail_remote_unstated = '''
-Session `{{session}}` on `{{model}}`, harness gongga at `{{build}}`, {{now}}, working on remote `{{remote}}` -- not on the machine this server runs on. No directory was named there, so `exec` starts where that machine starts. The harness stays here: `gongga-cli` is this machine's, not the peer's. Read and edit the peer's files with `exec` on it; a tool that acts on the server itself acts here, never on the peer. To run a program on this machine instead, give `exec` `remote: none`.'''
+Session `{{session}}` on `{{model}}`, harness gongga at `{{build}}`, {{now}}, workspace unspecify on remote `{{remote}}`.'''
 
 # What introduces the index of the references the first message named, and of the
 # `AGENTS.md` the session's own directory keeps: their text, each after the spelling
 # that names it, which the message then leaves as written.
 # Placeholder: {{entries}}
 reference_index = '''
-The text of every reference named in this conversation, and of the `AGENTS.md` this session's directory carries. A line that is only a reference is followed by the text it stands for.
+things you have read:
 
 {{entries}}'''
 
@@ -230,7 +223,7 @@ Understood.'''
 # instead of re-sending the entry and everything planned after it.
 # Placeholder: {{revisions}}
 reference_revision = '''
-An entry above is out of date when a block below names it: the block replaces the lines it removes (`-`) with the lines it adds (`+`), keeping three unchanged lines around each change, counted from the start of that entry's text. Read the entry and its block together. A line a block does not mention still reads as the entry says, and the entry's text is not otherwise rewritten.
+things that has changed since your read.
 
 {{revisions}}'''
 
@@ -447,7 +440,7 @@ sentence = '''The program to run: a name on this machine's PATH, or a path to it
 name = "args"
 type = "list[str] | dict[str]"
 positional = 2
-sentence = '''Its words, one per element: the program's arguments. Omitted, the words `[channel.<name>]` declares are used. Only a program about to start takes them; a call that speaks to a running channel passes none. A list of words, or a table of named arguments each spoken as `--key value` -- `exec` runs programs, not server cmds; a cmd is called by its own name as a tool, its schema taught by a skill.'''
+sentence = '''Its words, one per element: the program's arguments. Omitted, the words `[channel.<name>]` declares are used. Only a program about to start takes them; a call that speaks to a running channel passes none. A list of words, or a table of named arguments each spoken as `--key value` -- `exec` runs programs, not server cmds; a server cmd is run by the `gongga_cli` tool, its schema taught by a skill.'''
 
 [[tool.exec.parameters]]
 name = "input"
@@ -512,6 +505,24 @@ sentence = '''The closed record of the segment since the previous checkpoint: de
 [[tool.live_compact.parameters]]
 name = "next"
 sentence = '''The open tasks still to do, placed after the checkpoint as the opening of the next segment. Cut at the next live_compact, so it never accumulates. Omit when nothing is open.'''
+
+# SPEC's `fn gongga_cli(cmd: Cmd)`: one tool that routes a call to a server command, so a
+# command this build has no row of its own for is reached the same way. The command's
+# schema is the `self-control` skill's, not this table's.
+[tool.gongga_cli]
+cmd = "gongga_cli"
+offered = true
+carrier = "here"
+tunneled = false
+summary = '''Run one server command, named by the call: SPEC's `Cmd`, `{"name": "<command>", "args": {...}}`. Its schema is the `self-control` skill's; the session it acts on is this call's own unless its `args` name another. The answer is the command's, shaped like `exec`'s `Result`: `output`, `time`, `exit`.'''
+
+[[tool.gongga_cli.parameters]]
+name = "cmd"
+type = "object"
+required = true
+positional = 1
+hint = "json"
+sentence = '''The command and its arguments: `{"name": "ls_channel", "args": {"path": "/"}}`. `args` is that command's own, its names and which are required taught by the `self-control` skill; omitted, the command takes none.'''
 
 # SPEC's channel commands, offered as tools: the model lists and ends channels by
 # name. The session is the call's own; the command layer fills it.

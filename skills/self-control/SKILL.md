@@ -31,16 +31,26 @@ skill's business, so they are not repeated here.
 
 ## How a command is called, and how its arguments are written
 
-Three doors, one catalog:
+Four doors, one catalog:
 
-1. **A tool call named after the command** -- SPEC's `fn <tool>(**args)`. The schema is
-   not in the tool list; it is in this file. The server routes the name to the command
-   layer and runs it with your session as the asking one.
-2. **`gongga-cli '<json>'`** -- one JSON Cmd, `{"name": "<cmd>", "args": {...}}`. It
-   prints one event per line, the last being `cmd_result` (`ok`, `message`, `data`).
-   Exit: `0` ran, `1` the server refused, `2` the line itself was wrong, `3` nothing
-   answered.
-3. **Python** -- `server.call("<cmd>", **arguments)`, one `Reply` per call. "The Python
+1. **The `gongga_cli` tool** -- one tool that takes the command itself: call it with
+   `cmd`, SPEC's `Cmd`, `{"name": "<cmd>", "args": {...}}`. The schema of what you are
+   running is this file's, not the tool list's, and the server runs it with your session
+   as the asking one. This is the door to reach for by default:
+
+   ```json
+   {"cmd": {"name": "ls_channel", "args": {"path": "/"}}}
+   ```
+
+2. **A tool call named after the command** -- a `[tool.<name>]` row the config offers by
+   that command's own name. The schema is not in the tool list; it is in this file. The
+   server routes the name to the command layer and runs it with your session as the
+   asking one.
+3. **`gongga-cli '<json>'`** in a shell -- one JSON Cmd, `{"name": "<cmd>", "args":
+   {...}}`. It prints one event per line, the last being `cmd_result` (`ok`, `message`,
+   `data`). Exit: `0` ran, `1` the server refused, `2` the line itself was wrong, `3`
+   nothing answered.
+4. **Python** -- `server.call("<cmd>", **arguments)`, one `Reply` per call. "The Python
    client", below.
 
 **In the JSON form an argument is spelled by name, always.** The distinction between a
@@ -54,10 +64,10 @@ string is sent as its own JSON text, which is how `config` and a subscription's 
 travel: `true` arrives as the text `true`, and `70` as the text `70`.
 
 **`session` arguments carry the kind `session`.** A window fills a missing one from its
-sticky `session` entry (`set_sticky --type session --value <name>`); `gongga-cli` and
-`server.call` do not -- they send exactly the arguments they are given. So every
-`session` argument below is required in practice unless the command says it falls back
-to the caller.
+sticky `session` entry (`set_sticky --type session --value <name>`) and the two tool
+doors fill it with the calling session; `gongga-cli` and `server.call` do not -- they
+send exactly the arguments they are given. So every `session` argument below is
+required in practice unless the command says it falls back to the caller.
 
 **The server checks required arguments before it runs the command** and refuses with the
 missing names: `send_message is missing required argument(s): session`. An argument the
