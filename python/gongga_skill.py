@@ -237,9 +237,10 @@ def main(argv, stream=None):
         return 2
     try:
         text, code = render(run(directory, function, args))
-    except Refused as refused:
+    except (Refused, ValueError) as refused:
         # What the caller wrote does not fit the API: said in one line, not as a
-        # traceback, which reads as a bug in this file.
+        # traceback, which reads as a bug in this file. A skill that refuses in its
+        # own words raises `ValueError` (or `Refused`); anything else means it broke.
         print(f"gongga_skill: {refused}", file=sys.stderr)
         return 2
     except Exception:
