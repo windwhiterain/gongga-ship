@@ -26,40 +26,55 @@ not three hundred.
 
 import difflib
 import os
-import stat
-import tempfile
+
+import gongga_space
 
 
 class Refused(ValueError):
     """A call this file will not make, said in one line to the caller."""
 
 
-def _atomic_write(path, data):
-    path = os.path.abspath(path)
-    parent = os.path.dirname(path) or "."
-    os.makedirs(parent, exist_ok=True)
-    handle, temp = tempfile.mkstemp(prefix=".gongga-", dir=parent)
-    try:
-        with os.fdopen(handle, "wb") as stream:
-            stream.write(data)
-        if os.path.exists(path):
-            os.chmod(temp, stat.S_IMODE(os.stat(path).st_mode))
-        os.replace(temp, path)
-    except BaseException:
-        try:
-            os.unlink(temp)
-        except OSError:
-            pass
-        raise
+def _space(remote, cwd):
+    """The machine this call's path lives on, and the directory a relative one resolves in.
+
+    # Invariant
+
+    The default is the session's own machine (`GONGGA_REMOTE`), like `exec`; `local`
+    or an empty name is this machine. A session works on one machine, so a name that
+    is not its own is refused rather than run here -- never a quiet local fallback.
+    See `docs/notes/server-remote.md`.
+    """
+    session_remote = (os.environ.get("GONGGA_REMOTE") or "").strip() or None
+    if remote is None:
+        name = session_remote
+    else:
+        stated = str(remote).strip()
+        if stated.lower() in ("", "local", "none"):
+            name = None
+        elif stated == session_remote:
+            name = stated
+        elif session_remote is None:
+            raise Refused(
+                f"this call ran nothing: this session names no remote, so it has no peer "
+                f"to work on, and {stated!r} is not one it can reach from here. "
+                f"`set_session --remote {stated}` moves it there."
+            )
+        else:
+            raise Refused(
+                f"this call ran nothing: this session's directory is on remote "
+                f"{session_remote!r}, and its files are there -- {stated!r} is another "
+                f"machine, which this session has no directory on. A session works on one "
+                f"machine: `set_session --remote {stated}` moves it there, and ends these "
+                f"shells first."
+            )
+    space = gongga_space.Space.named(name)
+    directory = cwd if cwd is not None else (gongga_space.session_cwd() or os.getcwd())
+    return space, directory
 
 
-def _load(path):
+def _load(space, path):
     """The file as text, and whether it opens with a BOM."""
-    try:
-        with open(path, "rb") as stream:
-            raw = stream.read()
-    except OSError as bad:
-        raise Refused(f"{path}: {bad.strerror or bad}") from None
+    raw = space.read_bytes(path)
     bom = raw.startswith(b"\xef\xbb\xbf")
     if bom:
         raw = raw[3:]
@@ -72,9 +87,9 @@ def _load(path):
         ) from None
 
 
-def _store(path, text, bom):
+def _store(space, path, text, bom):
     data = text.encode("utf-8")
-    _atomic_write(path, (b"\xef\xbb\xbf" + data) if bom else data)
+    space.write_bytes(path, (b"\xef\xbb\xbf" + data) if bom else data)
 
 
 def _lines(text):
@@ -171,84 +186,112 @@ def _hint(text, segments):
     )
 
 
-def read(path, offset=0, limit=0):
-    """Lines `offset` to `offset + limit` of a file, and how many there are in all."""
-    text, _ = _load(path)
-    lines = _lines(text)
-    first = max(0, min(int(offset), len(lines)))
-    count = len(lines) - first if int(limit) <= 0 else min(int(limit), len(lines) - first)
-    return {
-        "path": path,
-        "total_lines": len(lines),
-        "first": first,
-        "returned": count,
-        "whole": first == 0 and count == len(lines),
-        "bytes": len(text.encode("utf-8")),
-        "text": "".join(lines[first:first + count]),
-    }
+def read(path, offset=0, limit=0, remote=None, cwd=None):
+    """Lines `offset` to `offset + limit` of a file, and how many there are in all.
+
+    `remote` is the machine the path lives on (the session's own by default); `cwd`
+    is the directory a relative path resolves in.
+    """
+    space, directory = _space(remote, cwd)
+    try:
+        path = space.resolve(path, directory)
+        text, _ = _load(space, path)
+        lines = _lines(text)
+        first = max(0, min(int(offset), len(lines)))
+        count = len(lines) - first if int(limit) <= 0 else min(int(limit), len(lines) - first)
+        return {
+            "path": path,
+            "total_lines": len(lines),
+            "first": first,
+            "returned": count,
+            "whole": first == 0 and count == len(lines),
+            "bytes": len(text.encode("utf-8")),
+            "text": "".join(lines[first:first + count]),
+        }
+    finally:
+        space.close()
 
 
-def write(path, content):
-    """Replace a whole file with `content`, creating its directory if it is new."""
+def write(path, content, remote=None, cwd=None):
+    """Replace a whole file with `content`, creating its directory if it is new.
+
+    `remote` is the machine the path lives on (the session's own by default); `cwd`
+    is the directory a relative path resolves in.
+    """
     if not isinstance(content, str):
         raise Refused(f"write takes `content` as a string, and this one is {type(content).__name__}")
-    space = b""
-    existed = os.path.exists(path)
-    if existed:
-        raw = open(path, "rb").read(3)
-        space = b"\xef\xbb\xbf" if raw == b"\xef\xbb\xbf" else b""
-    _atomic_write(path, space + content.encode("utf-8"))
-    return {
-        "path": path,
-        "bytes": len(space) + len(content.encode("utf-8")),
-        "replaced": existed,
-        "lines": len(_lines(content)),
-    }
+    space, directory = _space(remote, cwd)
+    try:
+        path = space.resolve(path, directory)
+        existed = space.stat(path)["exists"]
+        bom = b""
+        if existed:
+            head = space.read_bytes(path, 3)
+            bom = b"\xef\xbb\xbf" if head == b"\xef\xbb\xbf" else b""
+        data = bom + content.encode("utf-8")
+        space.write_bytes(path, data)
+        return {
+            "path": path,
+            "bytes": len(data),
+            "replaced": existed,
+            "lines": len(_lines(content)),
+        }
+    finally:
+        space.close()
 
 
-def edit(path, edits, all=False):
-    """Replace the span each hunk anchors, in one write, or change nothing."""
-    text, bom = _load(path)
-    if isinstance(edits, dict):
-        edits = [edits]
-    if not isinstance(edits, list) or not edits:
-        raise Refused("edit takes `edits`: one hunk, or a list of them, each with `old` and `new`")
-    done = []
-    for index, hunk in enumerate(edits, 1):
-        if not isinstance(hunk, dict):
-            raise Refused(f"hunk {index} is not an object with `old` and `new`")
-        old = hunk.get("old")
-        new = hunk.get("new")
-        if not isinstance(new, str):
-            raise Refused(f"hunk {index} needs `new` as a string")
-        segments = [old] if isinstance(old, str) else old
-        if not isinstance(segments, list) or not segments or any(not (isinstance(s, str) and s) for s in segments):
-            raise Refused(f"hunk {index} needs `old`: a string, or a list of non-empty strings")
-        if all and len(segments) > 1:
-            raise Refused(
-                "`all` replaces every occurrence of one segment; name one segment, "
-                "or drop `all` -- an elided span has no repeat to speak of"
-            )
-        if all:
-            count = text.count(segments[0])
-            if count == 0:
-                raise Refused(_hint(text, segments))
-            start = text.find(segments[0])
-            removed = count * len(segments[0])
-            text = text.replace(segments[0], new)
-            done.append(_measured(index, "exact", count, start, removed))
-            continue
-        start, end, tier = _span(text, segments)
-        removed_text = text[start:end]
-        text = text[:start] + new + text[end:]
-        done.append(_measured(index, tier, 1, start, len(removed_text), removed_text))
-    _store(path, text, bom)
-    return {
-        "path": path,
-        "bytes": len(text.encode("utf-8")),
-        "lines": len(_lines(text)),
-        "edits": done,
-    }
+def edit(path, edits, all=False, remote=None, cwd=None):
+    """Replace the span each hunk anchors, in one write, or change nothing.
+
+    `remote` is the machine the path lives on (the session's own by default); `cwd`
+    is the directory a relative path resolves in.
+    """
+    space, directory = _space(remote, cwd)
+    try:
+        path = space.resolve(path, directory)
+        text, bom = _load(space, path)
+        if isinstance(edits, dict):
+            edits = [edits]
+        if not isinstance(edits, list) or not edits:
+            raise Refused("edit takes `edits`: one hunk, or a list of them, each with `old` and `new`")
+        done = []
+        for index, hunk in enumerate(edits, 1):
+            if not isinstance(hunk, dict):
+                raise Refused(f"hunk {index} is not an object with `old` and `new`")
+            old = hunk.get("old")
+            new = hunk.get("new")
+            if not isinstance(new, str):
+                raise Refused(f"hunk {index} needs `new` as a string")
+            segments = [old] if isinstance(old, str) else old
+            if not isinstance(segments, list) or not segments or any(not (isinstance(s, str) and s) for s in segments):
+                raise Refused(f"hunk {index} needs `old`: a string, or a list of non-empty strings")
+            if all and len(segments) > 1:
+                raise Refused(
+                    "`all` replaces every occurrence of one segment; name one segment, "
+                    "or drop `all` -- an elided span has no repeat to speak of"
+                )
+            if all:
+                count = text.count(segments[0])
+                if count == 0:
+                    raise Refused(_hint(text, segments))
+                start = text.find(segments[0])
+                removed = count * len(segments[0])
+                text = text.replace(segments[0], new)
+                done.append(_measured(index, "exact", count, start, removed))
+                continue
+            start, end, tier = _span(text, segments)
+            removed_text = text[start:end]
+            text = text[:start] + new + text[end:]
+            done.append(_measured(index, tier, 1, start, len(removed_text), removed_text))
+        _store(space, path, text, bom)
+        return {
+            "path": path,
+            "bytes": len(text.encode("utf-8")),
+            "lines": len(_lines(text)),
+            "edits": done,
+        }
+    finally:
+        space.close()
 
 
 def _measured(index, tier, count, start, removed_len, removed_text=None):

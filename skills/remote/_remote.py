@@ -53,6 +53,17 @@ import sys
 import types
 import tomllib
 
+from gongga_space import (
+    Failure,
+    Peer,
+    checked,
+    hello,
+    require_program,
+    run,
+    runner_command,
+    text,
+)
+
 
 class _Options(types.SimpleNamespace):
     """One call's options, with the defaults every operation shares.
@@ -84,10 +95,6 @@ class _Options(types.SimpleNamespace):
 BASH = "bash --norc --noprofile"
 
 
-class Failure(RuntimeError):
-    pass
-
-
 def emit(kind: str, **fields) -> None:
     print(json.dumps({"result": kind, **fields}, ensure_ascii=False))
 
@@ -105,71 +112,6 @@ def human_size(count: int) -> str:
             return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
         value /= 1024
     return f"{value:.1f} GiB"
-
-
-def run(argv: list[str], *, stdin=None, timeout: float = 60) -> subprocess.CompletedProcess:
-    # A child that inherits this process's stdin holds the caller's terminal open
-    # after it exits, and the shell that started this script then waits for a
-    # command that has already printed its answer. Only an explicit batch is
-    # passed through; every other child gets a closed stdin.
-    fed = {"input": stdin} if stdin is not None else {"stdin": subprocess.DEVNULL}
-    try:
-        result = subprocess.run(
-            argv,
-            **fed,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=timeout,
-            check=False,
-        )
-    except FileNotFoundError as error:
-        raise Failure(f"{argv[0]} is not installed or not on PATH") from error
-    except subprocess.TimeoutExpired as error:
-        raise Failure(f"{argv[0]} did not answer within {timeout:g}s") from error
-    return result
-
-
-def text(data: bytes) -> str:
-    return data.decode("utf-8", "replace").strip()
-
-
-def require_program(name: str) -> None:
-    if shutil.which(name) is None:
-        raise Failure(f"{name} is required on this machine")
-
-
-class Peer:
-    def __init__(self, args: _Options):
-        if not args.host:
-            raise Failure("--host is required")
-        self.destination = f"{args.user}@{args.host}" if args.user else args.host
-        self.port = args.port
-        self.identity = os.path.expanduser(args.identity) if args.identity else None
-
-    def base(self, program: str) -> list[str]:
-        argv = [program, "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]
-        if self.port != 22:
-            argv += ["-p" if program == "ssh" else "-P", str(self.port)]
-        if self.identity:
-            argv += ["-i", self.identity]
-        return argv
-
-    def ssh(self, command: str | None = None, *, stdin=None, timeout: float = 60):
-        argv = self.base("ssh") + [self.destination]
-        if command is not None:
-            argv += ["--", command]
-        return run(argv, stdin=stdin, timeout=timeout)
-
-    def sftp(self, batch: str, *, timeout: float = 300):
-        argv = self.base("sftp") + ["-b", "-", self.destination]
-        return run(argv, stdin=batch.encode(), timeout=timeout)
-
-
-def checked(result: subprocess.CompletedProcess, what: str) -> subprocess.CompletedProcess:
-    if result.returncode:
-        detail = text(result.stderr) or text(result.stdout) or f"exit {result.returncode}"
-        raise Failure(f"{what}: {detail}")
-    return result
 
 
 def shell_quote(value: str) -> str:
@@ -193,28 +135,6 @@ def local_sftp_path(path: Path) -> str:
     failed at the upload over a path that only looked right.
     """
     return str(path).replace("\\", "/")
-
-
-def runner_command(runner: str) -> str:
-    words = runner.split()
-    if not words or any(any(ch.isspace() for ch in word) for word in words):
-        raise Failure("runner must contain non-empty command words without whitespace")
-    return " ".join(shlex.quote(word) for word in words)
-
-
-def hello(frame: dict) -> dict:
-    """The greeting a runner sends before anything else.
-
-    # Invariant
-
-    The protocol number is read here, never judged: the server is the one that
-    speaks it and the one that refuses a peer it cannot talk to, so a second
-    copy of that number in this script is exactly what drifts. What is read is
-    reported; the verdict belongs to the server.
-    """
-    if frame.get("event") != "hello" or type(frame.get("protocol")) is not int:
-        raise Failure(f"unexpected runner greeting: {frame}")
-    return frame
 
 
 def probe(peer: Peer, runner: str, timeout: float = 30):

@@ -1,6 +1,6 @@
 ---
 name: file
-description: Read and change a file on this machine with JSON arguments instead of a command line — `read` (a page, and how much was not shown), `write` (a whole file, atomically), `edit` (replace the span between two anchors, with the middle elided and the removal measured). Use it whenever you would otherwise build a heredoc, a quoted `printf`, or a Python string literal to put text into a file; also use `edit` instead of re-writing a whole file for a small change.
+description: Read and change a file on this machine or the session's remote with JSON arguments instead of a command line — `read` (a page, and how much was not shown), `write` (a whole file, atomically), `edit` (replace the span between two anchors, with the middle elided and the removal measured). Use it whenever you would otherwise build a heredoc, a quoted `printf`, or a Python string literal to put text into a file; also use `edit` instead of re-writing a whole file for a small change.
 ---
 
 # Files, called with JSON
@@ -8,20 +8,20 @@ description: Read and change a file on this machine with JSON arguments instead 
 One path in, one answer out. Nothing here parses a word: `content`, `old` and `new`
 arrive as the bytes they are, which is the whole point of these being functions.
 
-## `read(path, offset=0, limit=0)`
+## `read(path, offset=0, limit=0, remote=None, cwd=None)`
 
 A page of a file, and the facts a reader needs to know what it is *not* seeing:
 `total_lines`, `first`, `returned`, `whole`. The page itself is `text`, decoded as
 strict UTF-8 -- a file that is not UTF-8 is refused with the byte offset rather than
 shown as mojibake.
 
-## `write(path, content)`
+## `write(path, content, remote=None, cwd=None)`
 
 Replaces a whole file. It is atomic: a temp file beside the target, then a replace,
 so no reader ever sees half a file, and a refusal changes nothing. A file that starts
 with a BOM keeps it. Parent directories are created.
 
-## `edit(path, edits, all=false)`
+## `edit(path, edits, all=false, remote=None, cwd=None)`
 
 `edits` is one hunk, or a list of them, each `{"old": ..., "new": ...}`:
 
@@ -45,6 +45,22 @@ The answer says what was destroyed: per hunk, `tier`, `occurrences`, `removed_li
 `first_removed`, `last_removed`, `bytes_removed`. Read those numbers -- a span that
 swallowed three hundred lines looks exactly like one that swallowed three, until they
 are printed.
+
+## Which machine
+
+Every function takes `remote` and `cwd`. By default the path lives on the **session's
+own machine** (`GONGGA_REMOTE`, the same default `exec` uses), so a session standing
+on a peer reads and writes there with no extra argument. `remote="local"` (or `""`)
+means this machine instead. A session works on one machine: naming a peer that is not
+the session's own is refused, and a name no remotes table configures is refused --
+never a quiet fall back to here.
+
+`cwd` is the directory a relative path resolves in; it defaults to the session's
+directory. An absolute path is used as it is. A peer's path is spelled with `/`
+(`C:/Users/...` or `/home/...`), the way that machine spells it.
+
+The bytes travel through the peer's runner; the matching, the BOM and the
+all-or-nothing batch are the same code on either machine.
 
 ## Calling it
 
