@@ -19,6 +19,15 @@ stays an object, a list a list, `true` a `bool`, `null` `None`. Nothing is split
 into words and no annotation converts anything, so a parameter annotated `dict` is
 handed the dict itself.
 
+The second request asks what the package publishes instead of calling it:
+
+    {"skill": "<skill directory>", "manifest": true}
+    -> {"functions": {"fetch": [{"name": "url", "required": true}, ...], ...}}
+
+That answer is how a harness publishes these functions as commands of its own: the
+names and which of them a call must carry are read off `inspect.signature`, so a
+command and the function behind it cannot disagree about their arguments.
+
 Two mistakes are refused here, and each answer names what the function does take: a
 `function` the package does not publish, and an `args` key that is no parameter of
 it. A required argument left out is Python's own `TypeError`, raised by binding the
@@ -51,7 +60,7 @@ PACKAGE = "__init__.py"
 
 #: The keys a request carries, and no others: a misspelling of `args` would otherwise
 #: arrive as "no arguments", which reads as a function that takes none.
-REQUEST = ("skill", "function", "args")
+REQUEST = ("skill", "function", "args", "manifest")
 
 #: Where the harness keeps this file and `gongga.py`, when it says so. The skill
 #: being run is a package like any other, so its own `import gongga` has to resolve:
@@ -104,6 +113,47 @@ def functions(module):
         and callable(value)
         and not inspect.ismodule(value)
         and not inspect.isclass(value)
+    }
+
+
+def parameters(entry):
+    """What one function takes: the arguments a caller may spell, and which it must.
+
+    The kinds `bound` accepts by name, which is why a positional-only parameter is not
+    here: a call this file makes cannot name one, so publishing it as an argument would
+    offer a name nothing can pass. A parameter with no default is required, and that is
+    the whole rule -- Python's, read rather than restated.
+    """
+    rows = []
+    for parameter in inspect.signature(entry).parameters.values():
+        if parameter.kind in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.VAR_POSITIONAL,
+            inspect.Parameter.VAR_KEYWORD,
+        ):
+            continue
+        rows.append(
+            {
+                "name": parameter.name,
+                "required": parameter.default is inspect.Parameter.empty,
+            }
+        )
+    return rows
+
+
+def manifest(directory):
+    """Every function the package publishes, and what each one takes.
+
+    The answer a harness reads to publish these functions as commands: what a call may
+    carry is Python's signature, so there is no second list of arguments to drift.
+    """
+    module = package(directory)
+    if module is None:
+        raise Refused(f"{directory} is not a Python package: no {PACKAGE}")
+    return {
+        "functions": {
+            name: parameters(entry) for name, entry in functions(module).items()
+        }
     }
 
 
@@ -183,8 +233,10 @@ def parse(line):
 
     # Invariant
 
-    This is the whole of the wire: three keys and their values, so a caller never
-    spells a call as a command line and this file never reads one.
+    This is the whole of the wire: four keys and their values, so a caller never
+    spells a call as a command line and this file never reads one. `manifest` is the
+    one that asks about a package instead of calling it, and it is alone with `skill`:
+    a request that named both would leave which of the two answers undecided.
     """
     if not line.strip():
         raise ValueError(
@@ -219,7 +271,14 @@ def parse(line):
         args = {}
     if not isinstance(args, dict):
         raise ValueError('"args" is one object of named arguments: {"<parameter>": <value>}')
-    return directory, function, args
+    manifest = request.get("manifest", False)
+    if not isinstance(manifest, bool):
+        raise ValueError('"manifest" is true or absent: it asks what a package publishes')
+    if manifest and (function is not None or request.get("args") is not None):
+        raise ValueError(
+            'a manifest request names only a skill: {"skill": "<directory>", "manifest": true}'
+        )
+    return directory, function, args, manifest
 
 
 def main(argv, stream=None):
@@ -231,12 +290,13 @@ def main(argv, stream=None):
         )
         return 2
     try:
-        directory, function, args = parse((stream or sys.stdin).readline())
+        directory, function, args, asked = parse((stream or sys.stdin).readline())
     except ValueError as refused:
         print(f"gongga_skill: {refused}", file=sys.stderr)
         return 2
     try:
-        text, code = render(run(directory, function, args))
+        answer = manifest(directory) if asked else run(directory, function, args)
+        text, code = render(answer)
     except (Refused, ValueError) as refused:
         # What the caller wrote does not fit the API: said in one line, not as a
         # traceback, which reads as a bug in this file. A skill that refuses in its

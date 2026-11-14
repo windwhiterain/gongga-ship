@@ -554,3 +554,75 @@ required = true
 hint = "path"
 sentence = """Channel to end, or the path whose channels all go."""
 
+# ---------------------------------------------------------------- the declared commands
+#
+# The commands this repository's `ship.toml` declares: each row's `cmd` is the published
+# name, and the function behind it is the content's. These rows are what the model is
+# offered -- their sentences, and the order an operator spells them in -- while the
+# arguments themselves are the function's own signature, so a parameter added there
+# appears here without an edit.
+[tool.read]
+cmd = "read"
+# A server cmd the model calls by name: the command layer runs it (SPEC fn <tool>).
+offered = true
+summary = '''Read a file as JSON: a page of it, the count of every line, and whether that page is the whole file. Says how much was not shown, so a reader never mistakes a first page for a whole file.'''
+
+[[tool.read.parameters]]
+name = "path"
+required = true
+positional = 1
+hint = "path"
+sentence = '''The file to read.'''
+
+[[tool.read.parameters]]
+name = "offset"
+sentence = '''The first line of the page, counting from zero. Omitted is the first line of the file.'''
+
+[[tool.read.parameters]]
+name = "limit"
+sentence = '''How many lines the page holds. Omitted, or `0`, is every line to the end.'''
+
+[tool.write]
+cmd = "write"
+# The workspace is changed, so a session that only looks refuses it.
+writes = true
+offered = true
+summary = '''Replace a whole file, atomically: a temp file beside it, then a rename, so no reader sees half a file and a refusal changes nothing. Parent directories are created, and a file that starts with a BOM keeps it. Use it instead of a heredoc or a quoted `printf`.'''
+
+[[tool.write.parameters]]
+name = "path"
+required = true
+positional = 1
+hint = "path"
+sentence = '''The file to write. One that does not exist is created.'''
+
+[[tool.write.parameters]]
+name = "content"
+required = true
+positional = 2
+sentence = '''The whole of the new file, as the bytes they are: nothing here parses this word by word, so a script may go here unchanged.'''
+
+[tool.edit]
+cmd = "edit"
+writes = true
+offered = true
+summary = '''Change a span of a file, and report what it removed: `old` is one segment or a list of segments that must occur in that order, and the span from the first one's start to the last one's end is replaced by `new` -- both ends included. Prefer it to rewriting a whole file for a small change. All hunks or none: a call that fails in its second hunk changes nothing.'''
+
+[[tool.edit.parameters]]
+name = "path"
+required = true
+positional = 1
+hint = "path"
+sentence = '''The file to change, named as `read` names it.'''
+
+[[tool.edit.parameters]]
+name = "edits"
+type = "dict | list[dict]"
+required = true
+positional = 2
+hint = "json"
+sentence = '''One hunk, or a list of them, each `{"old": ..., "new": ...}`. `old` is a list of segments anchored in order, so a long middle may be elided while both ends still anchor the change; one segment is the ordinary exact match.'''
+
+[[tool.edit.parameters]]
+name = "all"
+sentence = '''Replace every occurrence of a single-segment `old` instead of insisting it occurs once. Refused with more than one segment: an elided span has no repeat to speak of.'''

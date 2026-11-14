@@ -30,7 +30,10 @@
 # `config` and `skills`: it would install these skills into a home whose
 # `lib/gongga_skill.py` it never writes, and every package skill there is one that
 # cannot start.
-protocol = 12
+# 13: this file declares commands. A protocol-12 server is told these lines by nobody:
+# it would offer the tool that forwards to one of them and then fail every call, because
+# the name it forwards to is not in its catalog.
+protocol = 13
 
 # Which path in this repository is the home's config.
 config = "config/config.toml"
@@ -56,3 +59,31 @@ harness = "skills"
 [[skills.retired]]
 path = "skills/general"
 root = "machine"
+
+# The commands this repository adds to a home's catalog: a function of one of the skills
+# above, run under the name written here -- `write` is offered wherever `send_message`
+# is, and a caller names it, not the skill it came from.
+#
+# The arguments are not written here. They are that function's own signature, asked for
+# at start (`{"skill": "<dir>", "manifest": true}`) and answered by
+# `python/gongga_skill.py`, so a command and the function behind it cannot disagree
+# about what a call carries: an argument added to the function is an argument of the
+# command, and one removed stops being offered.
+#
+# `skill` is the id `ls_skill` prints (`harness/file`), and `function` is a name that
+# package publishes. A command whose skill or function does not answer is not published
+# and the reason is logged -- the commands that do answer stay.
+[[command]]
+name = "read"
+skill = "harness/file"
+function = "read"
+
+[[command]]
+name = "write"
+skill = "harness/file"
+function = "write"
+
+[[command]]
+name = "edit"
+skill = "harness/file"
+function = "edit"
