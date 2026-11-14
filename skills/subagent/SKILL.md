@@ -68,11 +68,12 @@ model_pool 的 `pick_config` 用 `null` 表示"默认"，可以照发。
 
 ```bash
 G=gongga-cli
-$G '{"name":"run_skill","args":{"id":"harness/subagent","cmd":{"args":["self_config"]}}}'   # 我这一行的 SessionConfig
-$G '{"name":"run_skill","args":{"id":"harness/subagent","cmd":{"args":["new_subagent","--config","<一份 SessionConfig JSON>","--role","impl"]}}}'
+CONFIG='{"model_config":{"model":{"provider":"<provider>","model":"<model>"}}}'
+$G '{"name":"run_skill","args":{"id":"harness/subagent","cmd":{"name":"self_config"}}}'   # 我这一行的 SessionConfig
+$G "{\"name\":\"run_skill\",\"args\":{\"id\":\"harness/subagent\",\"cmd\":{\"name\":\"new_subagent\",\"args\":{\"config\":$CONFIG,\"role\":\"impl\"}}}}"
 ```
 
-`run_skill` 的 id、命令字的拼法和退出码是 `@skill(skill)` 的事；这里只写本 skill 自己的函数名与参数。
+`run_skill` 的 id、`cmd` 的形状和退出码是 `@skill(skill)` 的事；这里只写本 skill 自己的函数名与参数。
 
 stdout 只有一行名字（给 `$(…)` 用）；哪个名字被占了、订阅了几号，都走 stderr。
 

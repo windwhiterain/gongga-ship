@@ -558,9 +558,10 @@ SKILL_DIR=<the directory holding this file>   # the parent of the path in `@skil
 "$SKILL_DIR/ask_session.py" mentor "how did I write the snapshot step?"
 ```
 
-In a window the shorter form is the `skill` line -- `skill self-control ask mentor
-"<question>"` -- where the first word names the function this package publishes and the
-rest bind to its parameters.
+In a window the shorter form is the `skill` line -- `skill self-control ask --session
+mentor --question "<question>"` -- where the flags are the parameters of the function
+this package publishes, and the runner turns them into the object the package is asked
+with.
 
 - **The session is the first argument and the question follows it.** Not an accident:
   `send_message` takes its text first, so a form that put the session last would send the

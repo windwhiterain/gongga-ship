@@ -70,7 +70,7 @@ mentor 不存在就用当前的 model 和 cwd 建一个；它是普通会话（�
 
 ```bash
 gongga-cli '{"name":"get_messages","args":{"session":"<你的会话名>/mentor","range":"1:"}}'
-gongga-cli '{"name":"run_skill","args":{"id":"harness/self-control","cmd":{"args":["ask","<你的会话名>/mentor","<你的问题>"]}}}'
+gongga-cli '{"name":"run_skill","args":{"id":"harness/self-control","cmd":{"name":"ask","args":{"session":"<你的会话名>/mentor","question":"<你的问题>"}}}}'
 ```
 
 **先读。** 做过什么、决定过什么、哪次失败为什么失败都在原文里；`get_messages` 不走模型、不花额度。

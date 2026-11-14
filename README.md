@@ -1,7 +1,8 @@
 # gongga ship
 
-Everything the gongga harness *ships*: the default config and the skills. Nothing
-here runs by itself -- it is content a harness install reads, edits and replaces.
+Everything the gongga harness *ships*: the default config, the skills, and the Python
+surface a skill is run through. Nothing here runs by itself -- it is content a harness
+install reads, edits and replaces.
 
 gongga installs this repository's content, and which commit it installs is decided
 here rather than there: `ship.toml` at the top of this repository declares the protocol
@@ -13,10 +14,14 @@ change never moves what it installs, and a wording fix here never needs a new bu
 | --- | --- | --- |
 | `config/config.toml` | `<home>/config.toml` | one harness home |
 | `skills/<name>` | `<home>/skills/<name>` | one harness home |
+| `python/<name>.py` | `<home>/lib/<name>.py` | one harness home |
 
-One level: a skill directory here is a skill directory there. The machine's skills
-are not installed from here at all -- they are the community clone's, which
-`agents::link_skills` links into `~/.agents/skills`. See `## Two buckets` below.
+One level: a skill directory here is a skill directory there, and a file here is a file
+there. `lib` is where a package skill is run from: `gongga_skill.py` is the contract the
+harness starts with one JSON request on stdin, and `gongga.py` is the client a skill's
+own Python imports. The machine's skills are not installed from here at all -- they are
+the community clone's, which `agents::link_skills` links into `~/.agents/skills`. See
+`## Two buckets` below.
 
 The install destination is a working tree, and the install is a three-way merge:
 base = the bytes this home last installed, ours = what is on disk now, theirs = this

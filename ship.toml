@@ -25,10 +25,22 @@
 # 11: a tool row no longer declares the tunnel's arguments (`tunneled`, `carrier`,
 # `timeout_ms`, `owns_its_wait`, `handles_background`) or `[tools.arguments]`: the
 # call layer stopped offering them, so a protocol-10 server cannot read these rows.
-protocol = 11
+# 12: the Python surface moved out of the harness and into this repository. `python`
+# names the directory that becomes a home's `lib`, and a protocol-11 server reads only
+# `config` and `skills`: it would install these skills into a home whose
+# `lib/gongga_skill.py` it never writes, and every package skill there is one that
+# cannot start.
+protocol = 12
 
 # Which path in this repository is the home's config.
 config = "config/config.toml"
+
+# Where this repository keeps the harness's Python surface. The directory lands in the
+# home's `lib` whole: `gongga_skill.py` is the contract a package skill is run through,
+# `gongga.py` the client a skill's own Python imports, and `gongga_cli.py` what this
+# home's `bin/gongga-cli` starts. Same kind of mapping as a skill's, so it is reconciled
+# against the same base: a file this commit stops shipping is one the install removes.
+python = "python"
 
 # The skills this repository owns, flat: one directory per skill, and the home's
 # `skills/<name>` is the same name. The machine's skills are not here -- they are
