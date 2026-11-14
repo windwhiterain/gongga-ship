@@ -64,16 +64,15 @@ model_pool 的 `pick_config` 用 `null` 表示"默认"，可以照发。
 锚死，动作是发给你的一条 `send_message`（`persistant true`）。它自己读那一行、自己发
 `new_session`、自己订阅：不经过任何别的 skill，所以"子会话是什么"只有一处定义。
 
-命令行上同一件事（`config` 是一份 JSON，长到写不进一条命令行时就用 Python）：
+在 shell 里，同一件事就是这两条（`config` 是一份 JSON，太长就用 Python 拼）：
 
 ```bash
-G=gongga-cli
 CONFIG='{"model_config":{"model":{"provider":"<provider>","model":"<model>"}}}'
 gongga-cli '{"name":"run_skill","args":{"id":"harness/subagent","cmd":{"name":"self_config","args":{}}}}'
-$G skill subagent "{\"function\":\"new_subagent\",\"args\":{\"config\":$CONFIG,\"role\":\"impl\"}}"
+gongga-cli "{\"name\":\"run_skill\",\"args\":{\"id\":\"harness/subagent\",\"cmd\":{\"name\":\"new_subagent\",\"args\":{\"config\":$CONFIG,\"role\":\"impl\"}}}}"
 ```
 
-`skill` 行的名字解析、那一个 JSON 的形状和退出码是 `@skill(skill)` 的事；这里只写本 skill 自己的函数名与参数。
+`run_skill` 的拼法是 `@skill(skill)` 的事；这里只写本 skill 的函数名与参数。
 
 stdout 只有一行名字（给 `$(…)` 用）；哪个名字被占了、订阅了几号，都走 stderr。
 
