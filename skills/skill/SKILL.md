@@ -104,6 +104,12 @@ begin with `{` is one word and no more; an object carries a `name` and its `args
   of the script's argv as written -- a subcommand and its flags are that script's own
   spelling, which its `SKILL.md` documents.
 
+The object is also the whole of the `skill` line a shell types: `gongga-cli skill <name>
+'{"function": "<function>", "args": {...}}'` -- one token of JSON after the name and
+nothing else, because that path has no flag parser and never reads a word back. An entry
+skill is the one that still takes words: `gongga-cli skill <name> <words...>` is a
+program's argv, in that program's own spelling.
+
 A package is asked in one request, and that request is the contract: `cmd.name` is the
 function, `cmd.args` is an object of its named parameters, and the harness hands both to
 `lib/gongga_skill.py` on stdin — `{"skill": "<the package's directory>", "function":
@@ -160,7 +166,8 @@ mistake was made:
 A directory can hold both a declared entry and an `__init__.py`. `run_skill` runs the
 **package** then, because discovering the functions is the point of that form (the reason is
 written in `crates/skill/src/entry.rs`), and the declared entry is what the local runner
-`gongga-cli skill <name>` starts. A skill that wants one answer declares one form.
+`gongga-cli skill <name> <words...>` starts -- where a package is asked by `gongga-cli
+skill <name> '<json>'` instead. A skill that wants one answer declares one form.
 
 ## Examples
 
@@ -183,6 +190,12 @@ gongga-cli '{"name":"run_skill","args":{"id":"general/model_pool","cmd":{"args":
 # a package skill, its arguments by name
 gongga-cli '{"name":"run_skill","args":{"id":"harness/self-control","cmd":{"name":"ask","args":{"session":"<another session>","question":"<what to ask>"}},"session":"<session>"}}'
 
+# the same call from a shell, with no server: the skill line takes the request's other half
+gongga-cli skill self-control '{"function": "ask", "args": {"session": "<another session>", "question": "<what to ask>"}}'
+
+# an entry skill from a shell: every word after its name is its argv
+gongga-cli skill model_pool pick_config --tier flash
+
 # the same call with no arguments: cmd spelled as the bare function name
 gongga-cli '{"name":"run_skill","args":{"id":"<bucket>/<name>","cmd":"<function>","session":"<session>"}}'
 ```
@@ -191,7 +204,8 @@ The `model_pool` call is the shape to aim at for an entry: as installed it decla
 rather than an `__init__.py`, so `pick_config --tier flash` are the words that entry is
 started with — a subcommand and one of its flags, which its own `SKILL.md` is what documents.
 A package is the other shape: an object of named arguments, never a list, because its
-arguments are a function's parameters rather than a program's flags.
+arguments are a function's parameters rather than a program's flags -- and the `skill`
+line spells that object as its one JSON token, so neither door needs a flag parser.
 
 From a skill's own Python the same two commands are methods on the connection (see
 `docs/notes/python-client.md`), with the one wire rule that matters here: an argument that is
