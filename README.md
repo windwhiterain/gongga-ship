@@ -88,6 +88,25 @@ before it is called.
 A skill with only a `SKILL.md` is a body: `providers` and `prefix-cache` are prose a
 reader acts on, and they publish nothing to run.
 
+## A function can be a command
+
+`ship.toml` may declare a published function as a command of the harness itself:
+
+```toml
+[[command]]
+name = "write"
+skill = "harness/file"
+function = "write"
+```
+
+A server then offers it where it offers `send_message`: `gongga-cli '{"name": "write",
+"args": ...}'`, a tool row with `cmd = "write"`, a client completing its arguments. The
+arguments are not written in that declaration -- they are the function's own signature,
+which `python/gongga_skill.py` answers when it is asked with
+`{"skill": "<dir>", "manifest": true}`: the names, and which of them a call must carry.
+A declaration naming a skill or a function nobody answers is not published, and the
+server's log says why; the commands that do answer stay.
+
 ## Migrators
 
 `migrate/<from>-to-<to>.py` holds one version step each: `0-to-1.py` takes a
