@@ -69,7 +69,7 @@ model_pool 的 `pick_config` 用 `null` 表示"默认"，可以照发。
 ```bash
 G=gongga-cli
 CONFIG='{"model_config":{"model":{"provider":"<provider>","model":"<model>"}}}'
-$G skill subagent '{"function":"self_config"}'   # 我这一行的 SessionConfig
+gongga-cli '{"name":"run_skill","args":{"id":"harness/subagent","cmd":{"name":"self_config","args":{}}}}'
 $G skill subagent "{\"function\":\"new_subagent\",\"args\":{\"config\":$CONFIG,\"role\":\"impl\"}}"
 ```
 

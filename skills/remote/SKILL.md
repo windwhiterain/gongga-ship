@@ -27,7 +27,7 @@ Every step below is one call of this package: `{"function": "<name>", "args": {.
 carried as `run_skill`'s `cmd`. From a shell that is
 
 ```bash
-gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"function":"list_remotes","args":{"check":true}}}}'
+gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"name":"list_remotes","args":{"check":true}}}}'
 ```
 
 Which names exist, and what an answer means, are this file's business; how a call
@@ -41,8 +41,8 @@ is spelled is `@skill(skill)`'s.
    speaks the protocol, so it is the one that decides.
 
 ```bash
-gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"function":"check","args":{"host":"192.168.1.10","user":"build","identity":"~/.ssh/id_ed25519","runner":"/home/build/.gongga/bin/gongga-HASH runner"}}}}'
-gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"function":"verify","args":{"host":"192.168.1.10","user":"build","identity":"~/.ssh/id_ed25519","runner":"/home/build/.gongga/bin/gongga-HASH runner"}}}}'
+gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"name":"check","args":{"host":"192.168.1.10","user":"build","identity":"~/.ssh/id_ed25519","runner":"/home/build/.gongga/bin/gongga-HASH runner"}}}}'
+gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"name":"verify","args":{"host":"192.168.1.10","user":"build","identity":"~/.ssh/id_ed25519","runner":"/home/build/.gongga/bin/gongga-HASH runner"}}}}'
 ```
 
    A remote is usable when `server.usable` is true. `usable` false with
@@ -55,7 +55,7 @@ gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"function":
 1. **Build and install the distribution.** Run from the Gongga checkout:
 
 ```bash
-gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"function":"install","args":{"host":"192.168.1.10","user":"build","identity":"~/.ssh/id_ed25519","remote":"build","write":true}}}}'
+gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"name":"install","args":{"host":"192.168.1.10","user":"build","identity":"~/.ssh/id_ed25519","remote":"build","write":true}}}}'
 ```
 
    This builds `gongga-bundle` locally, installs a content-addressed distribution under
@@ -74,8 +74,8 @@ gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"function":
    exists, use the `runner` printed by `install`:
 
 ```bash
-gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"function":"check","args":{"host":"192.168.1.10","user":"build","identity":"~/.ssh/id_ed25519","runner":"/home/build/.gongga/bin/gongga-HASH runner"}}}}'
-gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"function":"verify","args":{"host":"192.168.1.10","user":"build","identity":"~/.ssh/id_ed25519","runner":"/home/build/.gongga/bin/gongga-HASH runner"}}}}'
+gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"name":"check","args":{"host":"192.168.1.10","user":"build","identity":"~/.ssh/id_ed25519","runner":"/home/build/.gongga/bin/gongga-HASH runner"}}}}'
+gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"name":"verify","args":{"host":"192.168.1.10","user":"build","identity":"~/.ssh/id_ed25519","runner":"/home/build/.gongga/bin/gongga-HASH runner"}}}}'
 ```
 
    It writes `~/.agents/remotes.toml` (`$GONGGA_AGENTS_HOME`, or the `remotes` argument),
@@ -112,8 +112,8 @@ gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"function":
 3. **Verify transport and process ownership before using the session.**
 
 ```bash
-gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"function":"check","args":{"host":"192.168.1.10","user":"build","identity":"~/.ssh/id_ed25519","runner":"/home/build/.gongga/bin/gongga-HASH runner"}}}}'
-gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"function":"verify","args":{"host":"192.168.1.10","user":"build","identity":"~/.ssh/id_ed25519","runner":"/home/build/.gongga/bin/gongga-HASH runner"}}}}'
+gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"name":"check","args":{"host":"192.168.1.10","user":"build","identity":"~/.ssh/id_ed25519","runner":"/home/build/.gongga/bin/gongga-HASH runner"}}}}'
+gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"name":"verify","args":{"host":"192.168.1.10","user":"build","identity":"~/.ssh/id_ed25519","runner":"/home/build/.gongga/bin/gongga-HASH runner"}}}}'
 ```
 
    `check` proves the runner greeting. `verify` additionally proves cwd/export
@@ -205,8 +205,8 @@ shell.
 Remove only the distribution and remote you named:
 
 ```bash
-gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"function":"remove","args":{"host":"192.168.1.10","distribution":"/home/build/.gongga/bin/gongga-HASH","user":"build","identity":"~/.ssh/id_ed25519"}}}}'
-gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"function":"configure","args":{"remote":"build","write":true,"remove":true}}}}'
+gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"name":"remove","args":{"host":"192.168.1.10","distribution":"/home/build/.gongga/bin/gongga-HASH","user":"build","identity":"~/.ssh/id_ed25519"}}}}'
+gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"name":"configure","args":{"remote":"build","write":true,"remove":true}}}}'
 ```
 
 Close sessions using that remote first. Do not remove a distribution while its runner
