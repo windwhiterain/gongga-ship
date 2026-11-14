@@ -56,7 +56,8 @@ headers_timeout_ms = 180000
 idle_timeout_ms = 60000
 # Retries after a failure, a timeout, or a response with nothing in
 # it. 0 = no ceiling: retry until the turn is cancelled. The delay
-# doubles each time up to 30s: 1000ms, then twice that.
+# doubles each time, with no ceiling of its own: 1000ms, then twice
+# that, and nothing above it.
 max_retries = 0
 retry_base_ms = 1000
 
