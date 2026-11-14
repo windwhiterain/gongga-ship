@@ -449,7 +449,7 @@ sentence = '''The program to run: a name on this machine's PATH, or a path to it
 name = "args"
 type = "list[str]"
 positional = 2
-sentence = '''Its words, one per element: the program's arguments. Omitted, the words `[channel.<name>]` declares are used. Only a program about to start takes them; a call that speaks to a running channel passes none. A list of words, one per element, never a JSON-encoded string -- `exec` runs programs, not server cmds; a server cmd is run by the `gongga_cli` tool, its schema taught by a skill.'''
+sentence = '''Its words, one per element: the program's arguments. Omitted, the words `[channel.<name>]` declares are used. Only a program about to start takes them; a call that speaks to a running channel passes none. A list of words, one per element, never a JSON-encoded string -- `exec` runs programs, not server cmds; a server cmd is run by the `gongga_cli` tool, its schema taught by a skill. On Windows a single word longer than about 8 KB is cut silently on its way to the program -- a limit of the shell's command line, not of this tool (measured: 8186 bytes) -- so a long script is not one word: start `bash -s` and send it through `input`, which reaches the program's stdin.'''
 
 [[tool.exec.parameters]]
 name = "input"
