@@ -14,12 +14,15 @@ change never moves what it installs, and a wording fix here never needs a new bu
 | --- | --- | --- |
 | `config/config.toml` | `<home>/config.toml` | one harness home |
 | `skills/<name>` | `<home>/skills/<name>` | one harness home |
-| `python/<name>.py` | `<home>/lib/<name>.py` | one harness home |
+| `python/*` | `<home>/lib/*` | one harness home |
 
 One level: a skill directory here is a skill directory there, and a file here is a file
-there. `lib` is where a package skill is run from: `gongga_skill.py` is the contract the
-harness starts with one JSON request on stdin, and `gongga.py` is the client a skill's
-own Python imports. The machine's skills are not installed from here at all -- they are
+there. `python/` is a **uv package** -- `pyproject.toml` and `uv.lock` travel with it, so
+`uv run --project python` is the same three modules as a package, for a caller that would
+rather have a wheel than a home. The harness carries the modules whole into `lib`, and
+that is where a package skill is run from: `gongga_skill.py` is the contract the harness
+starts with one JSON request on stdin, `gongga.py` is the client a skill's own Python
+imports, and `gongga_cli.py` is what the home's `bin/gongga-cli` starts. The machine's skills are not installed from here at all -- they are
 the community clone's, which `agents::link_skills` links into `~/.agents/skills`. See
 `## Two buckets` below.
 
@@ -64,6 +67,26 @@ ask for.
 Skills are found by the `skill` tool with no `name`, which lists name, description,
 path and bucket from both roots. Do not grep the directories: that re-implements the
 tool in every session.
+
+## A skill is a package
+
+Every skill here is a directory with an `__init__.py`, and **its public functions are the
+API**: whatever it defines at global scope that is callable and does not begin with `_`
+(`python/gongga_skill.py` is the contract that reads this, and `__all__` is not
+consulted). A call names one of them and hands it its arguments as one JSON object:
+
+```
+run_skill(id="harness/handoff", cmd={"name": "read", "args": {"preview": true}})
+```
+
+Nothing is a command line: no `metadata.entry`, no `--name value`, no argv. An argument
+arrives as the value it was written as -- an object stays an object, `true` a `bool`,
+`null` `None` -- and a name that is no parameter is refused with the signature the
+function does have. `SKILL.md` is what says which function does what, so a skill is read
+before it is called.
+
+A skill with only a `SKILL.md` is a body: `providers` and `prefix-cache` are prose a
+reader acts on, and they publish nothing to run.
 
 ## Migrators
 

@@ -1,9 +1,7 @@
 ---
 name: image
-description: 让模型看一张图（截图、图表、设计稿、照片）。用本 skill 目录下的 `show` 打印 `@image(<路径>)`，harness 会自动上传并作为图片交给模型——不要用 exec + base64 自己拼。当你要断言"这个界面/图表/图里是什么"、或需要读一张磁盘上的图片时用它。
-compatibility: 需要 Python 3（入口脚本自己挑一个能用的解释器）
-metadata:
-  entry: show
+description: 让模型看一张图（截图、图表、设计稿、照片）。调用本 skill 的 `show(paths, check=false)` 打印 `@image(<路径>)`，harness 会自动上传并作为图片交给模型——不要用 exec + base64 自己拼。当你要断言"这个界面/图表/图里是什么"、或需要读一张磁盘上的图片时用它。
+compatibility: 需要 Python 3
 ---
 
 # 看图
@@ -15,16 +13,21 @@ Files API，然后作为 `input_image` 交给模型。**图是真的进到模型
 那条「`@` 开头加图片后缀」的旧规则在 2026-10-31 随 Meta 一起删掉了。打印裸 `@路径` 的
 脚本都会白跑一趟：不报错，只是图永远不到。
 
-```bash
-# 从本 skill 的目录运行：`@skill(...)` 展开里括号中的 `<path>` 的父目录就是它。
-# gongga 里更短：`gongga-cli '{"name":"run_skill","args":{"id":"harness/image","cmd":{"args":["/path/to/shot.png"]}}}'`。
-# ——`run_skill` 的 id、命令字的拼法和退出码是 `@skill(skill)` 的事，下面只写 `show` 自己的参数。
-SKILL_DIR=<本 SKILL.md 所在目录>
-"$SKILL_DIR/show" /path/to/shot.png                   # 打印 `@image(...)` 引用，harness 接手
-"$SKILL_DIR/show" --check shot.png                    # 只看它是什么、多大
+本 skill 是一个包：一次调用就是**函数名 + 一份 JSON 参数**。函数只有一个：
+
+```
+show(paths, check=False)     # paths 是路径列表；一张图一行 `@image(...)`，check 只报它是什么、多大
 ```
 
-本文后面的 `$SKILL_DIR` 都是这个目录。
+```bash
+# 一次调用怎么拼、退出码什么意思，是 `@skill(skill)` 的事；这里只写 `show` 自己的参数。
+# 会话里更短：`skill` 工具的 `cmd` 就是同一个对象，`session` 由工具填。
+R() { gongga-cli "{\"name\":\"run_skill\",\"args\":{\"id\":\"harness/image\",\"cmd\":{\"name\":\"$1\",\"args\":$2},\"session\":\"$GONGGA_SESSION\"}}"; }
+R show '{"paths":["/path/to/shot.png"]}'              # 打印 `@image(...)` 引用，harness 接手
+R show '{"paths":["shot.png"],"check":true}'         # 只看它是什么、多大
+```
+
+`paths` 里的相对路径按调用会话的目录解析。
 
 `show` 会打印形如 `@image(C:\...\shot.png)` 的一行，一行一张图。括号里就是路径本身，
 有空格也不用转义——分隔符是 `)`，不是空白。
@@ -61,6 +64,8 @@ PNG 的，会按文件头判断）。
 ## 一次看多张
 
 ```bash
+R show '{"paths":["a.png","b.png","c.png"]}'
+```bash
 "$SKILL_DIR/show" a.png b.png c.png
 ```
 
@@ -73,7 +78,7 @@ PNG 的，会按文件头判断）。
 python -c "..." > /tmp/x.png     # 或者截图、导出图表
 
 # 2. 让它进到模型眼里
-"$SKILL_DIR/show" /tmp/x.png
+R show '{"paths":["/tmp/x.png"]}'
 ```
 
 第 2 步的输出会作为这条 exec 结果的一部分回到你面前，同时图被附上。

@@ -1,9 +1,7 @@
 ---
 name: handoff
-description: 把当前上下文交接出去（handoff）——先把文档、历史/记忆和引用整理好，再把当前目标、试过什么、成败与失败原因、文件状态和下一步写成一份交接笔记；脚本把 transcript 整份存进 mentor 会话、清空当前会话，再把笔记作为一条消息发给自己，你带着新上下文从那条消息继续当前工作。收到「Context notice」是要求尽快交接，但不是立刻砍断：先整理好交接材料再运行 handoff，不要求任务完成或测试全绿。入口是本 skill 目录下的 `transcript`（read / handoff）；删行之前会逐行校验 mentor 的完整副本。没有 `--session`：会话名取自 `$GONGGA_SESSION`。`--mentor` 默认 `<你的会话>/mentor`，且必须在你自己的路径下；已被占就加 `/2`——一代档案一份会话，绝不续进上一代。
-compatibility: 需要 Python 3 与 sqlite3（入口脚本自己挑一个能用的解释器）
-metadata:
-  entry: transcript
+description: 把当前上下文交接出去（handoff）——先把文档、历史/记忆和引用整理好，再把当前目标、试过什么、成败与失败原因、文件状态和下一步写成一份交接笔记；这个包把 transcript 整份存进 mentor 会话、清空当前会话，再把笔记作为一条消息发给自己，你带着新上下文从那条消息继续当前工作。收到「Context notice」是要求尽快交接，但不是立刻砍断：先整理好交接材料再运行 handoff，不要求任务完成或测试全绿。本 skill 是一个包，函数是 `read(after, limit, preview)` 与 `handoff(note, mentor)`；删行之前会逐行校验 mentor 的完整副本。没有 `session` 参数：会话名取自 `$GONGGA_SESSION`。`mentor` 默认 `<你的会话>/mentor`，且必须在你自己的路径下；已被占就加 `/2`——一代档案一份会话，绝不续进上一代。
+compatibility: 需要 Python 3 与 sqlite3
 ---
 
 # 交接上下文（handoff）
@@ -30,26 +28,32 @@ metadata:
 
 ## 运行交接
 
-```bash
-# 从本 skill 的目录运行：`@skill(...)` 展开里是 `@skill(<名字>) (<path>)`，取 `<path>` 的父目录；
-# gongga 里更短：`gongga-cli '{"name":"run_skill","args":{"id":"harness/handoff","cmd":{"args":["read"]}}}'`。
-# ——`run_skill` 的 id、命令字的拼法和退出码是 `@skill(skill)` 的事，这里只写本 skill 的命令字。
-SKILL_DIR=<本 SKILL.md 所在目录>
-T="$SKILL_DIR/transcript"
+本 skill 是一个包：一次调用就是**函数名 + 一份 JSON 参数**。
 
-# 可选：需要回顾对话时才读
-$T read
-
-# 交接笔记：当前目标、试过什么、成败、当前状态、下一步
-$T handoff --note "<交接笔记>"
+```
+read(after=None, limit=40, preview=False)   # 这条会话真正会发出去的消息
+handoff(note, mentor=None)                  # 存进 mentor、校验、剪空、把笔记发给自己
 ```
 
-**没有 `--session`。** 会话是谁，脚本从 `GONGGA_SESSION` 读——那是服务端给每个会话的每个 shell 注入的。一条会删行的命令不该接受"我清的是谁"这种说法：能自己指定会话名的调用方，就能清空别人的 transcript，再多的名字检查都不如把这个参数去掉。
+```bash
+# 一次调用怎么拼、退出码什么意思，是 `@skill(skill)` 的事；这里只写两个函数自己的参数。
+# 会话里更短：`skill` 工具的 `cmd` 就是同一个对象，`session` 由工具填。
+H() { gongga-cli "{\"name\":\"run_skill\",\"args\":{\"id\":\"harness/handoff\",\"cmd\":{\"name\":\"$1\",\"args\":$2},\"session\":\"$GONGGA_SESSION\"}}"; }
 
-`--mentor` 省略就是 **`<你的会话名>/mentor`**，而且**必须**在你自己的路径下（`<你的会话名>/…`），否则拒绝。所以：
+# 可选：需要回顾对话时才读
+H read '{}'
+H read '{"preview":true,"limit":10}'
 
-- `main` 的第一份档案在 `main/mentor`，第二份在 `main/mentor/2`——**不会**续进同一份 archive。理由是接手方要用 `get_messages --session <mentor> 1:` 读回全部原文，两代档案串在一个会话里，它分不出哪一段是自己的过去、哪一段是上一代的。
-- `handoff --mentor @monitor` 或 `--mentor other/x` 一律拒绝：档案是"造它的那个会话的子节点"，这条规则是结构性的，不需要脚本知道哪些名字是保留的。`@monitor` 自己被叫去交接时，档案落在 `@monitor/mentor`，仍然是它自己名下。
+# 交接笔记：当前目标、试过什么、成败、当前状态、下一步
+H handoff '{"note":"<交接笔记>"}'
+```
+
+**没有 `session` 参数。** 会话是谁，这个包从 `GONGGA_SESSION` 读——那是服务端给每个会话的每个 shell 注入的。一条会删行的命令不该接受"我清的是谁"这种说法：能自己指定会话名的调用方，就能清空别人的 transcript，再多的名字检查都不如把这个参数去掉。
+
+`mentor` 省略就是 **`<你的会话名>/mentor`**，而且**必须**在你自己的路径下（`<你的会话名>/…`），否则拒绝。所以：
+
+- `main` 的第一份档案在 `main/mentor`，第二份在 `main/mentor/2`——**不会**续进同一份 archive。理由是接手方要用 `get_messages`（`{"session":"<mentor>","range":"1:"}`）读回全部原文，两代档案串在一个会话里，它分不出哪一段是自己的过去、哪一段是上一代的。
+- `handoff(note, mentor="@monitor")` 或 `mentor="other/x"` 一律拒绝：档案是"造它的那个会话的子节点"，这条规则是结构性的，不需要包知道哪些名字是保留的。`@monitor` 自己被叫去交接时，档案落在 `@monitor/mentor`，仍然是它自己名下。
 
 mentor 不存在就用当前的 model 和 cwd 建一个；它是普通会话（档案），之后能用 `get_messages` 读、用 `send_message` 问。
 
@@ -57,29 +61,32 @@ mentor 不存在就用当前的 model 和 cwd 建一个；它是普通会话（�
 
 | 参数 | 用处 |
 |---|---|
-| `--after` | 默认从最早开始；给一个 seq 只看它之后的 |
-| `--limit` | 默认 40 条消息 |
-| `--preview` | 每条只给前 120 字符，用来看形状 |
-| `handoff` 之后 | 指引就在这条命令的结果里；mentor 也会收到一条说明自己职责的 tool_result |
+| `after` | 默认从最早开始；给一个 seq 只看��之后的 |
+| `limit` | 默认 40 条消息；`0` 是全部 |
+| `preview` | 每条只给前 120 字符，用来看形状 |
+| `handoff` 之后 | 指引就在这条调用的结果里；mentor 也会收到一条说明自己职责的 tool_result |
 
 ## 交接之后：先读，再问
 
-清空之后没有隐藏的边界：指引就在 `handoff` 命令的结果里，交接笔记则是脚本用一次 `send_message` 发的普通消息，在下一个 step 边界落成一条 user 行。当前会话留下这个 call 和它的结果，provider 才能接受下一次请求。
+清空之后没有隐藏的边界：指引就在 `handoff` 命令的结果里，交接笔记则是它用一次 `send_message` 发的普通消息，在下一个 step 边界落成一条 user 行。当前会话留下这个 call 和它的结果，provider 才能接受下一次请求。
 
 交接笔记走 `send_message` 而不是写进数据库，有两个原因：一，它现在就在这条 call 里跑，直接插一行会落在 call 和它的结果之间，那是 provider 不收的形状；二，一条普通消息才会被当作**空会话的首条 user 消息**处理——它命名的 `@file(...)`/`@skill(...)` 因此进 index、随前缀缓存只收一次费（机制、拼法和写错的后果见 `@skill(prefix-cache)`）。别把它改回某种"笔记列"，那正是这条路原来的样子。
 
 ```bash
+# 读 mentor 的整份原文：不走模型、不花额度
 gongga-cli '{"name":"get_messages","args":{"session":"<你的会话名>/mentor","range":"1:"}}'
-gongga-cli skill self-control '{"function":"ask","args":{"session":"<你的会话名>/mentor","question":"<你的问题>"}}'
+# 问它一句（`self-control` 的 `ask`）：它等到答复，把答复印在 stdout
+A() { gongga-cli "{\"name\":\"run_skill\",\"args\":{\"id\":\"harness/self-control\",\"cmd\":{\"name\":\"ask\",\"args\":{\"session\":\"<你的会话名>/mentor\",\"question\":\"$1\"}},\"session\":\"$GONGGA_SESSION\"}}"; }
+A '<你的问题>'
 ```
 
 **先读。** 做过什么、决定过什么、哪次失败为什么失败都在原文里；`get_messages` 不走模型、不花额度。
 
 **必须问，不要重做。** 要动手之前先问 mentor 一句：它手上有整份原文，包括那些你已经不记得的失败和它们失败的原因。问一句是一个回合，重新摸索一遍是把整场搜索再付一次——上下文就是这么没的。
 
-上面第二条就是问它的命令（`self-control` skill 的 `ask`）：**会话名在前，问题在后**，
-问完它替你等，答复直接印在 stdout。它之所以把会话名放前面，是因为 `send_message` 的位置参数
-是 `--message` 在前——照抄那个顺序会把会话名当成问题发出去。
+上面第二条就是问它的命令（`self-control` skill 的 `ask`）：参数是两个名字，`session` 和
+`question`，写错了 `gongga_skill` 会直接把它的签名念给你听。答复不只在 stdout，也会作为
+一条消息回到你当前会话里。
 
 问的时候把问题说具体：**要什么答案、为什么现在要**。"当时能不能这么写"这种问法只能换来一句"能"，把你卡住的那一步写进去，才有东西可答。
 
@@ -93,9 +100,9 @@ gongga-cli skill self-control '{"function":"ask","args":{"session":"<你的会�
 
 上下文只有 **append/cut** 两种操作，且 cut 只能从尾部剪（服务端 `context_cut_tail_only` 触发器挡住任何剪掉非最新行的删除）。所以原 transcript 是从最新一行往回逐行剪掉的；在飞的那个 call 本身就是尾部，会随历史一起被剪掉、再原样 append 回来——`call_id` 不变，服务端随后写的 result 靠它配对——落在 seq 1。
 
-## 为什么这是一个脚本而不是服务端工具
+## 为什么这是一个 skill 而不是服务端工具
 
-它只做两件事：`read` 一条 SELECT；`handoff` 是一个事务里的 INSERT + 校验 SELECT + DELETE，事务提交之后再用 `send_message` 把交接笔记发给自己。是否交接由最了解当前工作的 agent 决定，脚本只负责可靠地保存原文和准备接手方的起点。
+它只做两件事：`read` 一条 SELECT；`handoff` 是一个事务里的 INSERT + 校验 SELECT + DELETE，事务提交之后再用 `send_message` 把交接笔记发给自己。是否交接由最了解当前工作的 agent 决定，这个包只负责可靠地保存原文和准备接手方的起点。
 
 ## 交接笔记写什么
 
@@ -139,7 +146,7 @@ index（笔记是空会话的第一条消息），写 `docs/notes/plan.md` 只�
 
 ## 硬规矩
 
-- **`--note` 不能空**：原文在 mentor，接手方每次真正带着的是交接笔记。
+- **`note` 不能空**：原文在 mentor，接手方每次真正带着的是交接笔记。
 - **笔记发不出去就整体报告出来**：会话此时已空，脚本会把笔记原样写进结果（也就是这条 call 的 tool_result）并非零退出。那不是丢笔记，是换了个位置存。
 - **笔记里的引用要用 `@file(...)`/`@skill(...)`**，括号写全：它是整份 transcript 被清空之后唯一的一条消息，写对了只付一次费，写错了模型只能自己再去读。
 - **先整理再交接，但不要求 clean state**：先 commit、写下状态、归拢引用；未完成和失败如实记录，不要先修复或验证再运行命令。

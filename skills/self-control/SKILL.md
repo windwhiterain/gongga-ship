@@ -547,30 +547,35 @@ sent, so the answer has to come after the question's own row, never from a turn 
 ended earlier.
 
 ```python
-import sys
-sys.path.append(SKILL_DIR)   # the directory this file is in: `@skill(...)` prints its path
-from ask_session import ask
-answer = ask("mentor", "how did I write the snapshot step?")   # the answer, or a refusal
+import gongga_skill    # this home's `lib/gongga_skill.py`, the contract a package is run through
+answer = gongga_skill.run(SKILL_DIR, "ask", {"session": "mentor", "question": "how did I write the snapshot step?"})
 ```
 
 ```bash
-SKILL_DIR=<the directory holding this file>   # the parent of the path in `@skill(...)`
-"$SKILL_DIR/ask_session.py" mentor "how did I write the snapshot step?"
+# the same call as a process: one JSON request on the contract's stdin
+python "$GONGGA_HOME/lib/gongga_skill.py" <<'JSON'
+{"skill": "<the directory this SKILL.md is in>", "function": "ask", "args": {"session": "mentor", "question": "how did I write the snapshot step?"}}
+JSON
 ```
 
-In a window the shorter form is the `skill` line -- `gongga-cli skill self-control
-'{"function": "ask", "args": {"session": "mentor", "question": "<question>"}}'`
--- one token of JSON after the name, naming this package's function and its parameters.
-That line has no flag parser: nothing after the name is read back as words.
+In a window, or in any shell the server started, the shorter form is one command:
 
-- **The session is the first argument and the question follows it.** Not an accident:
-  `send_message` takes its text first, so a form that put the session last would send the
-  session name as the message, to an empty session name.
+```bash
+A() { gongga-cli "{\"name\":\"run_skill\",\"args\":{\"id\":\"harness/self-control\",\"cmd\":{\"name\":\"ask\",\"args\":{\"session\":\"$1\",\"question\":\"$2\"}},\"session\":\"$GONGGA_SESSION\"}}"; }
+A mentor "how did I write the snapshot step?"
+```
+
+Both forms are the same call: a function name and its named parameters. There is no
+flag parser anywhere in the path -- nothing after the name is read back as words.
+
+- **Two named parameters, `session` and `question`.** Nothing is positional, so a
+  mixed-up order is not a way to send a session name as the question; a wrong key is
+  refused by name.
 - **Ask something specific.** Say what you want answered and why now. "Is this fine?"
   earns one word; the step that has you stuck earns an answer.
-- **Timeout**: 900 seconds by default (`--timeout <seconds>` in the script form).
-- **Exit**: `0` the answer was received and printed, `2` the question could not be asked
-  or no answer arrived in time. The package form raises `RuntimeError` instead.
+- **Timeout**: 900 seconds by default, and `timeout` and `poll` are parameters of `ask`.
+- **Refusal**: a question that could not be asked, or an answer that never arrived,
+  raises `RuntimeError` with the reason -- the package runner prints it and exits 1.
 
 The answer also reaches your own session as a message (`send_message` goes to the other
 session, and its `send_message` comes back), so you can go on working and read it at the

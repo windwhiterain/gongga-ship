@@ -154,13 +154,15 @@ Context notice for `{{session}}`: {{tokens}} input tokens of {{window}} total (h
 
 Before you hand off, get these in order: commit your work in progress and tidy the tree; write down what only exists in your head (the objective, what was tried, what worked or failed and why, the real state of files/processes/branches/tests, the next action); and gather the documents and references the continuation will need.
 
-A mentor is a session that keeps this transcript and can answer later questions. Your `--note` is the handoff note: the current objective, what was tried, what worked or failed, the current state, and the next action.
+A mentor is a session that keeps this transcript and can answer later questions. The `note` argument is the handoff note: the current objective, what was tried, what worked or failed, the current state, and the next action.
 
 Name in that note whatever the continuation will need to read, as `@file(<path>)` or `@skill(<name>)` -- the session is empty, so the note is its first user message, and a reference written there is text the index carries once instead of a file read again every turn. The parentheses are the delimitation: the value ends at its own `)`, so prose, spaces and Chinese punctuation after it are just prose. A group left unclosed is not a reference at all, and it says nothing when it fails. `@skill(prefix-cache)` says the rest.
 
-Run `gongga-cli '{"name":"ls_skill","args":{"session":"{{session}}"}}'` for `handoff`; `<handoff>` below is the path it prints. Then run:
+The `handoff` skill is one call: run
 
-<handoff>/transcript handoff --note '<objective, tried, worked, failed, current state, next action>'
+`gongga-cli '{"name":"run_skill","args":{"id":"harness/handoff","cmd":{"name":"handoff","args":{"note":"<objective, tried, worked, failed, current state, next action>"}}}}'`
+
+in a shell, or the `skill` tool with the same `cmd`. It answers with the continuation's next instructions.
 
 Failing tests and unfinished work are valid state: record them, do not fix them first. Every request made before the handoff is paid for at this size.'''
 
@@ -173,7 +175,7 @@ interrupted_call = '''tool call interrupted'''
 size_hint = '''
 {{message}}
 
-The transcript no longer fits this model. Hand off with `handoff`'s `transcript handoff` (a `gongga-cli` `ls_skill` Cmd prints its path): first put the handoff materials in order, then run it. Failing tests and unfinished work are valid state; no green suite is required first.'''
+The transcript no longer fits this model. Hand off with the `handoff` skill's `handoff` function (`gongga-cli '{"name":"run_skill","args":{"id":"harness/handoff","cmd":{"name":"handoff","args":{"note":"<note>"}}}}'`): first put the handoff materials in order, then run it. Failing tests and unfinished work are valid state; no green suite is required first.'''
 
 # What every call may carry besides the arguments its own row lists, one message,
 # before the card. The tool schemas state the four names and no sentence, so this

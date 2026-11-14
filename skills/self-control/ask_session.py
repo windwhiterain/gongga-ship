@@ -1,31 +1,26 @@
 #!/usr/bin/env python3
 """Ask another session a question and wait for its answer.
 
-    ask_session <session> "<question>"
+    ask(session, question)
 
 The question goes to that session the way `send_message` does, and the answer
 comes back from the place that keeps it: the session's own transcript, read the
-way a window reads it (`get_messages --replay true`). This module reads that
+way a window reads it (`get_messages` with `replay: "true"`). This module reads that
 transcript instead of asking the caller to poll.
 
 It talks to the server through the harness's own client (`_client`), so nothing
 here spawns a command line or re-parses printed JSON: a `Reply` already says
 whether the command ran and what it carried. SKILL.md §0b is the rule.
 
-Why a verb at all: asking is two steps with a name to remember in between, and a
-name remembered wrong is a question sent to the wrong session -- or, with the
-positional form of `send_message`, the session name read as the question. The
-session is a positional argument here, and the question is what follows it.
+Why a function at all: asking is two steps with a name to remember in between, and a
+name remembered wrong is a question sent to the wrong session. `ask` names both
+parameters, so neither can be read as the other.
 
-`ask` is the API and `main` is the script form of it: the answer printed, and a
-refusal as exit code 2. SKILL.md §4b is the prose this implements.
-
-Exit: 0 the answer was received, 2 the question could not be asked or no
-answer arrived.
+`ask` is the API, and `__init__.py` beside this file publishes it as the skill's one
+function. SKILL.md §4b is the prose this implements. A refusal is `_Refused`, which
+the package form re-raises as `RuntimeError` so the runner prints one line.
 """
 
-import argparse
-import sys
 import time
 
 import _client
@@ -210,29 +205,3 @@ def ask(session, question, timeout=TIMEOUT_SECONDS, poll=POLL_SECONDS):
     if answer is None:
         _die(f"{session} did not answer within {timeout:g}s")
     return answer
-
-
-def _main():
-    parser = argparse.ArgumentParser(
-        prog="ask_session",
-        description="Ask another session a question and wait for its answer.",
-    )
-    parser.add_argument("session", help="the session to ask, e.g. shell/mentor")
-    parser.add_argument("question", help="what to ask it")
-    parser.add_argument(
-        "--timeout",
-        type=float,
-        default=TIMEOUT_SECONDS,
-        help="seconds to wait for the answer",
-    )
-    args = parser.parse_args()
-    try:
-        print(ask(args.session, args.question, args.timeout))
-    except _Refused as refused:
-        print(f"ask_session: {refused}", file=sys.stderr)
-        return 2
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(_main())

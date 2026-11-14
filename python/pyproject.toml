@@ -1,0 +1,33 @@
+# The package a session's Python imports: SPEC's `## Python Cmd`.
+#
+# Two readers, one source. A harness install carries these files whole into a home's
+# `lib/`, which is what a skill's own `import gongga` resolves against; `uv run
+# --project python` is the same code as a package, for a caller that would rather have
+# a wheel than a home.
+#
+# `gongga` is the client: every command a server publishes is a function on a
+# connection, and `ls_skill`, `run_skill`, `get_trajectory` and `clone_session` are
+# commands like any other. `gongga_skill` is the contract a package skill is run
+# through: one JSON request on stdin, the function it names called with the arguments
+# it names. `gongga_cli` is the same client as a process -- one command per run -- and
+# it is the file a home's `bin/gongga-cli` starts. None of the three knows the others'
+# jobs.
+#
+# There is no console-script entry point on purpose: the harness starts
+# `gongga_cli.py` by path (a home's `bin/gongga-cli` is a shim that names it), and a
+# second spelling of the command would be a second thing to keep in step.
+[project]
+name = "gongga"
+version = "0.1.0"
+description = "The client a gongga session's Python speaks: commands as functions."
+requires-python = ">=3.9"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Three modules, no package directory: the files are the contract, and the install
+# carries the same three, so a copy that moved into `src/` would be a second source.
+[tool.hatch.build.targets.wheel]
+only-include = ["gongga.py", "gongga_skill.py", "gongga_cli.py"]

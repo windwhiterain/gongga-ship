@@ -218,8 +218,8 @@ EOF
 另一种印法，输出 `<provider>/<model id>`：
 
 ```bash
-gongga-cli skill model_pool pick_config --tier flash
-gongga-cli skill model_pool pick --tier flash          # deepseek-official/deepseek-flash
+gongga-cli '{"name": "run_skill", "args": {"id": "general/model_pool", "cmd": {"name": "pick_config", "args": {"tier": "flash"}}, "session": "$GONGGA_SESSION"}}'
+gongga-cli '{"name": "run_skill", "args": {"id": "general/model_pool", "cmd": {"name": "pick", "args": {"tier": "flash"}}, "session": "$GONGGA_SESSION"}}'   # deepseek-official/deepseek-flash
 ```
 
 ```python
@@ -230,7 +230,7 @@ cfg["model_config"] = model_pool.pick_config("sota")    # 一次错就全错：�
 
 **档是派的活决定的，不是抽出来的**；`flash` 是价格档不是能力档。档内抽到哪个由额度决定，
 所以两条并行的子 agent 一般落在两个不同的 provider 上，正好不互相抢配额。它死在额度上时
-（transcript 里一行 403/429）：`gongga-cli skill model_pool mark <provider>/<model>` 挡一会儿
+（transcript 里一行 403/429）：`run_skill` 到 `general/model_pool` 的 `mark <provider>/<model>` 挡一会儿
 再抽，不要自己编一个模型名。
 
 不动 `model_config` 时它跑**你**的模型，不是服务端的默认模型。服务端的默认模型

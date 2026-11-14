@@ -2,8 +2,6 @@
 name: remote
 description: Configure and verify a Gongga session whose shells run on another machine over SSH. Use for 远端 / 远程主机 / remote host / set_session --remote / runner deployment. Covers installing the matching gongga distribution, writing the machine's ~/.agents/remotes.toml, checking the real SSH connection, and what a session with a remote can and cannot do. This is not a general-purpose SSH or PowerShell-remoting skill.
 compatibility: Needs Python 3.11+ (tomllib), an OpenSSH client, and on Windows a Git Bash (not the Store alias)
-metadata:
-  entry: remote
 ---
 
 # Gongga remote sessions
@@ -25,18 +23,16 @@ when that exact content-addressed distribution is already on the peer.
 
 ## Set up one endpoint
 
-Find this skill's own directory -- `@skill(...)`'s expansion names it in parentheses,
-and so does the `path` column of `ls_skill` -- then call its `remote` launcher.
-These examples use `R="$SKILL_DIR/remote"`, not a command assumed to be on `PATH`.
-In gongga, `gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"args":["<command>"]}}}'` is the same launcher, shorter.
-The id it answers by, how its words are spelled and what an exit status means are
-the `@skill(skill)` skill's business: this file only names the commands `remote`
-itself takes.
+Every step below is one call of this package: `{"function": "<name>", "args": {...}}`,
+carried as `run_skill`'s `cmd`. From a shell that is
 
 ```bash
-SKILL_DIR=<the directory this SKILL.md is in>
-R="$SKILL_DIR/remote"
+gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"function":"list_remotes","args":{"check":true}}}}'
 ```
+
+Which names exist, and what an answer means, are this file's business; how a call
+is spelled is `@skill(skill)`'s.
+
 
 0. **See what this server already has.** `list` reads the local config; `--check` also
    greets each remote's runner and asks the running server what it makes of that peer.
@@ -44,9 +40,10 @@ R="$SKILL_DIR/remote"
    verdict says whether *this* server can speak to it -- the server is the one that
    speaks the protocol, so it is the one that decides.
 
-   ```bash
-   "$R" list --check
-   ```
+```bash
+gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"function":"check","args":{"host":"192.168.1.10","user":"build","identity":"~/.ssh/id_ed25519","runner":"/home/build/.gongga/bin/gongga-HASH runner"}}}}'
+gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"function":"verify","args":{"host":"192.168.1.10","user":"build","identity":"~/.ssh/id_ed25519","runner":"/home/build/.gongga/bin/gongga-HASH runner"}}}}'
+```
 
    A remote is usable when `server.usable` is true. `usable` false with
    `reason: "protocol"` names both versions: the peer speaks one, this server speaks
@@ -57,19 +54,18 @@ R="$SKILL_DIR/remote"
 
 1. **Build and install the distribution.** Run from the Gongga checkout:
 
-   ```bash
-   "$R" install --host 192.168.1.10 --user build --identity ~/.ssh/id_ed25519 \
-       --remote build --write
-   ```
+```bash
+gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"function":"install","args":{"host":"192.168.1.10","user":"build","identity":"~/.ssh/id_ed25519","remote":"build","write":true}}}}'
+```
 
    This builds `gongga-bundle` locally, installs a content-addressed distribution under
-   the peer's `~/.gongga/bin/`, proves the runner greeting, and -- with `--write` --
+   the peer's `~/.gongga/bin/`, proves the runner greeting, and -- with `write` --
    points this machine's remote at the new distribution, changing nothing but that
    remote's `runner` line. A remote that names another machine is refused, not
    rewritten. It needs no `gongga` entry on the peer's `PATH`.
 
    A Windows bundle cannot run on Linux, nor the reverse. For a different peer OS,
-   build for that OS and pass `--artifact /path/to/gongga`; the script does not pretend
+   build for that OS and pass the `artifact` argument; the script does not pretend
    to cross-compile. `--artifact` is also the way to test an existing build. Read the
    reported peer OS in the result and do not call a Windows/Git Bash check a POSIX one.
 
@@ -77,17 +73,16 @@ R="$SKILL_DIR/remote"
    already done this; to write it by hand, or to change one field of a remote that
    exists, use the `runner` printed by `install`:
 
-   ```bash
-   "$R" configure --remote build --host 192.168.1.10 --user build \
-       --identity ~/.ssh/id_ed25519 \
-       --runner '/home/build/.gongga/bin/gongga-HASH runner' --write
-   ```
+```bash
+gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"function":"check","args":{"host":"192.168.1.10","user":"build","identity":"~/.ssh/id_ed25519","runner":"/home/build/.gongga/bin/gongga-HASH runner"}}}}'
+gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"function":"verify","args":{"host":"192.168.1.10","user":"build","identity":"~/.ssh/id_ed25519","runner":"/home/build/.gongga/bin/gongga-HASH runner"}}}}'
+```
 
-   It writes `~/.agents/remotes.toml` (`$GONGGA_AGENTS_HOME`, or `--remotes <path>`),
+   It writes `~/.agents/remotes.toml` (`$GONGGA_AGENTS_HOME`, or the `remotes` argument),
    **not** the home's `config.toml`: that file is the pinned content's and is merged
    three ways on every install, so a host name, a private key path and a runner path
    must not live there. `~/.agents/` is never a repository, which is what `keys.toml`
-   already relies on. Without `--write`, the command only prints the table. An
+   already relies on. Without `write`, the command only prints the table. An
    existing different remote is never overwritten. The installer also reports `cwd`:
    use a `C:/...` path for a Windows peer and `/...` for a POSIX peer; do not use Git
    Bash's `/c/...` as the runner's cwd. The file is read at server startup, so restart
@@ -116,12 +111,10 @@ R="$SKILL_DIR/remote"
 
 3. **Verify transport and process ownership before using the session.**
 
-   ```bash
-   "$R" check --host 192.168.1.10 --user build --identity ~/.ssh/id_ed25519 \
-       --runner '/home/build/.gongga/bin/gongga-HASH runner'
-   "$R" verify --host 192.168.1.10 --user build --identity ~/.ssh/id_ed25519 \
-       --runner '/home/build/.gongga/bin/gongga-HASH runner'
-   ```
+```bash
+gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"function":"check","args":{"host":"192.168.1.10","user":"build","identity":"~/.ssh/id_ed25519","runner":"/home/build/.gongga/bin/gongga-HASH runner"}}}}'
+gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"function":"verify","args":{"host":"192.168.1.10","user":"build","identity":"~/.ssh/id_ed25519","runner":"/home/build/.gongga/bin/gongga-HASH runner"}}}}'
+```
 
    `check` proves the runner greeting. `verify` additionally proves cwd/export
    persistence, exact command status, an invalid-directory refusal, and termination of
@@ -212,9 +205,8 @@ shell.
 Remove only the distribution and remote you named:
 
 ```bash
-"$R" remove --distribution '/home/build/.gongga/bin/gongga-HASH' \
-    --host 192.168.1.10 --user build --identity ~/.ssh/id_ed25519
-"$R" configure --remote build --remove --write
+gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"function":"remove","args":{"host":"192.168.1.10","distribution":"/home/build/.gongga/bin/gongga-HASH","user":"build","identity":"~/.ssh/id_ed25519"}}}}'
+gongga-cli '{"name":"run_skill","args":{"id":"harness/remote","cmd":{"function":"configure","args":{"remote":"build","write":true,"remove":true}}}}'
 ```
 
 Close sessions using that remote first. Do not remove a distribution while its runner

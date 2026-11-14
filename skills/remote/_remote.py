@@ -1,13 +1,46 @@
 #!/usr/bin/env python3
-"""Deploy and verify Gongga's SSH execution runner, without a second server.
+"""The operations behind the `remote` skill: SSH, SFTP and the runner protocol.
 
 Only Python's standard library and the local OpenSSH client are needed. No roster,
 SSH config override, remote home convention or host-check bypass is assumed.
+
+This module is private: `__init__.py` is the skill's API, and it is what publishes
+the operations -- `install`, `configure`, `check`, `verify`, `list_remotes`,
+`remove` -- with named arguments instead of command-line flags. Each one here takes
+one option bag (`_Options`):
+
+    install(host, user=None, port=22, identity=None, runner=None, remote=None,
+            build_from=".", artifact=None, release=False, write=False)
+    configure(remote, host="", user=None, port=22, identity=None, runner=None,
+              write=False, remove=False)
+    check(host, user=None, port=22, identity=None, runner=None)
+    verify(host, user=None, port=22, identity=None, runner=None)
+    list_remotes(check=False)
+    remove(host, distribution, user=None, port=22, identity=None)
+
+Each one answers with one JSON object on stdout, and narration goes to stderr; a
+refusal is that same object with `result` `error` and the exit code 1. Every
+operation also takes `remotes`, the path of this machine's remotes file.
+
+    install(host, user=None, port=22, identity=None, runner=None, remote=None,
+            build_from=".", artifact=None, release=False, write=False)
+    configure(remote, host="", user=None, port=22, identity=None, runner=None,
+              write=False, remove=False)
+    check(host, user=None, port=22, identity=None, runner=None)
+    verify(host, user=None, port=22, identity=None, runner=None)
+    list_remotes(check=False)
+    remove(host, distribution, user=None, port=22, identity=None)
+
+Each one answers with one JSON object on stdout, and narration goes to stderr; a
+refusal is that same object with `result` `error` and the exit code 1. Every
+function also takes `remotes`, the path of this machine's remotes file.
+
+Every other top-level name carries a leading `_`, because the package runner
+publishes every callable that does not (see `python/gongga_skill.py::functions`).
 """
 
 from __future__ import annotations
 
-import argparse
 import hashlib
 import json
 import os
@@ -17,7 +50,35 @@ import shlex
 import shutil
 import subprocess
 import sys
+import types
 import tomllib
+
+
+class _Options(types.SimpleNamespace):
+    """One call's options, with the defaults every operation shares.
+
+    # Invariant
+
+    One bag rather than a parameter list per internal function: the operations below
+    read their options by name, and the class attributes are the defaults a command
+    line used to carry, so an option a caller did not give is never a missing
+    attribute.
+    """
+
+    remotes = None
+    host = ""
+    user = None
+    port = 22
+    identity = None
+    runner = None
+    remote = None
+    build_from = "."
+    artifact = None
+    release = False
+    write = False
+    remove = False
+    distribution = None
+    check = False
 
 # Never let an SSH login profile inject frames into a runner or probe.
 BASH = "bash --norc --noprofile"
@@ -78,7 +139,7 @@ def require_program(name: str) -> None:
 
 
 class Peer:
-    def __init__(self, args: argparse.Namespace):
+    def __init__(self, args: _Options):
         if not args.host:
             raise Failure("--host is required")
         self.destination = f"{args.user}@{args.host}" if args.user else args.host
@@ -196,7 +257,7 @@ def source_size(peer: Peer, destination: str) -> int | None:
         return None
 
 
-def distribution(args: argparse.Namespace) -> tuple[Path, str]:
+def distribution(args: _Options) -> tuple[Path, str]:
     artifact = Path(args.artifact).expanduser().resolve() if args.artifact else None
     if artifact is None:
         root = Path(args.build_from).expanduser().resolve()
@@ -233,7 +294,7 @@ def home_posix(peer: Peer) -> str:
     return peer_home(peer)[0]
 
 
-def write_runner(path: Path, name: str, args: argparse.Namespace, runner: str) -> str:
+def write_runner(path: Path, name: str, args: _Options, runner: str) -> str:
     """Point one remote's runner at a distribution, leaving the rest of it alone.
 
     # Invariant
@@ -294,7 +355,7 @@ def write_runner(path: Path, name: str, args: argparse.Namespace, runner: str) -
     return str(path)
 
 
-def install(args: argparse.Namespace) -> None:
+def install(args: _Options) -> None:
     require_program("ssh")
     require_program("sftp")
     artifact, digest = distribution(args)
@@ -369,7 +430,7 @@ def toml_string(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def remote_toml(name: str, args: argparse.Namespace, runner: str) -> str:
+def remote_toml(name: str, args: _Options, runner: str) -> str:
     host = f"{args.user}@{args.host}" if args.user else args.host
     lines = [f"[remotes.{name}]", f"host = {toml_string(host)}"]
     if args.port != 22:
@@ -394,7 +455,7 @@ def remotes_path(value: str | None) -> Path:
     return (root / "remotes.toml").resolve()
 
 
-def configure(args: argparse.Namespace) -> None:
+def configure(args: _Options) -> None:
     if not args.remote or args.remote == "local" or not args.remote.replace("_", "a").replace("-", "a").isalnum():
         raise Failure("a remote name must be a non-empty TOML bare key other than local")
     path = remotes_path(args.remotes)
@@ -584,7 +645,7 @@ def runner_verify(peer: Peer, runner: str, timeout: float = 45) -> None:
             process.communicate()
 
 
-def verify(args: argparse.Namespace) -> None:
+def verify(args: _Options) -> None:
     peer = Peer(args)
     runner = args.runner or "gongga runner"
     greeting = probe(peer, runner)
@@ -592,7 +653,7 @@ def verify(args: argparse.Namespace) -> None:
     emit("verified", peer=peer.destination, runner=runner, protocol=greeting["protocol"], cwd_state=True, exit_status=7, invalid_cwd_refused=True, busy_close_confirmed=True)
 
 
-def check(args: argparse.Namespace) -> None:
+def check(args: _Options) -> None:
     peer = Peer(args)
     runner = args.runner or "gongga runner"
     greeting = probe(peer, runner)
@@ -694,7 +755,7 @@ def reach(table: dict, timeout: float = 20) -> dict:
     if not host:
         return {"connected": False, "error": "the remote names no host"}
     user, _, address = host.rpartition("@")
-    chosen = argparse.Namespace(
+    chosen = _Options(
         host=address,
         user=user or None,
         port=int(table.get("port", 22)),
@@ -707,7 +768,7 @@ def reach(table: dict, timeout: float = 20) -> dict:
     return {"connected": True, "greeting": True, "protocol": greeting["protocol"]}
 
 
-def list_remotes(args: argparse.Namespace) -> None:
+def list_remotes(args: _Options) -> None:
     path = remotes_path(args.remotes)
     if not path.is_file():
         raise Failure(f"no remotes file at {path}; `install` prints the table to add")
@@ -738,7 +799,7 @@ def list_remotes(args: argparse.Namespace) -> None:
     emit("remotes", config=str(path), remotes=rows)
 
 
-def remove(args: argparse.Namespace) -> None:
+def remove(args: _Options) -> None:
     peer = Peer(args)
     distribution = args.distribution
     if not distribution.startswith(("/", "C:/", "c:/")) or "/.gongga/bin/gongga-" not in distribution:
@@ -749,71 +810,22 @@ def remove(args: argparse.Namespace) -> None:
     emit("removed", peer=peer.destination, distribution=distribution)
 
 
-def parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument(
-        "--remotes",
-        help="the machine's remotes file (default: $GONGGA_AGENTS_HOME or ~/.agents, "
-        "then remotes.toml)",
-    )
-    sub = p.add_subparsers(dest="command", required=True)
+def answer(action, options):
+    """Runs one operation, answering the exit code a caller reads; None is zero.
 
-    def peer_options(command, runner=False):
-        command.add_argument("--host", required=True)
-        command.add_argument("--user")
-        command.add_argument("--port", type=int, default=22)
-        command.add_argument("--identity")
-        if runner:
-            command.add_argument("--runner")
+    # Invariant
 
-    install_parser = sub.add_parser("install", help="build and install a distribution")
-    peer_options(install_parser)
-    install_parser.add_argument("--remote", help="print the table for this remote")
-    install_parser.add_argument("--build-from", default=".")
-    install_parser.add_argument("--artifact")
-    install_parser.add_argument("--release", action="store_true")
-    install_parser.add_argument("--write", action="store_true")
-    install_parser.set_defaults(action=install)
-
-    config_parser = sub.add_parser("configure", help="print or update [remotes.<name>]")
-    config_parser.add_argument("--remote", required=True)
-    config_parser.add_argument("--host", default="")
-    config_parser.add_argument("--user")
-    config_parser.add_argument("--port", type=int, default=22)
-    config_parser.add_argument("--identity")
-    config_parser.add_argument("--runner")
-    config_parser.add_argument("--write", action="store_true")
-    config_parser.add_argument("--remove", action="store_true")
-    config_parser.set_defaults(action=configure)
-
-    for name, action in (("check", check), ("verify", verify)):
-        command = sub.add_parser(name, help=f"{name} a runner over real SSH")
-        peer_options(command, runner=True)
-        command.set_defaults(action=action)
-
-    list_parser = sub.add_parser("list", help="list configured remotes")
-    list_parser.add_argument("--check", action="store_true", help="greet each remote's runner over SSH")
-    list_parser.set_defaults(action=list_remotes)
-
-    remove_parser = sub.add_parser("remove", help="remove one content-addressed distribution")
-    peer_options(remove_parser)
-    remove_parser.add_argument("--distribution", required=True)
-    remove_parser.set_defaults(action=remove)
-    return p
-
-
-def main() -> int:
-    args = parser().parse_args()
+    One mapping for every operation: the failure classes are turned into one JSON
+    line with `result` `error`, and the exit code says the operation did not do what
+    it was asked. A caller in process reads the same line off stdout as the package
+    runner hands back.
+    """
     try:
-        args.action(args)
-        return 0
+        action(options)
     except Failure as error:
         emit("error", message=str(error))
         return 1
     except (OSError, tomllib.TOMLDecodeError, UnicodeError) as error:
         emit("error", message=str(error))
         return 1
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+    return None
