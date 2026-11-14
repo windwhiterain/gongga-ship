@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for `handoff` in `transcript.py`, against a throwaway database.
+"""Tests for the `handoff` package, against a throwaway database.
 
 The point of these is the destructive path: nothing may be deleted before the
 copy in the mentor has been checked, and an emptied session must still be able
@@ -8,7 +8,7 @@ happy path.
 
     python3 test_handoff.py
 
-The standalone schema is the minimum `transcript.py` touches. The release gate
+The standalone schema is the minimum the package touches. The release gate
 passes `--schema-source crates/server/src/store.rs`, so the same checks also run
 against the server's current schema instead of a fixture that can drift.
 """
@@ -22,7 +22,8 @@ import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SCRIPT = os.path.join(HERE, "transcript")
+#: The package contract: a skill is asked one JSON request on its stdin.
+CONTRACT = os.path.join(HERE, "..", "..", "python", "gongga_skill.py")
 
 SCHEMA = """
 create table sessions (
@@ -171,12 +172,16 @@ class Home:
         self.c.close()
 
 
-def run(home, *args, cli=True, session="main"):
-    """Runs the script as the shell of `session` would.
+def run(home, function, cli=True, session="main", **args):
+    """Runs the package as the shell of `session` would.
 
     The caller's name is not an argument any more: it is what the server exports to
     the shell it started, so a test says which shell by setting the same variable --
     and `session=None` is a shell that lost it, which must be refused.
+
+    A package skill is asked one request on stdin (`python/gongga_skill.py`), so the
+    call's arguments are the function's own keyword arguments: nothing here is
+    spelled as a command line.
     """
     env = dict(os.environ, GONGGA_HOME=home.path)
     # Unset on purpose, to reach the failure path a shell that lost it would.
@@ -186,8 +191,10 @@ def run(home, *args, cli=True, session="main"):
         env["GONGGA_SESSION"] = session
     if cli:
         env["GONGGA_CLI"] = home.cli
+    request = json.dumps({"skill": HERE, "function": function, "args": args})
     return subprocess.run(
-        [sys.executable, os.path.join(HERE, "transcript.py"), *args],
+        [sys.executable, CONTRACT],
+        input=request,
         capture_output=True,
         text=True,
         env=env,
@@ -205,14 +212,14 @@ def test_guards():
         sid = h.session("main")
         h.add(sid, "text", {"role": "user", "text": "hi"})
 
-        p = run(h, "handoff", "--mentor", "main/m", "--note", "   ")
+        p = run(h, "handoff", mentor="main/m", note="   ")
         assert p.returncode != 0 and "empty note" in p.stderr, p.stderr
         assert len(h.rows(sid)) == 1, "a refused handoff must not delete"
 
         # The caller is the shell's session and nothing else: a shell that lost the
         # variable cannot say whose transcript it is, so it is refused rather than
         # guessed at.
-        p = run(h, "handoff", "--note", "note", session=None)
+        p = run(h, "handoff", note="note", session=None)
         assert p.returncode != 0 and "GONGGA_SESSION" in p.stderr, p.stderr
         assert len(h.rows(sid)) == 1, "a refused handoff must not delete"
 
@@ -220,15 +227,15 @@ def test_guards():
         # subtree is refused, which is what keeps a handover from being aimed at
         # somebody else's transcript -- `@monitor` included.
         for outside in ("md", "main2/m", "@monitor", "@monitor/mentor", "main"):
-            p = run(h, "handoff", "--mentor", outside, "--note", "note")
+            p = run(h, "handoff", mentor=outside, note="note")
             assert p.returncode != 0 and "is not under" in p.stderr, (outside, p.stderr)
             assert len(h.rows(sid)) == 1, f"{outside} must not delete anything"
 
-        p = run(h, "handoff", "--mentor", "unknown/m", "--note", "note", session="unknown")
+        p = run(h, "handoff", mentor="unknown/m", note="note", session="unknown")
         assert p.returncode != 0 and "no session named" in p.stderr, p.stderr
 
         empty = h.session("empty")
-        p = run(h, "handoff", "--mentor", "empty/m", "--note", "note", session="empty")
+        p = run(h, "handoff", mentor="empty/m", note="note", session="empty")
         assert p.returncode != 0 and "no transcript" in p.stderr, p.stderr
         h.close()
 
@@ -246,7 +253,7 @@ def test_handoff_moves_every_row_then_empties():
         for kind, payload in source:
             h.add(sid, kind, payload)
         note = "用户要 A；B 失败因为 C；现在在 D"
-        p = run(h, "handoff", "--mentor", "main/mentor-main", "--note", note)
+        p = run(h, "handoff", mentor="main/mentor-main", note=note)
         assert p.returncode == 0, p.stderr
         report = json.loads(p.stdout)
         assert report["mentor_created"] is True and report["rows_copied"] == 4, report
@@ -287,7 +294,7 @@ def test_handoff_moves_every_row_then_empties():
         keep = h.add(mid, "text", {"role": "user", "text": "mentor 自己的旧行"}, seq=900)
         h.add(sid, "text", {"role": "user", "text": "第二轮"})
         before = len(h.rows(mid))
-        p = run(h, "handoff", "--mentor", "main/mentor-main", "--note", "第二份")
+        p = run(h, "handoff", mentor="main/mentor-main", note="第二份")
         assert p.returncode == 0, p.stderr
         second = json.loads(p.stdout)
         # Two rows this time: what the emptied session woke up to, and what came
@@ -320,7 +327,7 @@ def test_handoff_keeps_the_call_in_flight():
         h.add(sid, "text", {"role": "user", "text": "清空你自己"})
         h.add(sid, "tool_call", {"call_id": "c-live", "name": "bash", "arguments": "{\"command\":\"transcript handoff\"}"})
 
-        p = run(h, "handoff", "--mentor", "main/archive", "--note", "要做 X；Y 失败因为 Z")
+        p = run(h, "handoff", mentor="main/archive", note="要做 X；Y 失败因为 Z")
         assert p.returncode == 0, p.stderr
         report = json.loads(p.stdout)
         assert report["kept_call"] == "c-live", report
@@ -360,7 +367,7 @@ def test_a_bad_copy_rolls_everything_back():
         sid = h.session("main")
         h.add(sid, "text", {"role": "user", "text": "如果被篡改就别删"})
         h.add(sid, "text", {"role": "assistant", "text": "这行不该消失"})
-        run(h, "handoff", "--mentor", "main/m1", "--note", "第一轮")
+        run(h, "handoff", mentor="main/m1", note="第一轮")
         mid = h.c.execute("select id from sessions where name='main/m1'").fetchone()["id"]
         # The next handover asks for the same mentor and is given `m1/2`: the
         # tampering below has to follow the name the script will really use.
@@ -384,7 +391,7 @@ def test_a_bad_copy_rolls_everything_back():
         h.c.commit()
         mentor_before = len(h.rows(mid))
         mine_before = len(h.rows(sid))
-        p = run(h, "handoff", "--mentor", "main/m1", "--note", "第三份")
+        p = run(h, "handoff", mentor="main/m1", note="第三份")
         assert p.returncode != 0 and "the copy differs" in p.stderr, p.stderr
         assert len(h.rows(sid)) == mine_before, "the learner kept every row"
         assert len(h.rows(mid)) == mentor_before, "the mentor gained nothing"
@@ -428,7 +435,7 @@ def test_a_note_that_cannot_be_sent_is_printed():
         h.add(sid, "text", {"role": "user", "text": "清空你自己"})
 
         note = "用户要 A；下一步读 docs/notes/x.md"
-        p = run(h, "handoff", "--mentor", "main/m", "--note", note, cli=False)
+        p = run(h, "handoff", mentor="main/m", note=note, cli=False)
         assert p.returncode != 0, p.stdout
         assert "GONGGA_CLI" in p.stderr, p.stderr
         assert note in p.stderr, "the note has to survive in the result"
