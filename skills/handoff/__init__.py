@@ -171,13 +171,89 @@ def _command_layer():
     return _os.environ.get(COMMAND_VARIABLE)
 
 
+#: The layer's own program, beside the contract a skill process is started as.
+LAYER = "gongga_cli.py"
+
+
+def _posix_script(path):
+    """Whether `path` is a `#!` script: a shell starts one, `CreateProcess` cannot.
+
+    # Invariant
+
+    Read off the file, never off its name: a home's `bin/gongga-cli` carries no
+    extension on any platform, and what makes it a POSIX program is its first two
+    bytes.
+    """
+    try:
+        with open(path, "rb") as program:
+            return program.read(2) == b"#!"
+    except OSError:
+        return False
+
+
+def _layer_beside_contract():
+    """The command layer of the install this process is running as, or `""`.
+
+    # Invariant
+
+    Not a second guess at where the layer lives: the content install puts
+    `gongga_cli.py` beside the contract (`gongga_skill.py`) a skill is started
+    with, and `python` is what runs both (see `crates/skill/src/package.rs`).
+    This process was started as that contract, so `sys.argv[0]` names the
+    directory holding the layer the home's shim also starts.
+    """
+    running = _os.path.abspath(_sys.argv[0]) if _sys.argv and _sys.argv[0] else ""
+    return _os.path.join(_os.path.dirname(running), LAYER) if running else ""
+
+
+def _command_words(cli, command):
+    """The argv that runs `command` through the command layer `cli` names.
+
+    # Invariant
+
+    The command is one argument and never a command line. Every program that
+    could read one as text -- `cmd /C`, an msys `bash` -- takes `%`, `&`, `|`,
+    `^` or a backslash as its own syntax, and a note is prose carrying all of
+    them; `CreateProcess` passes an argument's bytes through unchanged, so the
+    JSON is safe in exactly one place, as an argument.
+    """
+    if _os.name != "nt" or not _posix_script(cli):
+        return [cli, command]
+    # Windows, and `cli` is a `#!` script: POSIX starts it and `CreateProcess`
+    # answers `WinError 193`, so the layer runs the way the contract this process
+    # was started as runs -- this interpreter, on the program beside it. A home
+    # holding one without the other is an install that did not land whole, and
+    # the shim is still named, so the refusal says which file would not start.
+    layer = _layer_beside_contract()
+    if layer and _os.path.isfile(layer):
+        return [_sys.executable, layer, command]
+    return [cli, command]
+
+
 def _command_result(stdout):
-    """The terminal outcome of the one command the command layer ran, as its events report it."""
+    """The terminal outcome of the one command the command layer ran, as its events report it.
+
+    # Invariant
+
+    A line is an envelope, not the event: the layer prints what the wire said, and
+    an event reaches a client inside one -- `{"t": "event", "v": {"seq": n,
+    "event": {...}}}`, or `"row"` for one only this connection is handed. Both
+    shapes are read, so a reader that meets either the layer's own lines or a bare
+    outcome still answers with the outcome.
+    """
     for line in stdout.splitlines():
         try:
-            event = _json.loads(line)
+            envelope = _json.loads(line)
         except ValueError:
             continue
+        if not isinstance(envelope, dict):
+            continue
+        if envelope.get("t") == "cmd_result":
+            return envelope
+        if envelope.get("t") not in ("event", "row"):
+            continue
+        carried = envelope.get("v")
+        event = carried.get("event") if isinstance(carried, dict) else None
         if isinstance(event, dict) and event.get("t") == "cmd_result":
             return event
     return None
@@ -196,7 +272,10 @@ def _send_note(session, note):
     or at the next step boundary is the server's answer, not this function's.
 
     The command layer is spawned rather than imported: it is how a session talks to
-    its server from a shell, and this is one command.
+    its server from a shell, and this is one command. On Windows what `GONGGA_CLI`
+    names is a `#!` script that only a shell can start, and no shell reads the note
+    back unchanged, so there the layer is started as the program it is -- see
+    `_command_words`.
     """
     cli = _command_layer()
     detail = None
@@ -206,20 +285,17 @@ def _send_note(session, note):
             f'(check with: echo "${COMMAND_VARIABLE}")'
         )
     else:
+        words = _command_words(
+            cli,
+            _json.dumps({"name": "send_message", "args": {"session": session, "message": note}}),
+        )
         try:
-            sent = _subprocess.run(
-                [
-                    cli,
-                    _json.dumps(
-                        {"name": "send_message", "args": {"session": session, "message": note}}
-                    ),
-                ],
-                capture_output=True,
-                text=True,
-            )
+            sent = _subprocess.run(words, capture_output=True, text=True)
         except OSError as error:
             sent = None
-            detail = str(error)
+            # Which program would not start is the whole of the diagnosis a
+            # launcher failure leaves behind.
+            detail = f"{error} (started {words[0]!r})"
         if sent is not None:
             outcome = _command_result(sent.stdout)
             if sent.returncode == 0 and outcome is not None and outcome.get("ok"):
