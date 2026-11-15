@@ -68,6 +68,14 @@ curl -sS -o /dev/null -w '%{http_code}\n' "$BASE/chat/completions" \
   只写 `url`/`jsonpath` 而没有 `script` 的条目是给人看的文档，机器读不到。
 - 改完整理：`python -c "import tomllib;tomllib.load(open('providers.toml','rb'))"` 必须过。
 
+- **「官方 API 存在」不等于「它能读出这个账号的额度」。** 2026-11-15：Qwen Token Plan 的官方
+  OpenAPI `GetSubscriptionStats` 只统计**席位**（`SeatCredits` / `SeatRemainingCredits`），个人版
+  订阅没有席位，所以接口回 `{"Success": true}` 而没有 `Data` —— 签名、RAM 授权、密钥全对，读数
+  就是出不来。换 reader 前先看一次**成功响应长什么样**（`--raw`），别把唯一读出过数字的那条路径撤掉。
+- **死凭据比没有凭据更糟。** 往 keys.toml 写一对错的 AccessKey，每次刷新都吃 `InvalidAccessKeyId`，
+  monitor 一轮一轮叫你；写之前先用它打一次端点，不对就撤掉——宁可条目缺席（「没有可问的凭据」），
+  也不要留一个看着能用、其实签不了名的对。
+
 ## 4. 写一个额度 reader（`providers/*.py`）
 
 契约（`providers/contract.py` 已经实现大半，照抄同类脚本）：
@@ -99,15 +107,15 @@ harness 传给脚本的是**模型 key**（`providers.rs` 的 `QuotaAccess.key`�
 **取 cookie 的四步**（2026-11-11 对 `qwen-token-plan` 实测；日常那个浏览器里登录着就够了）：
 
 ```bash
-$ gongga-cli '{"name":"run_skill","args":{"id":"general/browser","cmd":{"args":["attach"]},"session":"$GONGGA_SESSION"}}'          # 接用户在用的 Edge，不重启、不拷 profile
-$ gongga-cli '{"name":"run_skill","args":{"id":"general/browser","cmd":{"args":["cookies","qianwenai"]},"session":"$GONGGA_SESSION"}}' > /项目内的临时文件
+$ gongga-cli '{"name":"run_skill","args":{"id":"general/browser","cmd":{"name":"attach","args":{}},"session":"$GONGGA_SESSION"}}'          # 接用户在用的 Edge，不重启、不拷 profile
+$ gongga-cli '{"name":"run_skill","args":{"id":"general/browser","cmd":{"name":"cookies","args":{"domain":"qianwenai"}},"session":"$GONGGA_SESSION"}}' > /项目内的临时文件
 #   ↑ 每行 `域 名 = 值`，含 HttpOnly 的 login_qianwenai_ticket
 # 拼成 name=value; name=value，写成 keys.toml 的 qwen-console
-$ gongga-cli '{"name":"run_skill","args":{"id":"general/browser","cmd":{"args":["stop"]},"session":"$GONGGA_SESSION"}}'            # 只释放连接，那个浏览器照常跑
+$ gongga-cli '{"name":"run_skill","args":{"id":"general/browser","cmd":{"name":"stop","args":{}},"session":"$GONGGA_SESSION"}}'            # 只释放连接，那个浏览器照常跑
 ```
 
 写进去之后两步都要过：`python ~/.agents/gongga-agents/providers/qwen.py --timeout 15` 出读数，
-`gongga-cli '{"name":"run_skill","args":{"id":"general/model_pool","cmd":{"args":["status","--provider","<id>"]},"session":"$GONGGA_SESSION"}}'` 复核。
+`gongga-cli '{"name":"run_skill","args":{"id":"general/model_pool","cmd":{"name":"status","args":{"provider":"<id>"}},"session":"$GONGGA_SESSION"}}'` 复核。
 
 四个坑，都是踩过的：
 
@@ -118,9 +126,34 @@ $ gongga-cli '{"name":"run_skill","args":{"id":"general/browser","cmd":{"args":[
 | 把值打印到 stdout | 值进了 transcript（`<home>/gongga.db`） | cookie 是活凭据：用文件或剪贴板搬，只打印**名字** |
 | 以为抓一次就永久 | 几天后又 `NotLogined` | 会话有寿命：`GET /tool/user/info.json` 的 `data.sessionExpireTimeStamp`（毫秒）。到期照上面四步再来一遍；在意泄露就去控制台退出重登，换一把新的 |
 
+**每连一次都弹框，是因为你在新建连接。** 对方浏览器的调试端点对外部连接逐个要「允许」，
+短命脚本跑一次弹一次，人点到烦，而你看到的失败是 `connect_over_cdp` 超时或 403——那不是浏览器坏。
+要反复自动化就换一条路：`start()` 起 skill 自己的浏览器（启动即带端口，永不弹框），`attach` 一次
+把会话 `sniff` 成 jar、再 `seed()` 灌进去，之后全程由它自己跑；用人点的地方只剩 seed 那一次。
+
+**一个动作一个脚本，状态会丢在页面上。** 每次 `page.close()` 都关掉你刚点开的对话框；
+「打开 → 填 → 点 → 读回」要放进同一个连接里做完，才算一次操作。
+
 `browse attach` 需要**人**在 `edge://inspect/#remote-debugging` 勾一次「Allow remote debugging
 for this browser instance」——这一步 agent 不代办；勾过之后这台机器上一直是开的，所以通常是
 直接 `attach` 就成。
+
+## 4c. 控制台 UI：只在没有别的路时才碰，而且按平台的规矩来
+
+额度读不出来时，最快的路通常是去控制台补一条凭据（AccessKey、策略、计划）。2026-11-15 在 RAM
+上做这件事，下面每条都让人以为「点过了」：
+
+- **`element.click()` 不算点击。** Next / AntD 这类控制台只认真实鼠标事件；用
+  `page.mouse.click(x, y)` 点元素中心（坐标来自 `bounding_box()`），点完**读回 `box.checked`**
+  再往下走，否则你会在没勾上的情况下点「确认」。
+- **控件会被滚出视口。** 拿到 `x = -59` 这种坐标就是点不到，别点；先把行滚进视口，或直接点
+  **整行的标签文字**（组件把 label 和 checkbox 绑在一起，点标签一样生效）。
+- **AccessKey Secret 只显示一次。** 关掉对话框就再也查不到；一个用户最多 2 把，回收站也不给看。
+  点「继续创建」之前先准备好抓取（对话框内的 `复制` + 剪贴板），抓不到就删掉重来——
+  **不要留下没有 Secret 的 key**，它们占名额、且看起来像能用。
+- **一步一个脚本 = 一步一个弹框 + 状态清零。** 同 §4b：一次连接里做完。
+- **别把人晾在弹框前。** 需要人点一次时，明说「这一步需要你点一次允许」，并把后续放进同一次连接；
+  连续三次都失败就停手，把确切的点击路径交回给人，而不是继续试。
 
 ## 5. 改完怎么证明
 
@@ -129,7 +162,7 @@ for this browser instance」——这一步 agent 不代办；勾过之后这台
 python ~/.agents/gongga-agents/providers/<script>.py --timeout 10     # 直接跑，看最后一行
 
 # 2) 池子怎么看它（真的会跑脚本，不是读缓存）
-gongga-cli '{"name":"run_skill","args":{"id":"general/model_pool","cmd":{"args":["status","--provider","<id>","--refresh","0"]},"session":"$GONGGA_SESSION"}}'
+gongga-cli '{"name":"run_skill","args":{"id":"general/model_pool","cmd":{"name":"status","args":{"provider":"<id>"}},"session":"$GONGGA_SESSION"}}'
 
 # 3) 一次真请求（不是探针）：用报告里那个模型，一句话
 ```
