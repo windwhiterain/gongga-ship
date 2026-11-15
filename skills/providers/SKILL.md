@@ -59,6 +59,11 @@ curl -sS -o /dev/null -w '%{http_code}\n' "$BASE/chat/completions" \
 
 ## 3. 改 roster 的规则
 
+- **改完就生效，不用重启。** 服务端每次问都先问文件：`roster()` 按 stamp 判新鲜度，`keys.toml`
+  和 roster 在同一个被看的列表里（`crates/server/src/providers.rs`），所以 roster 与密钥的编辑
+  在下一步就用上，generation 一变，缓存过的 client 自动作废。`cancel` **不是** reload：它是**全机的
+  stop**，会把整台机器上正在跑的每一个轮一起打断（2026-11-15 monitor 按了一次，四个轮丢掉
+  2000 多秒，其中 `fix` 那个已经走到 278 步）。provider 的问题没有一件需要它。
 - **只写事实**：模型 id、上下文、模态、价格、端点、`tier`、`retired_ids`。价格与字段要带
   `source` 与 `retrieved`；拿不准就写 `unverified` 并说明，别留空。
 - **key 永不进 roster**：`key_env` 只指环境变量名。密钥放 `~/.agents/keys.toml`。
