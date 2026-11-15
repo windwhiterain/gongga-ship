@@ -161,7 +161,7 @@ Name in that note whatever the continuation will need to read, as `@file(<path>)
 
 The `handoff` skill is one call: run
 
-`gongga-cli '{"name":"run_skill","args":{"id":"harness/handoff","cmd":{"name":"handoff","args":{"note":"<objective, tried, worked, failed, current state, next action>"}}}}'`
+`gongga-cli '{"name":"run_skill","args":{"id":"handoff","cmd":{"name":"handoff","args":{"note":"<objective, tried, worked, failed, current state, next action>"}}}}'`
 
 in a shell, or the `skill` tool with the same `cmd`. It answers with the continuation's next instructions.
 
@@ -176,7 +176,7 @@ interrupted_call = '''tool call interrupted'''
 size_hint = '''
 {{message}}
 
-The transcript no longer fits this model. Hand off with the `handoff` skill's `handoff` function (`gongga-cli '{"name":"run_skill","args":{"id":"harness/handoff","cmd":{"name":"handoff","args":{"note":"<note>"}}}}'`): first put the handoff materials in order, then run it. Failing tests and unfinished work are valid state; no green suite is required first.'''
+The transcript no longer fits this model. Hand off with the `handoff` skill's `handoff` function (`gongga-cli '{"name":"run_skill","args":{"id":"handoff","cmd":{"name":"handoff","args":{"note":"<note>"}}}}'`): first put the handoff materials in order, then run it. Failing tests and unfinished work are valid state; no green suite is required first.'''
 
 # What every call may carry besides the arguments its own row lists, one message,
 # before the card. The tool schemas state the four names and no sentence, so this

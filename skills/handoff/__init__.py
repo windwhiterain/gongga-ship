@@ -321,7 +321,7 @@ def _continuation_message(session, mentor, kept):
         "Your handoff note is the message that follows this one: it carries the current objective, "
         "state, failed attempts, and next action. Everything else remains readable in the mentor.\n"
         f"  read it:  gongga-cli '{_json.dumps({'name': 'get_messages', 'args': {'session': mentor, 'range': '1:'}})}'\n"
-        f"  ask it:   gongga-cli '{_json.dumps({'name': 'run_skill', 'args': {'id': 'harness/self-control', 'cmd': {'name': 'ask', 'args': {'session': mentor, 'question': '<your question>'}}}})}'\n"
+        f"  ask it:   gongga-cli '{_json.dumps({'name': 'run_skill', 'args': {'id': 'self-control', 'cmd': {'name': 'ask', 'args': {'session': mentor, 'question': '<your question>'}}}})}'\n"
         "Ask before you redo. The mentor holds the earlier attempts, the failures and why they "
         "failed, so one question costs one turn where a repeated search costs the whole search "
         "again. The call waits for the answer and prints it; the mentor also sends it to "

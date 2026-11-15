@@ -561,7 +561,7 @@ JSON
 In a window, or in any shell the server started, the shorter form is one command:
 
 ```bash
-A() { gongga-cli "{\"name\":\"run_skill\",\"args\":{\"id\":\"harness/self-control\",\"cmd\":{\"name\":\"ask\",\"args\":{\"session\":\"$1\",\"question\":\"$2\"}},\"session\":\"$GONGGA_SESSION\"}}"; }
+A() { gongga-cli "{\"name\":\"run_skill\",\"args\":{\"id\":\"self-control\",\"cmd\":{\"name\":\"ask\",\"args\":{\"session\":\"$1\",\"question\":\"$2\"}},\"session\":\"$GONGGA_SESSION\"}}"; }
 A mentor "how did I write the snapshot step?"
 ```
 
