@@ -71,12 +71,11 @@ The answer is a JSON array with one object per skill:
 ```json
 [{"bucket": "harness",
   "description": "one line saying what it is for: the frontmatter's",
-  "id": "prefix-cache",
   "name": "prefix-cache",
   "path": "<absolute path of that SKILL.md>"}]
 ```
 
-Copy the `id` into `run_skill`; open the `path` to read the body. The `path` column is the
+Copy the `name` into `run_skill`; open the `path` to read the body. The `path` column is the
 only place a root appears as a real directory, which is why nothing else here needs to
 spell one: a home moves, a bucket does not.
 
