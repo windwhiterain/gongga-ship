@@ -31,8 +31,8 @@ compatibility: 需要 Python 3 与 sqlite3
 本 skill 是一个包：一次调用就是**函数名 + 一份 JSON 参数**。
 
 ```
-read(after=None, limit=40, preview=False)   # 这条会话真正会发出去的消息
-handoff(note, mentor=None)                  # 存进 mentor、校验、剪空、把笔记发给自己
+read     # 这条会话真正会发出去的消息
+handoff  # 存进 mentor、校验、剪空、把笔记发给自己
 ```
 
 ```bash

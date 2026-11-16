@@ -16,7 +16,7 @@ Files API，然后作为 `input_image` 交给模型。**图是真的进到模型
 本 skill 是一个包：一次调用就是**函数名 + 一份 JSON 参数**。函数只有一个：
 
 ```
-show(paths, check=False)     # paths 是路径列表；一张图一行 `@image(...)`，check 只报它是什么、多大
+show     # paths 是路径列表；一张图一行 `@image(...)`，check 只报它是什么、多大
 ```
 
 ```bash

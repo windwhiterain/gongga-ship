@@ -8,20 +8,20 @@ description: Read and change a file on this machine or the session's remote with
 One path in, one answer out. Nothing here parses a word: `content`, `old` and `new`
 arrive as the bytes they are, which is the whole point of these being functions.
 
-## `read(path, offset=0, limit=0, remote=None, cwd=None)`
+## `read`
 
 A page of a file, and the facts a reader needs to know what it is *not* seeing:
 `total_lines`, `first`, `returned`, `whole`. The page itself is `text`, decoded as
 strict UTF-8 -- a file that is not UTF-8 is refused with the byte offset rather than
 shown as mojibake.
 
-## `write(path, content, remote=None, cwd=None)`
+## `write`
 
 Replaces a whole file. It is atomic: a temp file beside the target, then a replace,
 so no reader ever sees half a file, and a refusal changes nothing. A file that starts
 with a BOM keeps it. Parent directories are created.
 
-## `edit(path, edits, all=false, remote=None, cwd=None)`
+## `edit`
 
 `edits` is one hunk, or a list of them, each `{"old": ..., "new": ...}`:
 

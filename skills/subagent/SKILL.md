@@ -40,7 +40,7 @@ name = subagent.new_subagent(cfg, role="impl")          # -> main/impl
  "keep_alive": false}
 ```
 
-`self_config(session=None)` 把你自己那一行**读**成这个形状：`$GONGGA_HOME` 的 `gongga.db`，
+`self_config` 把你自己那一行**读**成这个形状：`$GONGGA_HOME` 的 `gongga.db`，
 名字取 `$GONGGA_SESSION`，`mode=ro` 打开、不持有（服务端正在同一个 home 上跑）。字段对得上：
 
 | 行里的列 | SessionConfig 里的键 |
