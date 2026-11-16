@@ -1,7 +1,7 @@
 ---
 name: self-control
-description: The server's command schemas as this build publishes them -- the twenty-one commands a session drives itself with (send_message, new_session, set_session, del_session, ls_session, clone_session, interrupt_session, cancel, subscribe, ls_subscription, del_subscription, trigger_event, new_channel, input_channel, ls_channel, rename_channel, del_channel, get_messages, events, list_paths, sync_session), each with its exact arguments and a callable example, plus the one convenience this skill publishes, `ask`, which puts a question to another session and waits for its answer. Read it when you are about to call one of these and need its argument names, which ones are required, and what the answer carries.
-compatibility: the command schemas need nothing but the server; `ask` needs Python 3 and the client the server writes at <home>/lib/gongga.py
+description: The server's command schemas as this build publishes them -- the twenty-one commands a session drives itself with (send_message, new_session, set_session, del_session, ls_session, clone_session, interrupt_session, cancel, subscribe, ls_subscription, del_subscription, trigger_event, new_channel, input_channel, ls_channel, rename_channel, del_channel, get_messages, events, list_paths, sync_session), each with its exact arguments and a callable example, plus the one convenience this skill publishes, `ask`, which puts a question to another session and arms the ping that says its answer exists -- it never waits. Read it when you are about to call one of these and need its argument names, which ones are required, and what the answer carries.
+compatibility: the command schemas need nothing but the server; `ask` needs Python 3, the client the server writes at <home>/ship/python/gongga.py, and the session it runs in (`$GONGGA_SESSION`, which a skill runner exports)
 ---
 
 # Self control: the server's commands
@@ -536,24 +536,27 @@ gongga-cli '{"name":"list_paths","args":{"path":"C:/resource"}}'
 
 **Another session -- a mentor, a parent -- holds what you have already forgotten.**
 Searching again is that whole search paid twice; one question is one turn. `ask` is the
-only thing this skill publishes, and it does both halves in one call: it puts the
-question in the other session's hands with `send_message`, then waits for that session's
-turn to end and answers with what it said.
+only thing this skill publishes, and it does the two steps nobody remembers: it puts the
+question in the other session's hands with `send_message`, and it arms a subscription on
+that session's `turn_end` whose action is a `send_message` back to you, naming the row the
+answer starts at.
 
-The answer is read from the transcript the way a window reads it (`get_messages` with
-`replay: "true"`): the operator's line and the answer's own lines are distinct rows, so
-there is no guessing about who said what. The cursor is taken *before* the question is
-sent, so the answer has to come after the question's own row, never from a turn that
-ended earlier.
+**It does not wait.** The answer is not a return value: it is rows in the transcript of
+the session that said it, and this call answers with where they are. The ping arrives at
+your next step boundary, so you go on working instead of holding the turn -- and a blocked
+command cannot be the one that receives the ping: measured, an `ask` that polled the
+transcript held a turn for 97 s and was ended by the very message it waited for.
 
 ```python
-import gongga_skill    # this home's `lib/gongga_skill.py`, the contract a package is run through
-answer = gongga_skill.run(SKILL_DIR, "ask", {"session": "mentor", "question": "how did I write the snapshot step?"})
+import gongga_skill    # the home's `gongga_skill.py`, the contract a package is run through
+where = gongga_skill.run(SKILL_DIR, "ask", {"session": "mentor", "question": "how did I write the snapshot step?"})
+# asked mentor; subscription `3` pings you when that turn ends, and the answer is in its
+# transcript from row 512: get_messages --session mentor --range 512:
 ```
 
 ```bash
 # the same call as a process: one JSON request on the contract's stdin
-python "$GONGGA_HOME/lib/gongga_skill.py" <<'JSON'
+python "$GONGGA_HOME/ship/python/gongga_skill.py" <<'JSON'
 {"skill": "<the directory this SKILL.md is in>", "function": "ask", "args": {"session": "mentor", "question": "how did I write the snapshot step?"}}
 JSON
 ```
@@ -573,18 +576,33 @@ flag parser anywhere in the path -- nothing after the name is read back as words
   refused by name.
 - **Ask something specific.** Say what you want answered and why now. "Is this fine?"
   earns one word; the step that has you stuck earns an answer.
-- **Timeout**: 900 seconds by default, and `timeout` and `poll` are parameters of `ask`.
-- **Refusal**: a question that could not be asked, or an answer that never arrived,
-  raises `RuntimeError` with the reason -- the package runner prints it and exits 1.
+- **No `timeout`, no `poll`.** There is nothing to time: the call is over when the
+  question is sent and the ping is armed.
+- **Refusal** raises `RuntimeError` with the reason -- the package runner prints it and
+  exits 1. A question that could not be asked leaves nothing armed behind it.
+- **Several questions to one session**: each `ask` arms its own ping under a name the
+  server picks, and each reports the one it got.
 
-The answer also reaches your own session as a message (`send_message` goes to the other
-session, and its `send_message` comes back), so you can go on working and read it at the
-next step boundary. `ask` is that wait done for you, first.
+What comes back is the ping, and the ping is a pointer, not the answer:
+
+```
+mentor finished its turn: the answer to your question is in its transcript, from row
+512. Read it with: get_messages --session mentor --range 512:
+```
+
+So the sequence is: `ask`, keep working, and when the ping lands read that range. A range
+that is still empty means the question was queued behind a running turn and is being
+answered in the next one: read again after the following ping, or `wait`.
+
+Reading it is `get_messages` with `replay: "true"`: the operator's line and the answer's
+own lines are distinct rows, so there is no guessing about who said what. The row the ping
+names is the cursor `ask` took *before* sending, so the answer has to come after the
+question's own row, never from a turn that ended earlier.
 
 ## The Python client inside a script
 
 **The server writes a client into its home, and a script imports it:**
-`<home>/lib/gongga.py` (`docs/notes/server-pylib.md`). One method per command, one
+`<home>/ship/python/gongga.py` (`docs/notes/server-pylib.md`). One method per command, one
 `Reply` per answer, an exception when something is refused. `_client.py` beside this file
 finds that module -- `GONGGA_SKILL_LIB` from a skill runner, `GONGGA_HOME` from a shell
 the server started -- and imports it:

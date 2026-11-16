@@ -1,43 +1,50 @@
 #!/usr/bin/env python3
-"""Ask another session a question and wait for its answer.
+"""Ask another session a question, and be told when its answer is there.
 
     ask(session, question)
 
-The question goes to that session the way `send_message` does, and the answer
-comes back from the place that keeps it: the session's own transcript, read the
-way a window reads it (`get_messages` with `replay: "true"`). This module reads that
-transcript instead of asking the caller to poll.
+The question goes to that session the way `send_message` does. The answer is not
+carried back here: an answer lives in the transcript of the session that said it, and
+this module arranges for you to be woken when it exists -- it arms a subscription on
+that session's `turn_end` whose action is a `send_message` to you, naming the row the
+answer starts at.
 
-It talks to the server through the harness's own client (`_client`), so nothing
-here spawns a command line or re-parses printed JSON: a `Reply` already says
-whether the command ran and what it carried. SKILL.md §0b is the rule.
+Nothing here waits. SPEC gives waiting to `exec`'s channel and to `wait`, and a command
+that blocks holds the turn it was asked in: measured, an `ask` that polled the
+transcript held a turn for 97 s and was ended by the very message it was waiting for --
+the ping and the answer are one event, so a blocking ask can never be the one that
+receives it. The ping *is* the wait: it arrives at your next step boundary, and the
+answer is read from the transcript.
 
-Why a function at all: asking is two steps with a name to remember in between, and a
-name remembered wrong is a question sent to the wrong session. `ask` names both
-parameters, so neither can be read as the other.
+It talks to the server through the harness's own client (`_client`), so nothing here
+spawns a command line or re-parses printed JSON: a `Reply` already says whether the
+command ran and what it carried. SKILL.md "The Python client inside a script" is the
+rule.
+
+Why a function at all: asking is three steps with a name to remember between each --
+read the cursor, arm the ping, send the question -- and a name remembered wrong is a
+question sent to the wrong session. `ask` names both of its parameters, so neither can
+be read as the other.
 
 `ask` is the API, and `__init__.py` beside this file publishes it as the skill's one
-function. SKILL.md §4b is the prose this implements. A refusal is `_Refused`, which
-the package form re-raises as `RuntimeError` so the runner prints one line.
+function. SKILL.md "The one convenience: ask" is the prose this implements. A refusal
+is `_Refused`, which the package form re-raises as `RuntimeError` so the runner prints
+one line.
 """
 
-import time
+import os
+import re
 
 import _client
 
-#: How long to wait for the answer. A turn is a model's round trip, so this is
-#: measured in minutes; a question unanswered by then is reported as unanswered
-#: rather than waited on forever.
-TIMEOUT_SECONDS = 900
-#: How long between reads of the transcript.
-POLL_SECONDS = 1.0
+#: The variable the server exports into every process it starts for a session.
+SESSION_VAR = "GONGGA_SESSION"
 
 
 class _Refused(Exception):
     """A refusal whose message is the user's: the form that caught it prints it.
 
-    The script leaves with 2; the package form re-raises it as RuntimeError, which
-    the package runner prints the same way.
+    The package form re-raises it as RuntimeError, which the package runner prints.
     """
 
 
@@ -45,56 +52,48 @@ def _die(message):
     raise _Refused(message)
 
 
-def _unwrapped(message):
-    """The event one message carries, from the stream or from the transcript.
-
-    `python/gongga.py` keeps what it read as it read it: the stream wraps an event
-    as `{"t": "event", "v": {"seq": n, "event": {...}}}`, and a replay wraps a
-    stored row holding that same event as `{"t": "row", "v": {"seq": n, "event":
-    {...}}}`. Both carry one event, and `_wait` needs the stored one, so both are
-    unwrapped here.
-    """
-    if message.get("t") in ("event", "row"):
-        payload = message.get("v")
-        if isinstance(payload, dict) and isinstance(payload.get("event"), dict):
-            return payload["event"]
-    return message
+def _caller():
+    """The session this call is the work of: the one the ping has to reach."""
+    name = (os.environ.get(SESSION_VAR) or "").strip()
+    if not name:
+        _die(
+            f"ask pings the session that asked, and this process has no {SESSION_VAR}: "
+            "run it as a session's work, where the server exports it"
+        )
+    return name
 
 
-def _rows(reply):
-    """One reply's events, each with its envelope off."""
-    return [_unwrapped(message) for message in reply.events if isinstance(message, dict)]
-
-
-def _end_of(reply):
-    """Where the transcript ends, as the reply's `data` says; 0 when it does not."""
+def _tail(client, session):
+    """Where the transcript of `session` ends now, before the question is sent."""
+    reply = client.call("get_messages", session=session, range="-1:-1", replay="true")
+    if not reply.ok:
+        _die(reply.message or f"cannot read the transcript of {session}")
     data = reply.data if isinstance(reply.data, dict) else {}
     end = data.get("last_seq")
     return end if isinstance(end, int) else 0
 
 
-def _tail(client, session):
-    """Where the transcript ends now, before the question is sent."""
-    reply = client.call("get_messages", session=session, range="-1:-1", replay="true")
-    if not reply.ok:
-        _die(reply.message or f"cannot read the transcript of {session}")
-    return _end_of(reply)
+def _arm(client, caller, session, since):
+    """Tells `caller` when `session`'s turn ends, naming the row to read.
 
-
-def _read(client, session, since):
-    """The transcript of `session` after `since`, where it ends, and its status.
-
-    `replay` is what makes a read show the session's own rows -- the operator's
-    message as an input line, the answer as an output line -- instead of only what
-    streams past while the call is open. Its `data` carries the two numbers this
-    module needs: the last row, and whether the session is still running.
+    The pattern is anchored and escaped: `^turn_end:m/entor$` is that one session's
+    turn ending, and no other session whose name contains that one as a prefix.
     """
-    reply = client.call("get_messages", session=session, range=f"{since + 1}:", replay="true")
+    ping = (
+        f"{session} finished its turn: the answer to your question is in its transcript, "
+        f"from row {since + 1}. Read it with: get_messages --session {session} "
+        f"--range {since + 1}:"
+    )
+    reply = client.call(
+        "subscribe",
+        pattern=f"^turn_end:{re.escape(session)}$",
+        cmd={"name": "send_message", "args": {"session": caller, "message": ping}},
+        session=caller,
+    )
     if not reply.ok:
-        _die(reply.message or f"cannot read the transcript of {session}")
+        _die(reply.message or f"cannot arm a ping on {session}'s turn end")
     data = reply.data if isinstance(reply.data, dict) else {}
-    end = data.get("last_seq")
-    return _rows(reply), (end if isinstance(end, int) else since), data.get("status")
+    return data.get("subscription")
 
 
 def _deliver(client, session, question):
@@ -104,104 +103,47 @@ def _deliver(client, session, question):
         _die(reply.message or f"the question did not reach {session}")
 
 
-def _answer_in(rows, session):
-    """What the session said since the question, and whether the question landed.
-
-    Two filters, both needed. The stream carries other sessions' rows too, so the
-    session name picks ours. And the operator's row is the marker rather than its
-    text: a message is expanded before it is stored (`@skill(...)` gains its path),
-    so what is read back is not the bytes that were sent -- but a row after the
-    cursor taken before asking is the question this call delivered, and an output
-    before it belongs to a turn that started earlier.
-    """
-    asked, said = False, []
-    for row in rows:
-        if row.get("t") != "response" or row.get("session") != session:
-            continue
-        text = row.get("text")
-        if not isinstance(text, str) or not text.strip():
-            continue
-        if row.get("part") == "input":
-            asked, said = True, []
-        elif row.get("part") == "output":
-            said.append(text.strip())
-    return asked, said
+def _disarm(client, armed, caller):
+    """Drops the ping of a question that never went out: nothing stays armed."""
+    if armed is None:
+        return
+    client.call("del_subscription", path=str(armed), session=caller)
 
 
-def _wait(client, session, since, timeout, poll):
-    """The session's turn ends, and what it said since the question is the answer.
+def ask(session, question):
+    """The question delivered and the ping armed; a sentence saying what to read, where.
 
-    # Invariant
-
-    The answer is the last output row the transcript *stores*, read once the session
-    is no longer running. A turn still being written sends pieces, each its own event
-    with `done` false, so the newest piece is never the answer; the stored row that
-    holds the same text says `done` true, and it is what the window shows afterwards.
-
-    The stored row is read from the transcript again rather than kept from the poll
-    that first saw it: the cursor counts rows, so the poll that saw the row while it
-    was still open moved past it, and a later read of the window never carries it.
-    The re-read starts at the row the question produced.
-
-    The marker is remembered, not re-read: the cursor moves past the question on the
-    poll that sees it, so a window that asks again would never see it, and a question
-    answered one poll later would never be answered at all -- measured: the operator's
-    row in the first window (`asked`, nothing said), the answer in the second
-    (`said`, `asked` gone), and the loop to the deadline.
-    """
-    deadline = time.time() + timeout
-    asked, said = False, []
-    # Where the transcript stood before the question: the rows this ask is about are
-    # the ones the question made, and the stored answer is the last of them.
-    after = since
-    while True:
-        rows, since, status = _read(client, session, since)
-        marker, texts = _answer_in(rows, session)
-        if marker:
-            asked, said = True, []
-        said.extend(texts)
-        if asked and said and status != "running":
-            final = client.call(
-                "get_messages", session=session, range=f"{after + 1}:", replay="true"
-            )
-            whole = [
-                event["text"].strip()
-                for event in (_rows(final) if final.ok else [])
-                if event.get("t") == "response"
-                and event.get("session") == session
-                and event.get("part") == "output"
-                and event.get("done") is True
-                and isinstance(event.get("text"), str)
-                and event["text"].strip()
-            ]
-            return whole[-1] if whole else said[-1]
-        if time.time() >= deadline:
-            return None
-        time.sleep(poll)
-
-
-def ask(session, question, timeout=TIMEOUT_SECONDS, poll=POLL_SECONDS):
-    """The question delivered and the answer waited for; the answer, or a refusal.
-
-    The cursor is taken before the question is sent, so the answer has to come
-    after the row the question produced, not from a turn that ended before it.
+    The cursor is taken before the question is sent, so the range it names is the rows
+    this question made, never a turn that ended before it.
     """
     session = (session or "").strip()
     question = (question or "").strip()
     if not session:
         _die("name the session to ask")
     if not question:
-        _die("ask something: the question is the rest of the command")
+        _die("ask something: the question is the second parameter")
+    caller = _caller()
+    if session == caller:
+        _die(
+            f"{session} is the session asking: its own turn cannot answer a question it "
+            "is in the middle of, so ask another session"
+        )
     try:
         client = _client.connect()
     except _client.Unusable as unusable:
         _die(str(unusable))
     try:
         since = _tail(client, session)
-        _deliver(client, session, question)
-        answer = _wait(client, session, since, timeout, poll)
+        armed = _arm(client, caller, session, since)
+        try:
+            _deliver(client, session, question)
+        except _Refused:
+            _disarm(client, armed, caller)
+            raise
     finally:
         client.close()
-    if answer is None:
-        _die(f"{session} did not answer within {timeout:g}s")
-    return answer
+    return (
+        f"asked {session}; subscription `{armed}` pings you when that turn ends, and the "
+        f"answer is in its transcript from row {since + 1}: "
+        f"get_messages --session {session} --range {since + 1}:"
+    )

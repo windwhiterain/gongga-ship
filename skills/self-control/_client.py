@@ -15,8 +15,8 @@ already has a Python form. SKILL.md §0b is the rule, this file is the import.
 The module beside *this* home, never an installed copy elsewhere: the client and
 the server it dials are one build, and the server is what wrote it. Two places
 name that directory, and a skill gets one of them from whatever started it --
-`GONGGA_SKILL_LIB` from a skill runner, `GONGGA_HOME` from a shell the server
-started.
+`GONGGA_SKILL_LIB` from a skill runner, and for a shell the server started (which has
+only `GONGGA_HOME`) the content checkout's own Python surface, `<home>/ship/python`.
 """
 
 import os
@@ -35,7 +35,9 @@ def lib():
     """The directory holding `gongga.py`, or None when nothing names one."""
     for directory in (
         os.environ.get("GONGGA_SKILL_LIB"),
-        os.path.join(os.environ.get("GONGGA_HOME") or "", "lib"),
+        # The content's Python surface is the checkout's, in place: protocol 12 moved it
+        # out of a home's `lib`, which an older build used to copy.
+        os.path.join(os.environ.get("GONGGA_HOME") or "", "ship", "python"),
     ):
         if directory and os.path.isfile(os.path.join(directory, "gongga.py")):
             return directory
@@ -47,8 +49,8 @@ def module():
     directory = lib()
     if directory is None:
         raise Unusable(
-            "no gongga.py to import: this needs GONGGA_HOME (a shell the server "
-            "started has it) or GONGGA_SKILL_LIB"
+            "no gongga.py to import: this needs GONGGA_SKILL_LIB (a skill runner sets "
+            "it) or GONGGA_HOME (a shell the server started has it)"
         )
     if directory not in sys.path:
         sys.path.insert(0, directory)
