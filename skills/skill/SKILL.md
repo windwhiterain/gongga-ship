@@ -163,6 +163,24 @@ There is one form, not three: SPEC's `## Skill` makes every skill a Python call,
 skill with no package is a skill nothing can run. An implementation that is not Python
 goes inside a function of one.
 
+### A skill must not block
+
+A call to a skill holds the turn it was asked in, for as long as the function runs. Waiting
+is `exec`'s (its channel's `wait`/`until`) and the `wait` tool's; a skill that sits on a
+clock -- polling a transcript, sleeping until something arrives -- holds that turn while
+nothing about the turn moves, and a message arriving ends it rather than being read by it.
+
+Measured: a skill that polled another session's transcript held a turn for 97 s, and the
+very message it waited for is what ended the call.
+
+**This is a convention, not a check.** The command layer has an internal clock, but
+`run_skill` is exempt from it on purpose (a skill is bounded by the skill runner's own
+bound instead -- `CALL_TIMEOUT_MS`, 120 s by default), so nothing refuses a blocking skill;
+it just wastes a turn until that bound stops it. A skill that has to wait for something
+leaves the wait somewhere a program can do it: a channel (`new_channel`) started at the
+call, started again by a subscription (`subscribe`), and told to bring the answer back with
+`send_message`. `self-control`'s `ask` is that shape written out.
+
 ## Examples
 
 `gongga-cli` takes one JSON object per call, which is the call as it is typed. Name every
