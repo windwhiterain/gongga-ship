@@ -219,6 +219,15 @@ things you have read:
 
 {{entries}}'''
 
+# What introduces the arguments a package skill's functions take. The document is the
+# one its publisher generated beside `__init__.py`, appended as written: the skill's
+# own prose states no second copy of it, and no reader derives it again.
+# Placeholder: {{arguments}}
+skill_arguments = '''
+what this skill's functions take, generated from the package and trusted as written:
+
+{{arguments}}'''
+
 # What opens the request, before the index. A provider's first message is an
 # all-or-nothing unit -- one byte that differs in it costs the system text and the tool
 # schemas too -- so this is a constant, and the index begins after it. See

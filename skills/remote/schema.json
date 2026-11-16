@@ -1,0 +1,170 @@
+{
+  "functions": {
+    "check": {
+      "properties": {
+        "host": {
+          "type": "string"
+        },
+        "identity": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer"
+        },
+        "remotes": {
+          "type": "string"
+        },
+        "runner": {
+          "type": "string"
+        },
+        "user": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "host"
+      ],
+      "type": "object"
+    },
+    "configure": {
+      "properties": {
+        "host": {
+          "type": "string"
+        },
+        "identity": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "remotes": {
+          "type": "string"
+        },
+        "remove": {
+          "type": "boolean"
+        },
+        "runner": {
+          "type": "string"
+        },
+        "user": {
+          "type": "string"
+        },
+        "write": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "remote"
+      ],
+      "type": "object"
+    },
+    "install": {
+      "properties": {
+        "artifact": {
+          "type": "string"
+        },
+        "build_from": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "identity": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer"
+        },
+        "release": {
+          "type": "boolean"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "remotes": {
+          "type": "string"
+        },
+        "runner": {
+          "type": "string"
+        },
+        "user": {
+          "type": "string"
+        },
+        "write": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "host"
+      ],
+      "type": "object"
+    },
+    "list_remotes": {
+      "properties": {
+        "check": {
+          "type": "boolean"
+        },
+        "remotes": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "remove": {
+      "properties": {
+        "distribution": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "identity": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer"
+        },
+        "remotes": {
+          "type": "string"
+        },
+        "user": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "host",
+        "distribution"
+      ],
+      "type": "object"
+    },
+    "verify": {
+      "properties": {
+        "host": {
+          "type": "string"
+        },
+        "identity": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer"
+        },
+        "remotes": {
+          "type": "string"
+        },
+        "runner": {
+          "type": "string"
+        },
+        "user": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "host"
+      ],
+      "type": "object"
+    }
+  }
+}

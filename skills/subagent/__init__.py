@@ -43,6 +43,7 @@ import os
 import re
 import sqlite3
 import sys
+import typing
 
 #: The one connection this run talks through, dialled on first use (`_connection`).
 _CONNECTION = None
@@ -256,7 +257,7 @@ def _nested(row):
     }
 
 
-def self_config(session=None):
+def self_config(session: typing.Optional[str] = None):
     """The caller's own settings as SPEC's nested `SessionConfig`, ready to change.
 
     `session` is for a caller reading somebody else's row; the default is this

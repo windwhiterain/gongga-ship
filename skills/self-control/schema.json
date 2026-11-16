@@ -1,0 +1,19 @@
+{
+  "functions": {
+    "ask": {
+      "properties": {
+        "question": {
+          "type": "string"
+        },
+        "session": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "session",
+        "question"
+      ],
+      "type": "object"
+    }
+  }
+}

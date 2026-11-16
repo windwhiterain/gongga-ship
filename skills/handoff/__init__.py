@@ -37,6 +37,7 @@ import sqlite3 as _sqlite3
 import subprocess as _subprocess
 import sys as _sys
 import time as _time
+import typing as _typing
 
 DEFAULT_LIMIT = 40
 PREVIEW_CHARS = 120
@@ -104,7 +105,11 @@ def _body(row):
     return value.get("text") or ""
 
 
-def read(after=None, limit=DEFAULT_LIMIT, preview=False):
+def read(
+    after: _typing.Optional[int] = None,
+    limit: _typing.Optional[int] = DEFAULT_LIMIT,
+    preview: bool = False,
+):
     """The messages this session actually sends, newest `limit` of them, as JSON text.
 
     `after` is a sequence number: only rows past it are read, and nothing is the
@@ -404,7 +409,7 @@ def _ensure_mentor(conn, name, source):
     )
 
 
-def handoff(note, mentor=None):
+def handoff(note: str, mentor: _typing.Optional[str] = None):
     """Archive this session's transcript in `mentor`, verify it, empty this one.
 
     `mentor` is where the archive goes, and it is always a child of this session:

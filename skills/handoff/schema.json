@@ -1,0 +1,32 @@
+{
+  "functions": {
+    "handoff": {
+      "properties": {
+        "mentor": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "note"
+      ],
+      "type": "object"
+    },
+    "read": {
+      "properties": {
+        "after": {
+          "type": "integer"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "preview": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    }
+  }
+}

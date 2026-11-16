@@ -30,7 +30,7 @@ finally:
     _sys.path.remove(_HERE)
 
 
-def ask(session, question):
+def ask(session: str, question: str):
     """Ask another session a question and wait for its answer.
 
     The answer is the other session's own words from its transcript. A refusal -- no

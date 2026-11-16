@@ -26,6 +26,7 @@ not three hundred.
 
 import difflib
 import os
+import typing
 
 import gongga_space
 
@@ -186,7 +187,13 @@ def _hint(text, segments):
     )
 
 
-def read(path, offset=0, limit=0, remote=None, cwd=None):
+def read(
+    path: str,
+    offset: int = 0,
+    limit: int = 0,
+    remote: typing.Optional[str] = None,
+    cwd: typing.Optional[str] = None,
+):
     """Lines `offset` to `offset + limit` of a file, and how many there are in all.
 
     `remote` is the machine the path lives on (the session's own by default); `cwd`
@@ -212,7 +219,12 @@ def read(path, offset=0, limit=0, remote=None, cwd=None):
         space.close()
 
 
-def write(path, content, remote=None, cwd=None):
+def write(
+    path: str,
+    content: str,
+    remote: typing.Optional[str] = None,
+    cwd: typing.Optional[str] = None,
+):
     """Replace a whole file with `content`, creating its directory if it is new.
 
     `remote` is the machine the path lives on (the session's own by default); `cwd`
@@ -240,7 +252,13 @@ def write(path, content, remote=None, cwd=None):
         space.close()
 
 
-def edit(path, edits, all=False, remote=None, cwd=None):
+def edit(
+    path: str,
+    edits,
+    all: bool = False,
+    remote: typing.Optional[str] = None,
+    cwd: typing.Optional[str] = None,
+):
     """Replace the span each hunk anchors, in one write, or change nothing.
 
     `remote` is the machine the path lives on (the session's own by default); `cwd`

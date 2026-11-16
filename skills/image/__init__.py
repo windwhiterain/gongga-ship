@@ -67,7 +67,7 @@ def _media_type(path, head):
     return None
 
 
-def show(paths, check=False):
+def show(paths: list, check: bool = False):
     r"""One `@image(<path>)` line per readable picture in `paths`.
 
     `paths` is a list of strings. A relative path is read from the calling session's

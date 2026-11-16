@@ -1,0 +1,70 @@
+{
+  "functions": {
+    "edit": {
+      "properties": {
+        "all": {
+          "type": "boolean"
+        },
+        "cwd": {
+          "type": "string"
+        },
+        "edits": {},
+        "path": {
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "edits"
+      ],
+      "type": "object"
+    },
+    "read": {
+      "properties": {
+        "cwd": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "offset": {
+          "type": "integer"
+        },
+        "path": {
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "write": {
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "cwd": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "content"
+      ],
+      "type": "object"
+    }
+  }
+}

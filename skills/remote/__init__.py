@@ -24,6 +24,7 @@ that the names a caller sees are the six operations and nothing else.
 
 import os as _os
 import sys as _sys
+import typing as _typing
 
 _HERE = _os.path.dirname(_os.path.abspath(__file__))
 
@@ -40,17 +41,17 @@ def _call(action, **options):
 
 
 def install(
-    host,
-    user=None,
-    port=22,
-    identity=None,
-    runner=None,
-    remote=None,
-    build_from=".",
-    artifact=None,
-    release=False,
-    write=False,
-    remotes=None,
+    host: str,
+    user: _typing.Optional[str] = None,
+    port: int = 22,
+    identity: _typing.Optional[str] = None,
+    runner: _typing.Optional[str] = None,
+    remote: _typing.Optional[str] = None,
+    build_from: str = ".",
+    artifact: _typing.Optional[str] = None,
+    release: bool = False,
+    write: bool = False,
+    remotes: _typing.Optional[str] = None,
 ):
     """Build (or take) a distribution, upload it, greet its runner, and say what it is.
 
@@ -77,15 +78,15 @@ def install(
 
 
 def configure(
-    remote,
-    host="",
-    user=None,
-    port=22,
-    identity=None,
-    runner=None,
-    write=False,
-    remove=False,
-    remotes=None,
+    remote: str,
+    host: str = "",
+    user: _typing.Optional[str] = None,
+    port: int = 22,
+    identity: _typing.Optional[str] = None,
+    runner: _typing.Optional[str] = None,
+    write: bool = False,
+    remove: bool = False,
+    remotes: _typing.Optional[str] = None,
 ):
     """Print or update one `[remotes.<name>]` table of the remotes file.
 
@@ -106,7 +107,14 @@ def configure(
     )
 
 
-def check(host, user=None, port=22, identity=None, runner=None, remotes=None):
+def check(
+    host: str,
+    user: _typing.Optional[str] = None,
+    port: int = 22,
+    identity: _typing.Optional[str] = None,
+    runner: _typing.Optional[str] = None,
+    remotes: _typing.Optional[str] = None,
+):
     """Greet one peer's runner over real SSH and report the protocol it speaks."""
     return _call(
         _implementation.check,
@@ -119,7 +127,14 @@ def check(host, user=None, port=22, identity=None, runner=None, remotes=None):
     )
 
 
-def verify(host, user=None, port=22, identity=None, runner=None, remotes=None):
+def verify(
+    host: str,
+    user: _typing.Optional[str] = None,
+    port: int = 22,
+    identity: _typing.Optional[str] = None,
+    runner: _typing.Optional[str] = None,
+    remotes: _typing.Optional[str] = None,
+):
     """Greet a runner and put it through the shell protocol: state, status, close."""
     return _call(
         _implementation.verify,
@@ -132,12 +147,21 @@ def verify(host, user=None, port=22, identity=None, runner=None, remotes=None):
     )
 
 
-def list_remotes(check=False, remotes=None):
+def list_remotes(
+    check: bool = False, remotes: _typing.Optional[str] = None
+):
     """Every configured remote as a row; `check` greets each runner, and the server."""
     return _call(_implementation.list_remotes, check=check, remotes=remotes)
 
 
-def remove(host, distribution, user=None, port=22, identity=None, remotes=None):
+def remove(
+    host: str,
+    distribution: str,
+    user: _typing.Optional[str] = None,
+    port: int = 22,
+    identity: _typing.Optional[str] = None,
+    remotes: _typing.Optional[str] = None,
+):
     """Delete one content-addressed distribution from a peer.
 
     `distribution` must be a path under the peer's `~/.gongga/bin/gongga-<hash>`;

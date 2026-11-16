@@ -1,0 +1,18 @@
+{
+  "functions": {
+    "show": {
+      "properties": {
+        "check": {
+          "type": "boolean"
+        },
+        "paths": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "paths"
+      ],
+      "type": "object"
+    }
+  }
+}

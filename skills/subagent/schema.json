@@ -1,0 +1,26 @@
+{
+  "functions": {
+    "new_subagent": {
+      "properties": {
+        "config": {
+          "type": "object"
+        },
+        "role": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "config"
+      ],
+      "type": "object"
+    },
+    "self_config": {
+      "properties": {
+        "session": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  }
+}
