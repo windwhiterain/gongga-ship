@@ -21,11 +21,13 @@ because the second is worthless when it is a step somebody has to remember:
    claiming are one step: a probe followed by a create leaves a window in which
    another caller takes the name, and the loser silently joins the winner's
    transcript.
-2. **A subscription to that session's turn end.** Armed before this call answers,
-   with the command that carries the news back: `subscribe` runs what the row
-   carries in the shell of the session it was run from, so the caller's own
-   `send_message` is what reaches the caller. A parent left to arm this itself
-   would poll instead, which is the habit `subscribe` exists to replace.
+2. **A subscription to that session's turn end.** Armed before this call answers, with
+   the command that carries the news back. SPEC's `subscribe` puts a field of the
+   matched event into a string argument, so the parent's own `send_message` says what
+   the child said -- `{event.answer}` is the turn's answer, whole. No process of its
+   own: the news is a row the server writes, so a restart still delivers it. A parent
+   left to arm this itself would poll instead, which is the habit `subscribe` exists
+   to replace.
 
 The name is a path, `<parent>/<role>`, with `/2`, `/3`, ... added when it is taken:
 two callers asking for `main/impl` get `main/impl` and `main/impl/2`, and neither
@@ -281,23 +283,30 @@ def _subscribe(name):
     children would hear about the wrong one and wait on the right one for nothing.
     The name is a session's, not a regex's, so it is escaped before it is a pattern.
 
-    The action is a command, sent as one: SPEC's `subscribe(id?, pattern, cmd,
-    session)` runs the command in the subscriber's session, so the news is a
-    `send_message` to the parent -- the same call the parent would make itself --
-    and the log row it leaves behind is where the event's own fields are read.
+    The action carries what the child said: SPEC's `subscribe` puts a field of the
+    matched event into a string argument, so `{event.answer}` is that turn's own answer
+    -- the whole of it, since the server stores no head of it. It is one `send_message`
+    to the parent and no process of its own: the news is a row the server writes, which
+    a restart still delivers.
     """
     pattern = f"^turn_end:{re.escape(name)}$"
     parent = os.environ.get("GONGGA_SESSION", "")
     action = {
         "name": "send_message",
-        "args": {"session": parent, "message": f"{name} finished its turn"},
+        "args": {
+            "session": parent,
+            "message": (
+                f"{name} finished its turn ({{event.outcome}}, "
+                f"{{event.steps}} step(s), {{event.elapsed_ms}}ms):\n\n{{event.answer}}"
+            ),
+        },
     }
     accepted, message, _data = _command(
         {
             "name": "subscribe",
             "args": {
                 "pattern": pattern,
-                "cmd": action,
+                "cmds": [action],
                 "id": name,
                 "session": parent,
                 "persistant": "true",

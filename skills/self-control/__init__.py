@@ -4,7 +4,7 @@ The package publishes exactly one function; every other top-level name here carr
 leading `_`, because `gongga_skill`'s discovery publishes every callable that does not
 and `__all__` is not consulted:
 
-    ask(session, question)          -- deliver a question; a channel of this session waits and brings the answer back
+    ask(session, question)          -- deliver a question; a subscription of this session brings the answer back
 
 The heavy lifting lives in the internal modules beside this file: `_client` (import the
 harness's own client from this home, SKILL.md "The Python client inside a script") and
@@ -31,13 +31,13 @@ finally:
 
 
 def ask(session: str, question: str):
-    """Ask another session a question; a channel of this session brings the answer back.
+    """Ask another session a question; its turn end sends the answer to this session.
 
     Nothing is waited for here: the question goes to that session with `send_message`, and
-    a subscription on its `turn_end` starts `answer.py` in a channel of this session, which
-    reads the mentor's transcript and messages the answer to the asker. A refusal -- no
+    a subscription on its `turn_end` runs a `send_message` back whose message carries
+    `{event.answer}` -- the turn's own words, which the server puts there. A refusal -- no
     such session, no way to reach the server, a workspace on another machine -- raises
-    RuntimeError with the reason, and leaves nothing armed or running behind it.
+    RuntimeError with the reason, and leaves nothing armed behind it.
     """
     try:
         return _ask_session.ask(session, question)

@@ -1,6 +1,6 @@
 ---
 name: self-control
-description: The server's command schemas as this build publishes them -- the twenty-two commands a session drives itself with (send_message, new_session, set_session, del_session, ls_session, clone_session, interrupt_session, cancel, subscribe, ls_subscription, del_subscription, trigger_event, new_channel, new_channel_id, input_channel, ls_channel, rename_channel, del_channel, get_messages, events, list_paths, sync_session), each with its exact arguments and a callable example, plus the one convenience this skill publishes, `ask`, which puts a question to another session and leaves a channel waiting to bring the answer back. Read it when you are about to call one of these and need its argument names, which ones are required, and what the answer carries.
+description: The server's command schemas as this build publishes them -- the twenty-two commands a session drives itself with (send_message, new_session, set_session, del_session, ls_session, clone_session, interrupt_session, cancel, subscribe, ls_subscription, del_subscription, trigger_event, new_channel, new_channel_id, input_channel, ls_channel, rename_channel, del_channel, get_messages, events, list_paths, sync_session), each with its exact arguments and a callable example, plus the one convenience this skill publishes, `ask`, which puts a question to another session and arms a subscription that brings its answer back. Read it when you are about to call one of these and need its argument names, which ones are required, and what the answer carries.
 compatibility: the command schemas need nothing but the server; `ask` needs Python 3, the client the server writes at <home>/ship/python/gongga.py, and the session it runs in (`$GONGGA_SESSION`, which a skill runner exports)
 ---
 
@@ -335,10 +335,10 @@ name asks here instead of making one up: the server is the only party that can s
 session already holds. `<n>` is the smallest integer whose `<prefix>/<n>` is free, so the
 answer is stable until a channel of that name exists.
 
-The answer is the name and its session: `{"id": "/ask/1", "session": "work/child"}`.
+The answer is the name and its session: `{"id": "/probe/1", "session": "work/child"}`.
 
 ```bash
-gongga-cli '{"name":"new_channel_id","args":{"prefix":"/ask"}}'
+gongga-cli '{"name":"new_channel_id","args":{"prefix":"/probe"}}'
 ```
 
 ### `input_channel` -- write a line in, read the unread part of what comes back
@@ -460,15 +460,15 @@ gongga-cli '{"name":"events","args":{"since":"4711","kind":"turn_end","session":
 
 ## Subscriptions
 
-A subscription names a pattern over events and the one command a match runs. Arming one
-answers at once; it never waits for a match.
+A subscription names a pattern over events and the commands a match runs, in order. Arming
+one answers at once; it never waits for a match.
 
 ### `subscribe` -- arm a subscription
 
 | argument | spelling | required | meaning |
 |---|---|---|---|
 | `pattern` | positional (`<pattern>`) | yes | an unanchored regular expression over event names |
-| `cmd` | positional (`<cmd>`) | yes | the command a match runs: a name, or the whole call as an object |
+| `cmds` | positional (`<cmds>`) | yes | what a match runs, in order: one command, or a list of them. Each is a name, or the whole call as an object |
 | `session` | positional | no | the session a match runs in; omitted is the calling session |
 | `id` | named (`--id`) | no | the name it is armed and dropped by; arming a name again replaces what it held. Omitted is a free name, reported in the answer |
 | `persistant` | named (`--persistant`) | no | `true` keeps it armed after a match, so every later match is news too; without it one match is the whole subscription |
@@ -485,15 +485,26 @@ The answer:
 
 ```json
 {"id": 3, "session": "work/child", "subscription": "done",
- "event": "turn_end:work/child", "cmd": "send_message", "persistant": false}
+ "event": "turn_end:work/child", "cmds": ["send_message"], "persistant": false}
 ```
 
 ```bash
-gongga-cli '{"name":"subscribe","args":{"pattern":"^turn_end:work/child$","cmd":{"name":"send_message","args":{"session":"work/parent","message":"child finished"}},"id":"done"}}'
+gongga-cli '{"name":"subscribe","args":{"pattern":"^turn_end:work/child$","cmds":[{"name":"send_message","args":{"session":"work/parent","message":"child finished:"}}],"id":"done"}}'
 ```
 
-A match runs the command in the named session through the same layer a tool call uses,
-so anything in this file can be the action.
+A match runs the commands in the named session through the same layer a tool call uses,
+so anything in this file can be one. **The first refusal stops the rest**: a list is a
+sequence, not a batch, so a later command may count on the earlier ones having run. The
+`subscription` log row says how far it got (`ran`) as well as what stopped it.
+
+**A string argument may name a field of the matched event.** `{event.answer}`,
+`{event.outcome}`, `{event.session}`, `{event.name}`: the server puts the value there
+before the command runs, so one `send_message` can carry what happened. A log row's
+free-form fields sit at that level (`{event.answer}`, never `{event.payload.answer}`), and
+the envelope's own keys (`id`, `seq`, `kind`, `at`) are there too. Nothing else is a
+reference -- other braces and words reach the command as written -- and a field the event
+does not have is a refusal that lists the fields it does have, rather than a message that
+quietly says `{event.answer}` where the answer should be.
 
 ### `ls_subscription` -- a session's armed subscriptions
 
@@ -556,26 +567,34 @@ gongga-cli '{"name":"list_paths","args":{"path":"C:/resource"}}'
 
 **Another session -- a mentor, a parent -- holds what you have already forgotten.**
 Searching again is that whole search paid twice; one question is one turn. `ask` is the
-only thing this skill publishes, and it does the steps nobody remembers: it mints a channel
-name (`new_channel_id`), starts a channel of the session's own on it, arms a subscription
-on the mentor's `turn_end` whose action types one line into that channel, and sends the
-question with `send_message`.
+only thing this skill publishes, and it does the steps nobody remembers: it arms a one-shot
+subscription on the mentor's `turn_end` whose command is a `send_message` back to the asker
+carrying `{event.answer}` -- the turn's own words -- and sends the question with
+`send_message`.
 
 **Nothing waits.** Not this function, and not the turn that asked it: the call is over as
-soon as the question is sent. When the mentor's turn ends, the subscription starts
-`answer.py` **in the channel**, which reads the mentor's transcript from the row the
-question made and `send_message`s the answer back to the asker. The channel then ends and
-is forgotten.
+soon as the question is sent. When the mentor's turn ends, that subscription's
+`send_message` lands in your transcript with the answer in it, and the subscription is
+spent. No channel, no script, no process of its own: the answer is a row the server
+writes, so a restart still delivers it.
 
-Why a channel: waiting is `exec`'s, not a command's -- and a command that blocks holds the
-turn it was asked in. Measured, an `ask` that polled the transcript in its own process held
-a turn for 97 s and was ended by the very message it was waiting for.
+Why nothing blocks: waiting is the `wait` tool's, not a command's -- and a command that
+blocks holds the turn it was asked in. Measured, an `ask` that polled the transcript in its
+own process held a turn for 97 s and was ended by the very message it was waiting for. An
+earlier version of this skill waited in a channel for the same reason; a subscription can
+now carry the answer itself, so the channel went away.
+
+The message names the event row and the row the question was asked at. The subscription is
+one-shot, so it fires on the first turn end after it was armed: a mentor that was already
+in the middle of a turn ends that one first. `send_message` reaches it at a step boundary,
+so it often answers there too -- when it does not, those two rows are how you tell which
+turn you were handed.
 
 ```python
 import gongga_skill    # the home's `gongga_skill.py`, the contract a package is run through
 where = gongga_skill.run(SKILL_DIR, "ask", {"session": "mentor", "question": "how did I write the snapshot step?"})
-# asked mentor; channel /ask/1 waits for that turn to end and will send you the answer
-# (subscription `sub3`). You can read it yourself any time: get_messages --session mentor --range 512:
+# asked mentor; its turn end sends you the answer (subscription `sub3`).
+# You can read it yourself any time: get_messages --session mentor --range 512:
 ```
 
 ```bash
@@ -600,31 +619,30 @@ flag parser anywhere in the path -- nothing after the name is read back as words
   refused by name.
 - **Ask something specific.** Say what you want answered and why now. "Is this fine?"
   earns one word; the step that has you stuck earns an answer.
-- **No `timeout`, no `poll`.** There is nothing to time here: the wait is a program's, and
-  a program's length is `exec`'s business.
+- **No `timeout`, no `poll`.** There is nothing to time here: the subscription is armed and the call is over. Waiting, if you want to wait, is the `wait` tool's.
 - **Refusal** raises `RuntimeError` with the reason -- the package runner prints it and
-  exits 1 -- and takes back what it had already set up: a channel started for a question
-  that never went out is closed again.
-- **A workspace on another machine still works.** The channel is started with
-  `remote: none`, so it runs here, where the waiter beside this `SKILL.md` is -- the
-  answer is read from a transcript, and transcripts live on this server.
+  exits 1 -- and takes back what it had already set up: a subscription armed for a question
+  that never went out is dropped again.
+- **A workspace on another machine still works.** The subscription is armed in your own
+  session and the answer is a message, not a file: nothing is read on the other machine's
+disk.
 
 | what | where it comes from |
 | --- | --- |
-| the channel | `<namespace>/<n>`, minted by `new_channel_id` so two asks never race for one name. The callback is `input_channel` with `wait: 0`: it types the line and returns, and the waiter runs on its own |
-| the waiter | `answer.py`, beside this `SKILL.md`: `<interpreter> answer.py <mentor> <first row> <caller> <channel>` |
-| the answer | the last `output` row of that session with `done` true, from the row the question made, sent to you as a message with one line saying who it is from |
+| the subscription | `^turn_end:<mentor>$`, anchored so a child's turn is not the mentor's, armed one-shot in **your** session so a match runs your own `send_message` |
+| the answer | `{event.answer}` -- the turn's own last words, put there by the server before the command runs. Nothing is read back from a transcript, so a truncated answer is not a case |
 
-What arrives is one message:
+What arrives is one message, and its first line says which turn it was:
 
 ```
-mentor answered (asked through self-control `ask`):
+mentor ended a turn (event row 9173); the question was asked at row 9160:
 
 <what it said>
 ```
 
-A turn that ends with nothing new in it sends the range instead of an answer, so a question
-queued behind a running turn is never silently lost: read that range, or ask again.
+If the row is older than the question's, the mentor was mid-turn when you asked and that
+turn ended first: its answer may be in the turn that follows. Read the transcript
+(`get_messages --session mentor --range <that row>:`) or ask again.
 
 ## The Python client inside a script
 

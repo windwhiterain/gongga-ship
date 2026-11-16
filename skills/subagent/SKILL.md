@@ -101,20 +101,26 @@ Python 客户端，`gongga.connect()` 自己读 home 的 key 和端口），一�
 `new_subagent` 替你发的就是这一条：
 
 ```bash
-$G '{"name":"subscribe","args":{"pattern":"^turn_end:main/impl$","persistant":"true","cmd":{"name":"send_message","args":{"session":"main","message":"main/impl finished its turn"}}}}'
+$G '{"name":"subscribe","args":{"pattern":"^turn_end:main/impl$","persistant":"true","cmds":[{"name":"send_message","args":{"session":"main","message":"main/impl finished its turn ({event.outcome}, {event.steps} step(s), {event.elapsed_ms}ms):\n\n{event.answer}"}}]}}'
 ```
 
-**订阅只做 SPEC 写的那一件事：匹配了就执行行里带的命令。** 服务端自己不替你说话，所以"通知"
-是这条命令寄出来的——动作就是一个 `send_message`，发给你（订阅者）。它落到你的 transcript 里
-就是一条普通的 user 消息：
+**订阅只做 SPEC 写的那一件事：匹配了就按顺序执行行里带的命令。** 服务端自己不替你说话，
+"通知"是你的 `send_message` 寄出来的；它落到你的 transcript 里就是一条普通的 user 消息：
 
 ```
-main/impl finished its turn
+main/impl finished its turn (done, 14 step(s), 182031ms):
+
+<它这一轮最后说的话>
 ```
 
-**通知是一声 ping，不是它的答案。** 动作的参数在 `subscribe` 那一刻就定死了（上面那句
-`main/impl finished its turn`），匹配时原样执行，**不带**这一轮的 `outcome` / `steps` / `answer`。
-要读它说了什么、做了什么，用 `get_messages --session main/impl`（见下）。模式两端锚死
+**答案是服务端替你填的，不是子会话自己发的。** 参数在 `subscribe` 那一刻就定死了，但字符串参数
+可以点名匹配到的那个事件的字段：`{event.answer}`、`{event.outcome}`、`{event.session}`，服务端
+在跑命令之前把它们换成值——日志行的 payload 平铺在同一层，所以是 `{event.answer}` 而不是
+`{event.payload.answer}`。写错的字段名不是发一条字面文本，而是让这次匹配拒绝执行，并报出事件
+到底有哪些字段。答案是整段的：`turn_end` 存的是全量，没有截断。
+
+**它替它说的话担保，不替它的活担保。** 那条消息是它自己的总结，可能漏、可能夸大、可能只说
+了它做的那一半。要核对，读 transcript：`get_messages --session main/impl`（见下）。模式两端锚死
 （`^…$`），所以 `main/impl` 不会听见 `main/impl/2` 的回合——那正是 `new_subagent` 替你拼的东西。
 
 **动作直接走命令层，不起 shell。** 订阅匹配时服务端在自己的命令层里跑这个动作，所以没有
@@ -123,7 +129,8 @@ main/impl finished its turn
 `gongga-cli`。
 
 **动作也会失败，那时它不响。** 命令层跑这个动作，失败（比如 `send_message` 被拒）只留下
-一条 `kind=subscription` 的日志行（`ok=false` 加原因）。查它：
+一条 `kind=subscription` 的日志行：`ok=false`、原因，以及 `ran`——这一串跑完了几条（`cmds` 是序列不是批处理：
+第一条被拒，后面的就不跑）。查它：
 
 ```bash
 $G '{"name":"events","args":{"kind":"subscription","session":"'"$GONGGA_SESSION"'","since":"<派活前的 last_id>"}}'
@@ -181,7 +188,7 @@ $G '{"name":"events","args":{"kind":"turn_end","session":"'"$name"'","since":"<�
 
 **shell 里没有阻塞的等了。** 原先的 `wait --kind turn_end` 已经退役：一个睡在 socket 上的
 进程既不进 transcript，也不会随回合取消。脚本想知道一轮什么时候结束就去问日志——
-`events --kind turn_end --session <name> --since <id>`，那些行正是上面通知的正文。
+`events --kind turn_end --session <name> --since <id>`，那些行的 `answer` 字段正是上面通知里那段正文。
 
 ## 读它：`get_messages`
 
@@ -282,7 +289,8 @@ probe 的后一条 = "Now also look at @file(late.md) and @skill(late), then sto
    撞了就试下一个，而手写的 `set_session` 撞名不报错，会把你的 brief 注进别人的会话。
 3. **它的上下文记在它自己账上。** 父会话不会因为它干活而变大，这就是它的价值：一个会话承载
    全部工作时，上下文会一路涨到阈值以上几倍。反过来，它收到 `Context notice` 时也要尽快交接（handoff），先整理好材料再交，和你没有区别。
-4. **通知是一声 ping，不替它担保。** 那条 `send_message` 只说"它这一轮结束了"，不带答案。
+4. **通知带着它最后说的话，不替它担保。** 那条 `send_message` 的正文是它这一轮的
+   `{event.answer}`——它自己的总结，不是验收结论。
    它说了什么、改了什么、走了哪条路，都要 `get_messages` 读 transcript 才知道；别把"回合结束"
    当成"活干对了"。
 5. **它和你抢同一个 provider 配额。** 并发越多，单个请求越慢；开到你自己读得过来的数量，

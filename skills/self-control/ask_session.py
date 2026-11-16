@@ -1,24 +1,28 @@
 #!/usr/bin/env python3
-"""Ask another session a question; a channel waits, and hands the answer over.
+"""Ask another session a question; a subscription brings the answer back.
 
     ask(session, question)
 
-Three steps, and the caller remembers none of them:
+Two steps, and the caller remembers neither:
 
-1. a channel of the session's own is started under a name the server minted
-   (`new_channel_id`, so no two asks race for one name);
-2. a subscription is armed on the mentor's `turn_end`, whose action types one line into
-   that channel -- `python answer.py <mentor> <first row> <caller> <channel>`;
-3. the question goes to the mentor with `send_message`.
+1. a subscription of the caller's own is armed on the mentor's `turn_end`, whose
+   command is one `send_message` to the caller carrying `{event.answer}` -- the turn's
+   own words, put there by the server;
+2. the question goes to the mentor with `send_message`.
 
-Then the call is over. When the mentor's turn ends, `answer.py` runs **in the channel**,
-reads the mentor's transcript from the row the question made, and `send_message`s the
-answer to the caller. Nothing blocks: not this command, and not the turn that asked it.
+Then the call is over. When the mentor's turn ends, the subscription's `send_message`
+lands in the caller's transcript with the answer in it. Nothing blocks: not this
+command, and not the turn that asked it.
 
-Why a channel at all: waiting is `exec`'s, not a command's. Measured, an `ask` that
-polled the transcript in its own process held a turn for 97 s and was ended by the very
-message it was waiting for. A channel is a program that outlives the turn, which is what
-waiting needs; the subscription is what starts it, so nothing polls.
+The question is also *why* the answer is a turn's: the subscription is one-shot, so it
+fires on the first turn end after it was armed. A mentor that was already in the middle
+of a turn may end that one first -- `send_message` reaches it at a step boundary, so
+that turn often answers too, but not always. The message names the event row and the
+row the question was asked at, so a reader can tell the two apart.
+
+Waiting is the `wait` tool's, not a command's: an `ask` that polled the transcript in
+its own process held a turn for 97 s and was ended by the very message it was waiting
+for. A subscription is what a turn can leave behind, so nothing polls and nothing sleeps.
 
 It talks to the server through the harness's own client (`_client`), so nothing here
 spawns a command line or re-parses printed JSON: a `Reply` already says whether the
@@ -32,20 +36,11 @@ line.
 
 import os
 import re
-import shlex
-import sys
 
 import _client
-import answer
 
 #: The variable the server exports into every process it starts for a session.
 SESSION_VAR = "GONGGA_SESSION"
-#: The namespace ask's channels are minted in, so they read as what they are.
-NAMESPACE = "/ask"
-#: The program a waiting channel runs: a shell, because the subscription types a line.
-PROGRAM = "bash"
-#: The waiter beside this file, run by that line.
-WAITER = "answer.py"
 
 
 class _Refused(Exception):
@@ -80,66 +75,34 @@ def _tail(client, session):
     return end if isinstance(end, int) else 0
 
 
-def _minted(client, caller):
-    """A channel name nobody in `caller` holds, from the server that can tell."""
-    reply = client.call("new_channel_id", prefix=NAMESPACE, session=caller)
-    if not reply.ok:
-        _die(reply.message or f"cannot mint a channel name in {caller}")
-    data = reply.data if isinstance(reply.data, dict) else {}
-    name = data.get("id")
-    if not isinstance(name, str) or not name:
-        _die(f"the server minted no channel name in {caller}")
-    return name
+def _armed(client, caller, session, first):
+    """Arms the callback: one match sends the mentor's own words to the asker.
 
+    # Invariant
 
-def _started(client, caller, channel):
-    """Starts the waiting channel: a program of its own, outliving this call.
+    The pattern is anchored at both ends, for the reason `subscribe` matches
+    unanchored: `^turn_end:main$` must not also fire for `main/impl`. The name is a
+    session's path, so it is escaped before it is a pattern.
 
-    It is started on **this** machine (`remote: none`), not on the session's: the waiter
-    beside this file is here, and an answer is read from the transcript, which is here too.
-    A session whose workspace is elsewhere therefore asks from the same channel.
+    `{event.answer}` is the turn's answer, which the server now keeps whole. The
+    message also names the event row and the row the question was asked at: the
+    subscription is one-shot, and a turn that was already running ends first.
     """
-    reply = client.call(
-        "new_channel", id=channel, name=PROGRAM, remote="none", session=caller
-    )
-    if not reply.ok:
-        _die(reply.message or f"cannot start channel {channel} in {caller}")
-
-
-def _line(session, first, caller, channel):
-    """The one line the subscription types into the channel when the turn ends.
-
-    What the waiter needs travels in the environment rather than as arguments, and the
-    channel id travels without its leading slash: a shell on Windows rewrites a word that
-    begins with `/` into a Windows path, whether the word is an argument or an assignment
-    value -- measured, `/ask/1` reached `answer.py` as `C:/SoftWare/git/Git/ask/1`, and
-    the channel was left behind.
-    """
-    waiter = os.path.join(os.path.dirname(os.path.abspath(__file__)), WAITER)
-    carried = {
-        answer.MENTOR_VAR: session,
-        answer.FIRST_VAR: str(first),
-        answer.CALLER_VAR: caller,
-        # The id travels without its leading `/`: a shell on Windows rewrites a word that
-        # begins with one into a Windows path, and it does that to an assignment too --
-        # measured, `/ask/1` arrived as `C:/SoftWare/git/Git/ask/1`.
-        answer.CHANNEL_VAR: channel.lstrip("/"),
-    }
-    prefix = " ".join(
-        f"{name}={shlex.quote(value)}" for name, value in carried.items()
-    )
-    return f"{prefix} {shlex.quote(sys.executable)} {shlex.quote(waiter)}"
-
-
-def _armed(client, caller, session, channel, line):
-    """Arms the callback: one match of that session's turn end runs the waiter."""
     reply = client.call(
         "subscribe",
         pattern=f"^turn_end:{re.escape(session)}$",
-        cmd={
-            "name": "input_channel",
-            "args": {"id": channel, "input": line, "session": caller, "wait": 0},
-        },
+        cmds=[
+            {
+                "name": "send_message",
+                "args": {
+                    "session": caller,
+                    "message": (
+                        f"{session} ended a turn (event row {{event.id}}); the question was "
+                        f"asked at row {first}:\n\n{{event.answer}}"
+                    ),
+                },
+            }
+        ],
         session=caller,
     )
     if not reply.ok:
@@ -155,25 +118,25 @@ def _deliver(client, session, question):
         _die(reply.message or f"the question did not reach {session}")
 
 
-def _undo(client, caller, channel, armed):
-    """Takes back what an ask that could not finish had already set up.
+def _disarm(client, caller, armed):
+    """Takes back the subscription an ask that could not finish had already armed.
 
     Best effort: the refusal the caller needs is the one that started this, so nothing
     here is allowed to replace it with its own.
     """
+    if armed is None:
+        return
     try:
-        if armed is not None:
-            client.call("del_subscription", path=str(armed), session=caller)
-        client.call("del_channel", id=channel, session=caller)
+        client.call("del_subscription", path=str(armed), session=caller)
     except Exception:  # noqa: BLE001 - the caller's own refusal is the one to report
         pass
 
 
 def ask(session, question):
-    """The question delivered, a channel waiting; a sentence saying what is armed.
+    """The question delivered, an answer armed; a sentence saying what is armed.
 
-    The cursor is taken before the question is sent, so the row the waiter reads from is
-    the one this question made, never a turn that ended before it.
+    The cursor is taken before the question is sent, so the row it names is the one
+    this question made, never a turn that ended before it.
     """
     session = (session or "").strip()
     question = (question or "").strip()
@@ -191,21 +154,17 @@ def ask(session, question):
         client = _client.connect()
     except _client.Unusable as unusable:
         _die(str(unusable))
-    channel, armed = None, None
+    armed = None
     try:
         first = _tail(client, session) + 1
-        channel = _minted(client, caller)
-        _started(client, caller, channel)
-        armed = _armed(client, caller, session, channel, _line(session, first, caller, channel))
+        armed = _armed(client, caller, session, first)
         _deliver(client, session, question)
-    except BaseException:  # noqa: BLE001 - a channel started for nobody is litter
-        if channel is not None:
-            _undo(client, caller, channel, armed)
+    except BaseException:  # noqa: BLE001 - a subscription armed for nobody is litter
+        _disarm(client, caller, armed)
         raise
     finally:
         client.close()
     return (
-        f"asked {session}; channel {channel} waits for that turn to end and will send you the "
-        f"answer (subscription `{armed}`). You can read it yourself any time: "
-        f"get_messages --session {session} --range {first}:"
+        f"asked {session}; its turn end sends you the answer (subscription `{armed}`). "
+        f"You can read it yourself any time: get_messages --session {session} --range {first}:"
     )

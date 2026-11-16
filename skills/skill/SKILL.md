@@ -176,10 +176,11 @@ very message it waited for is what ended the call.
 **This is a convention, not a check.** The command layer has an internal clock, but
 `run_skill` is exempt from it on purpose (a skill is bounded by the skill runner's own
 bound instead -- `CALL_TIMEOUT_MS`, 120 s by default), so nothing refuses a blocking skill;
-it just wastes a turn until that bound stops it. A skill that has to wait for something
-leaves the wait somewhere a program can do it: a channel (`new_channel`) started at the
-call, started again by a subscription (`subscribe`), and told to bring the answer back with
-`send_message`. `self-control`'s `ask` is that shape written out.
+it just wastes a turn until that bound stops it. A skill that needs something to happen
+leaves it to the event stream: arm a subscription (`subscribe`) whose commands include a
+`send_message` back to you, and let the server put what happened into it -- `{event.answer}`,
+`{event.outcome}`. That is `self-control`'s `ask`, and it starts no program at all. A
+channel (`new_channel`) is for a program that must run, not for waiting on a notification.
 
 ## Examples
 
