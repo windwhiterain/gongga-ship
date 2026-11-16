@@ -22,11 +22,14 @@ handed the dict itself.
 The second request asks what the package publishes instead of calling it:
 
     {"skill": "<skill directory>", "manifest": true}
-    -> {"functions": {"fetch": [{"name": "url", "required": true}, ...], ...}}
+    -> {"functions": {"fetch": [{"name": "url", "required": true, "type": "string"}], ...}}
 
 That answer is how a harness publishes these functions as commands of its own: the
-names and which of them a call must carry are read off `inspect.signature`, so a
-command and the function behind it cannot disagree about their arguments.
+names, which of them a call must carry and the type each one is are read off
+`inspect.signature` and its annotations, so a command and the function behind it
+cannot disagree about their arguments. A type is JSON Schema's spelling (`string`,
+`integer`, `number`, `boolean`, `array`, `object`); an annotation this file cannot
+read publishes `null`, which says only that the value is whatever the caller wrote.
 
 Two mistakes are refused here, and each answer names what the function does take: a
 `function` the package does not publish, and an `args` key that is no parameter of
@@ -54,6 +57,7 @@ import json
 import os
 import sys
 import traceback
+import typing
 
 #: The file that makes a skill directory a package.
 PACKAGE = "__init__.py"
@@ -110,10 +114,58 @@ def functions(module):
         name: value
         for name, value in vars(module).items()
         if not name.startswith("_")
-        and callable(value)
+        and (inspect.isfunction(value) or inspect.isbuiltin(value))
         and not inspect.ismodule(value)
         and not inspect.isclass(value)
     }
+
+
+# The JSON Schema type each Python type names.
+SCHEMA_TYPES = {
+    str: "string",
+    int: "integer",
+    float: "number",
+    bool: "boolean",
+    list: "array",
+    tuple: "array",
+    set: "array",
+    frozenset: "array",
+    dict: "object",
+    bytes: "string",
+}
+
+
+def hints_of(entry):
+    """The annotations `entry` states, resolved: a file may spell them as strings."""
+    try:
+        return typing.get_type_hints(entry)
+    except Exception:
+        return {}
+
+
+def type_of(annotation):
+    """The JSON Schema type an annotation names, or None when it names none.
+
+    # Invariant
+
+    Read, never guessed: an annotation this file cannot read states no type, and a
+    caller writes a string there, which `bound` hands over as it arrived.
+    `Optional[X]` is `X`'s type, because either way the value may be null.
+    """
+    if annotation is inspect.Parameter.empty or annotation is None:
+        return None
+    origin = typing.get_origin(annotation)
+    if origin is not None:
+        arguments = typing.get_args(annotation)
+        if origin is typing.Union or type(annotation).__name__ == "UnionType":
+            named = [one for one in arguments if one is not type(None)]
+            return type_of(named[0]) if len(named) == 1 else None
+        if origin is typing.Annotated:
+            return type_of(arguments[0]) if arguments else None
+        return SCHEMA_TYPES.get(origin)
+    if isinstance(annotation, str):
+        return None
+    return SCHEMA_TYPES.get(annotation)
 
 
 def parameters(entry):
@@ -125,6 +177,7 @@ def parameters(entry):
     the whole rule -- Python's, read rather than restated.
     """
     rows = []
+    hints = hints_of(entry)
     for parameter in inspect.signature(entry).parameters.values():
         if parameter.kind in (
             inspect.Parameter.POSITIONAL_ONLY,
@@ -136,6 +189,9 @@ def parameters(entry):
             {
                 "name": parameter.name,
                 "required": parameter.default is inspect.Parameter.empty,
+                "type": type_of(
+                    hints.get(parameter.name, parameter.annotation)
+                ),
             }
         )
     return rows
