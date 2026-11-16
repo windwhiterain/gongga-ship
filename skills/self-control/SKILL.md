@@ -1,6 +1,6 @@
 ---
 name: self-control
-description: The server's command schemas as this build publishes them -- the twenty-one commands a session drives itself with (send_message, new_session, set_session, del_session, ls_session, clone_session, interrupt_session, cancel, subscribe, ls_subscription, del_subscription, trigger_event, new_channel, input_channel, ls_channel, rename_channel, del_channel, get_messages, events, list_paths, sync_session), each with its exact arguments and a callable example, plus the one convenience this skill publishes, `ask`, which puts a question to another session and arms the ping that says its answer exists -- it never waits. Read it when you are about to call one of these and need its argument names, which ones are required, and what the answer carries.
+description: The server's command schemas as this build publishes them -- the twenty-two commands a session drives itself with (send_message, new_session, set_session, del_session, ls_session, clone_session, interrupt_session, cancel, subscribe, ls_subscription, del_subscription, trigger_event, new_channel, new_channel_id, input_channel, ls_channel, rename_channel, del_channel, get_messages, events, list_paths, sync_session), each with its exact arguments and a callable example, plus the one convenience this skill publishes, `ask`, which puts a question to another session and leaves a channel waiting to bring the answer back. Read it when you are about to call one of these and need its argument names, which ones are required, and what the answer carries.
 compatibility: the command schemas need nothing but the server; `ask` needs Python 3, the client the server writes at <home>/ship/python/gongga.py, and the session it runs in (`$GONGGA_SESSION`, which a skill runner exports)
 ---
 
@@ -321,6 +321,24 @@ pid.
 gongga-cli '{"name":"new_channel","args":{"id":"/bash/default","name":"bash","session":"work/child"}}'
 ```
 
+### `new_channel_id` -- a channel name nobody holds
+
+| argument | spelling | required | meaning |
+|---|---|---|---|
+| `prefix` | positional | no | the namespace to mint in: the id is `<prefix>/<n>`; omitted is `/channel` |
+| `session` | named (`--session`), kind `session` | no | whose channels decide what is taken; omitted is the caller's |
+
+`new_channel` refuses a name in use, so a caller that must start a channel under a fresh
+name asks here instead of making one up: the server is the only party that can say what the
+session already holds. `<n>` is the smallest integer whose `<prefix>/<n>` is free, so the
+answer is stable until a channel of that name exists.
+
+The answer is the name and its session: `{"id": "/ask/1", "session": "work/child"}`.
+
+```bash
+gongga-cli '{"name":"new_channel_id","args":{"prefix":"/ask"}}'
+```
+
 ### `input_channel` -- write a line in, read the unread part of what comes back
 
 | argument | spelling | required | meaning |
@@ -536,22 +554,26 @@ gongga-cli '{"name":"list_paths","args":{"path":"C:/resource"}}'
 
 **Another session -- a mentor, a parent -- holds what you have already forgotten.**
 Searching again is that whole search paid twice; one question is one turn. `ask` is the
-only thing this skill publishes, and it does the two steps nobody remembers: it puts the
-question in the other session's hands with `send_message`, and it arms a subscription on
-that session's `turn_end` whose action is a `send_message` back to you, naming the row the
-answer starts at.
+only thing this skill publishes, and it does the steps nobody remembers: it mints a channel
+name (`new_channel_id`), starts a channel of the session's own on it, arms a subscription
+on the mentor's `turn_end` whose action types one line into that channel, and sends the
+question with `send_message`.
 
-**It does not wait.** The answer is not a return value: it is rows in the transcript of
-the session that said it, and this call answers with where they are. The ping arrives at
-your next step boundary, so you go on working instead of holding the turn -- and a blocked
-command cannot be the one that receives the ping: measured, an `ask` that polled the
-transcript held a turn for 97 s and was ended by the very message it waited for.
+**Nothing waits.** Not this function, and not the turn that asked it: the call is over as
+soon as the question is sent. When the mentor's turn ends, the subscription starts
+`answer.py` **in the channel**, which reads the mentor's transcript from the row the
+question made and `send_message`s the answer back to the asker. The channel then ends and
+is forgotten.
+
+Why a channel: waiting is `exec`'s, not a command's -- and a command that blocks holds the
+turn it was asked in. Measured, an `ask` that polled the transcript in its own process held
+a turn for 97 s and was ended by the very message it was waiting for.
 
 ```python
 import gongga_skill    # the home's `gongga_skill.py`, the contract a package is run through
 where = gongga_skill.run(SKILL_DIR, "ask", {"session": "mentor", "question": "how did I write the snapshot step?"})
-# asked mentor; subscription `3` pings you when that turn ends, and the answer is in its
-# transcript from row 512: get_messages --session mentor --range 512:
+# asked mentor; channel /ask/1 waits for that turn to end and will send you the answer
+# (subscription `sub3`). You can read it yourself any time: get_messages --session mentor --range 512:
 ```
 
 ```bash
@@ -576,29 +598,31 @@ flag parser anywhere in the path -- nothing after the name is read back as words
   refused by name.
 - **Ask something specific.** Say what you want answered and why now. "Is this fine?"
   earns one word; the step that has you stuck earns an answer.
-- **No `timeout`, no `poll`.** There is nothing to time: the call is over when the
-  question is sent and the ping is armed.
+- **No `timeout`, no `poll`.** There is nothing to time here: the wait is a program's, and
+  a program's length is `exec`'s business.
 - **Refusal** raises `RuntimeError` with the reason -- the package runner prints it and
-  exits 1. A question that could not be asked leaves nothing armed behind it.
-- **Several questions to one session**: each `ask` arms its own ping under a name the
-  server picks, and each reports the one it got.
+  exits 1 -- and takes back what it had already set up: a channel started for a question
+  that never went out is closed again.
+- **A workspace on another machine is refused.** The channel runs on the session's
+  machine, so the waiter beside this file is not there to run. Ask with `send_message` and
+  subscribe to that session's `turn_end` yourself; the ping reaches you either way.
 
-`ask` answers with where to read; what wakes you later is the ping, and the ping is a
-pointer, not the answer:
+| what | where it comes from |
+| --- | --- |
+| the channel | `<namespace>/<n>`, minted by `new_channel_id` so two asks never race for one name. The callback is `input_channel` with `wait: 0`: it types the line and returns, and the waiter runs on its own |
+| the waiter | `answer.py`, beside this `SKILL.md`: `<interpreter> answer.py <mentor> <first row> <caller> <channel>` |
+| the answer | the last `output` row of that session with `done` true, from the row the question made, sent to you as a message with one line saying who it is from |
+
+What arrives is one message:
 
 ```
-mentor finished its turn: the answer to your question is in its transcript, from row
-512. Read it with: get_messages --session mentor --range 512:
+mentor answered (asked through self-control `ask`):
+
+<what it said>
 ```
 
-So the sequence is: `ask`, keep working, and when the ping lands read that range. A range
-that is still empty means the question was queued behind a running turn and is being
-answered in the next one: read again after the following ping, or `wait`.
-
-Reading it is `get_messages` with `replay: "true"`: the operator's line and the answer's
-own lines are distinct rows, so there is no guessing about who said what. The row the ping
-names is the first row after the cursor `ask` took *before* sending, so the answer has to
-come after the question's own row, never from a turn that ended earlier.
+A turn that ends with nothing new in it sends the range instead of an answer, so a question
+queued behind a running turn is never silently lost: read that range, or ask again.
 
 ## The Python client inside a script
 
