@@ -75,7 +75,7 @@ mentor 不存在就用当前的 model 和 cwd 建一个；它是普通会话（�
 ```bash
 # 读 mentor 的整份原文：不走模型、不花额度
 gongga-cli '{"name":"get_messages","args":{"session":"<你的会话名>/mentor","range":"1:"}}'
-# 问它一句（`self-control` 的 `ask`）：它等到答复，把答复印在 stdout
+# 问它一句（`self-control` 的 `ask`）：问题发出去、答复的 ping 替你订阅上，返回的是去读哪几行
 A() { gongga-cli "{\"name\":\"run_skill\",\"args\":{\"id\":\"self-control\",\"cmd\":{\"name\":\"ask\",\"args\":{\"session\":\"<你的会话名>/mentor\",\"question\":\"$1\"}},\"session\":\"$GONGGA_SESSION\"}}"; }
 A '<你的问题>'
 ```
@@ -85,8 +85,8 @@ A '<你的问题>'
 **必须问，不要重做。** 要动手之前先问 mentor 一句：它手上有整份原文，包括那些你已经不记得的失败和它们失败的原因。问一句是一个回合，重新摸索一遍是把整场搜索再付一次——上下文就是这么没的。
 
 上面第二条就是问它的命令（`self-control` skill 的 `ask`）：参数是两个名字，`session` 和
-`question`，写错了 `gongga_skill` 会直接把它的签名念给你听。答复不只在 stdout，也会作为
-一条消息回到你当前会话里。
+`question`，写错了 `gongga_skill` 会直接把它的签名念给你听。它**不等**：把问题发出去、在
+mentor 的 `turn_end` 上替你订阅一条 ping，然后告诉你答复在哪几行（`get_messages --range <行>:`）。
 
 问的时候把问题说具体：**要什么答案、为什么现在要**。"当时能不能这么写"这种问法只能换来一句"能"，把你卡住的那一步写进去，才有东西可答。
 
