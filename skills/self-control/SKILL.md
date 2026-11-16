@@ -312,10 +312,12 @@ directory and environment, and is named by a path in the session's namespace
 |---|---|---|---|
 | `id` | positional (`<id>`) | yes | the name it is called by: a path in this session's namespace |
 | `name` | positional (`<name>`) | yes | the program: a path, or a name the config's `[channel.<name>]` rows know (that row supplies the spawn words) |
-| `session` | named (`--session`), kind `session` | yes | the owner; the channel starts in that session's directory, environment and machine |
+| `remote` | named (`--remote`) | no | the machine its program runs on; omitted is the session's, `none` is this one |
+| `session` | named (`--session`), kind `session` | yes | the owner; the channel starts in that session's directory and environment |
 
 A name already in use is refused -- `exec` speaks to that one. The answer carries the
-pid.
+pid. `remote` is SPEC's `optional[str]`: absent is the session's machine, a stated `none`
+is this one, and a name is that peer -- the same reading `exec`'s `remote` gets.
 
 ```bash
 gongga-cli '{"name":"new_channel","args":{"id":"/bash/default","name":"bash","session":"work/child"}}'
@@ -603,9 +605,9 @@ flag parser anywhere in the path -- nothing after the name is read back as words
 - **Refusal** raises `RuntimeError` with the reason -- the package runner prints it and
   exits 1 -- and takes back what it had already set up: a channel started for a question
   that never went out is closed again.
-- **A workspace on another machine is refused.** The channel runs on the session's
-  machine, so the waiter beside this file is not there to run. Ask with `send_message` and
-  subscribe to that session's `turn_end` yourself; the ping reaches you either way.
+- **A workspace on another machine still works.** The channel is started with
+  `remote: none`, so it runs here, where the waiter beside this `SKILL.md` is -- the
+  answer is read from a transcript, and transcripts live on this server.
 
 | what | where it comes from |
 | --- | --- |

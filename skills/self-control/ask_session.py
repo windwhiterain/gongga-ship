@@ -40,8 +40,6 @@ import answer
 
 #: The variable the server exports into every process it starts for a session.
 SESSION_VAR = "GONGGA_SESSION"
-#: The variable it exports when that session's workspace is on another machine.
-REMOTE_VAR = "GONGGA_REMOTE"
 #: The namespace ask's channels are minted in, so they read as what they are.
 NAMESPACE = "/ask"
 #: The program a waiting channel runs: a shell, because the subscription types a line.
@@ -95,8 +93,15 @@ def _minted(client, caller):
 
 
 def _started(client, caller, channel):
-    """Starts the waiting channel: a program of its own, outliving this call."""
-    reply = client.call("new_channel", id=channel, name=PROGRAM, session=caller)
+    """Starts the waiting channel: a program of its own, outliving this call.
+
+    It is started on **this** machine (`remote: none`), not on the session's: the waiter
+    beside this file is here, and an answer is read from the transcript, which is here too.
+    A session whose workspace is elsewhere therefore asks from the same channel.
+    """
+    reply = client.call(
+        "new_channel", id=channel, name=PROGRAM, remote="none", session=caller
+    )
     if not reply.ok:
         _die(reply.message or f"cannot start channel {channel} in {caller}")
 
@@ -181,14 +186,6 @@ def ask(session, question):
         _die(
             f"{session} is the session asking: its own turn cannot answer a question it is "
             "in the middle of, so ask another session"
-        )
-    remote = (os.environ.get(REMOTE_VAR) or "").strip()
-    if remote:
-        _die(
-            f"ask waits in a channel of {caller}, which runs on {remote}, and the waiter it "
-            f"runs is {os.path.join(os.path.dirname(os.path.abspath(__file__)), WAITER)} on "
-            "this machine: send the question with `send_message` and subscribe to that "
-            "session's turn end yourself, or ask from a session whose workspace is local"
         )
     try:
         client = _client.connect()
