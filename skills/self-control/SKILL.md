@@ -583,7 +583,8 @@ flag parser anywhere in the path -- nothing after the name is read back as words
 - **Several questions to one session**: each `ask` arms its own ping under a name the
   server picks, and each reports the one it got.
 
-What comes back is the ping, and the ping is a pointer, not the answer:
+`ask` answers with where to read; what wakes you later is the ping, and the ping is a
+pointer, not the answer:
 
 ```
 mentor finished its turn: the answer to your question is in its transcript, from row
@@ -596,8 +597,8 @@ answered in the next one: read again after the following ping, or `wait`.
 
 Reading it is `get_messages` with `replay: "true"`: the operator's line and the answer's
 own lines are distinct rows, so there is no guessing about who said what. The row the ping
-names is the cursor `ask` took *before* sending, so the answer has to come after the
-question's own row, never from a turn that ended earlier.
+names is the first row after the cursor `ask` took *before* sending, so the answer has to
+come after the question's own row, never from a turn that ended earlier.
 
 ## The Python client inside a script
 
