@@ -44,10 +44,11 @@ spelling — `ls_skill` prints the name, `run_skill` takes it back unchanged. A 
 layers both hold is two rows with one name; `run_skill` runs the nearer one, which is the
 same row `@skill(...)` reads, and `ls_skill <bucket>` shows both.
 
-An id is a **path** as far as it needs to be one: a skill a layer nests under
-subdirectories is named by the directories under its bucket (`harness/team/report`). That
-form is resolved, not guessed — the first word names the layer, the rest is a path under
-it — so a nested skill has an address without every name carrying a bucket.
+The name is the whole address: `harness/file` is not a longer spelling of `file`, it is a
+name nobody has, and it is refused with the list `ls_skill` prints. That is what lets a
+call name a skill without knowing which layer answered — and it is why `ls_skill` takes a
+bucket's own word (`harness`) as a **filter** instead: where a row came from is worth
+looking at, not worth typing into a call.
 
 ## ls_skill
 

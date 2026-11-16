@@ -70,20 +70,20 @@ root = "machine"
 # about what a call carries: an argument added to the function is an argument of the
 # command, and one removed stops being offered.
 #
-# `skill` is the id `ls_skill` prints (`harness/file`), and `function` is a name that
+# `skill` is the id `ls_skill` prints (`file`), and `function` is a name that
 # package publishes. A command whose skill or function does not answer is not published
 # and the reason is logged -- the commands that do answer stay.
 [[command]]
 name = "read"
-skill = "harness/file"
+skill = "file"
 function = "read"
 
 [[command]]
 name = "write"
-skill = "harness/file"
+skill = "file"
 function = "write"
 
 [[command]]
 name = "edit"
-skill = "harness/file"
+skill = "file"
 function = "edit"

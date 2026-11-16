@@ -95,7 +95,7 @@ reader acts on, and they publish nothing to run.
 ```toml
 [[command]]
 name = "write"
-skill = "harness/file"
+skill = "file"
 function = "write"
 ```
 
