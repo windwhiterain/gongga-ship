@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 """The waiter an `ask` leaves in a channel: read the answer, hand it over.
 
-    python answer.py <mentor> <first row> <caller> <channel>
-
-The subscription an `ask` arms types that line into the channel when the mentor's turn
-ends, so this runs in a process of the session's own and while no turn is running: it
-reads the mentor's transcript from the row the question made, sends what it found to the
-caller with `send_message`, and then forgets the channel it ran in.
+The subscription an `ask` arms types one line into the channel at the mentor's
+`turn_end`, and that line starts this program. It runs in a process of the session's own
+and while no turn is running: it reads the mentor's transcript from the row the question
+made, sends what it found to the caller with `send_message`, and then forgets the channel.
 
 Why a channel and not the asking call: waiting is not a command's business, because a
 command that blocks holds the turn it was asked in. SPEC gives waiting to `exec`'s
 channel, so the wait lives here, in a program, and the subscription is what starts it.
+
+What it was asked to do arrives in the environment, never as an argument. A shell on
+Windows rewrites an argument that begins with `/` into a Windows path -- measured, the
+channel id `/ask/9` reached this program as `C:/SoftWare/git/Git/ask/9` -- and the ids
+this needs are all paths.
 
 Exit: 0 the answer (or its absence) reached the caller; 2 nothing did, and why is on stderr.
 """
@@ -22,6 +25,17 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import _client
 
+#: The session whose answer this waiter reads.
+MENTOR_VAR = "GONGGA_ASK_MENTOR"
+#: The first transcript row the question made: the answer is at or after it.
+FIRST_VAR = "GONGGA_ASK_FIRST"
+#: The session the answer is sent to: the one that asked.
+CALLER_VAR = "GONGGA_ASK_CALLER"
+#: The channel this runs in, which it ends when it is done with it. Its id travels
+#: without the leading `/`: a shell on Windows rewrites a word that begins with one into a
+#: Windows path, and the id is carried through a shell to get here.
+CHANNEL_VAR = "GONGGA_ASK_CHANNEL"
+
 #: The spelling of "this is the whole transcript", as `get_messages` takes it.
 ALL_FROM = "{}:"
 
@@ -29,6 +43,14 @@ ALL_FROM = "{}:"
 def _refuse(message):
     print(message, file=sys.stderr)
     return 2
+
+
+def _carried(name):
+    """One thing the arming line put in the environment; a refusal names it."""
+    value = (os.environ.get(name) or "").strip()
+    if not value:
+        _refuse(f"answer.py is started by an ask, and this process has no {name}")
+    return value
 
 
 def _unwrapped(message):
@@ -72,19 +94,23 @@ def _answered(rows, mentor):
 def _forget(client, channel, caller):
     """Ends the channel this ran in: a waiter is one question's scratch program.
 
-    Best effort and last: the call ends the program that is making it, so no answer is
-    waited for. A channel left behind is still nameable, which is what makes this safe.
+    Best effort and last: the call ends the program that is making it, so its answer may
+    never arrive. A channel left behind is still nameable, and this says so on stderr
+    rather than leaving a reader to find it.
     """
     try:
-        client.call("del_channel", id=channel, session=caller)
-    except Exception:  # noqa: BLE001 - the program is being ended by this very call
-        pass
+        reply = client.call("del_channel", id=channel, session=caller)
+        if not reply.ok:
+            print(f"channel {channel} was left behind: {reply.message}", file=sys.stderr)
+    except Exception as error:  # noqa: BLE001 - the program is being ended by this very call
+        print(f"channel {channel} was left behind: {error}", file=sys.stderr)
 
 
-def main(argv):
-    if len(argv) != 5:
-        return _refuse("answer.py takes <mentor> <first row> <caller> <channel>")
-    mentor, first, caller, channel = argv[1], argv[2], argv[3], argv[4]
+def main():
+    mentor = _carried(MENTOR_VAR)
+    first = _carried(FIRST_VAR)
+    caller = _carried(CALLER_VAR)
+    channel = "/" + _carried(CHANNEL_VAR).lstrip("/")
     try:
         client = _client.connect()
     except _client.Unusable as unusable:
@@ -116,4 +142,4 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    sys.exit(main())

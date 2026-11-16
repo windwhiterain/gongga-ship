@@ -36,6 +36,7 @@ import shlex
 import sys
 
 import _client
+import answer
 
 #: The variable the server exports into every process it starts for a session.
 SESSION_VAR = "GONGGA_SESSION"
@@ -101,10 +102,28 @@ def _started(client, caller, channel):
 
 
 def _line(session, first, caller, channel):
-    """The one line the subscription types into the channel when the turn ends."""
+    """The one line the subscription types into the channel when the turn ends.
+
+    What the waiter needs travels in the environment rather than as arguments, and the
+    channel id travels without its leading slash: a shell on Windows rewrites a word that
+    begins with `/` into a Windows path, whether the word is an argument or an assignment
+    value -- measured, `/ask/1` reached `answer.py` as `C:/SoftWare/git/Git/ask/1`, and
+    the channel was left behind.
+    """
     waiter = os.path.join(os.path.dirname(os.path.abspath(__file__)), WAITER)
-    words = [sys.executable, waiter, session, str(first), caller, channel]
-    return " ".join(shlex.quote(word) for word in words)
+    carried = {
+        answer.MENTOR_VAR: session,
+        answer.FIRST_VAR: str(first),
+        answer.CALLER_VAR: caller,
+        # The id travels without its leading `/`: a shell on Windows rewrites a word that
+        # begins with one into a Windows path, and it does that to an assignment too --
+        # measured, `/ask/1` arrived as `C:/SoftWare/git/Git/ask/1`.
+        answer.CHANNEL_VAR: channel.lstrip("/"),
+    }
+    prefix = " ".join(
+        f"{name}={shlex.quote(value)}" for name, value in carried.items()
+    )
+    return f"{prefix} {shlex.quote(sys.executable)} {shlex.quote(waiter)}"
 
 
 def _armed(client, caller, session, channel, line):
