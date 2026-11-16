@@ -406,6 +406,12 @@ The live-compaction interval has elapsed. Call `live_compact` with two parts. `s
 # The text a turn boundary is written with when the provider refused the transcript.
 thinking_mark = '''
 The provider refused the previous request because a step was written without thinking. This mark records that refusal at the turn boundary; continue with thinking.'''
+
+# What fills the boundary of a request that would otherwise end on the model's own words:
+# a turn a stop cut short mid-thought or mid-sentence, whose half step cannot be answered.
+# A home without this template sends the request as it stands, as it did before.
+resume_mark = '''
+resume'''
 [tools.arguments]
 description = '''What this call is for, in a few words -- it is read right after the tool's name, so say what the run is for, not what the command is (`check the state`, not `bash`). Optional, and never executed: it also names the file that a too-long output is spilled to, so that later you (and whoever reads the dumps) can tell one run from another. Example: `run the server tests`.'''
 
