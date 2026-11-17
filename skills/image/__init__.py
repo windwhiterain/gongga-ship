@@ -14,6 +14,8 @@ harness would try to upload.
 """
 
 import os as _os
+import posixpath as _posixpath
+import re as _re
 import sys as _sys
 
 #: The extensions the harness accepts, mirrored from `crates/server/src/image.rs`.
@@ -67,12 +69,40 @@ def _media_type(path, head):
     return None
 
 
+def _shell_path(path):
+    """`path` as the peer's own shell spells it: `/` throughout.
+
+    # Invariant
+
+    The spelling the harness joins a peer's reference against: `remote.py`'s
+    `Space.resolve` and `space.rs::spell` both read a name with `/`, so a Windows path
+    printed by `os.path` is rewritten here rather than refused there.
+    """
+    return path.replace("\\", "/")
+
+
+def _standing():
+    """The machine and directory this call stands in: `(remote, directory)`.
+
+    # Invariant
+
+    A skill runs on this machine, so `os.getcwd()` is this machine's directory even when
+    the session stands on a peer. `GONGGA_REMOTE`/`GONGGA_REMOTE_CWD` are what the server
+    puts beside it, and they are the only answer for a relative path a message names.
+    """
+    remote = (_os.environ.get("GONGGA_REMOTE") or "").strip()
+    if not remote:
+        return (None, _os.getcwd())
+    return (remote, (_os.environ.get("GONGGA_REMOTE_CWD") or "").strip())
+
+
 def show(paths: list, check: bool = False):
     r"""One `@image(<path>)` line per readable picture in `paths`.
 
     `paths` is a list of strings. A relative path is read from the calling session's
-    directory. `check` says what each picture is instead of printing a reference --
-    the way to see why one did not appear.
+    directory -- on a peer that is the peer's directory, and the reference says which
+    machine it is on: `@image(<path>) (remote=<name>)`. `check` says what each picture is
+    instead of printing a reference -- the way to see why one did not appear.
 
     # Invariant
 
@@ -84,9 +114,29 @@ def show(paths: list, check: bool = False):
     if not paths:
         _die("name at least one picture")
 
+    remote, standing = _standing()
     lines = []
     for given in paths:
-        path = given if _os.path.isabs(given) else _os.path.join(_os.getcwd(), given)
+        if remote:
+            # The bytes are on the peer, so this call cannot read them: it prints the
+            # reference and the harness attaches it from there. A relative name is
+            # joined against the peer directory the server stated.
+            named = given if _os.path.isabs(given) or _re.match(r"^[A-Za-z]:", given) else _posixpath.join(
+                _shell_path(standing), _shell_path(given)
+            )
+            path = _shell_path(named)
+            if check:
+                lines.append(f"{given}: on remote {remote}, as {path}")
+                continue
+            if path.count("(") != path.count(")"):
+                _note(
+                    f"{given}: the path has an unbalanced parenthesis, and an @image(...) "
+                    f"reference is read by counting them -- copy it under another name first"
+                )
+                continue
+            lines.append(f"@image({path}) (remote={remote})")
+            continue
+        path = given if _os.path.isabs(given) else _os.path.join(standing, given)
         try:
             with open(path, "rb") as handle:
                 head = handle.read(16)
