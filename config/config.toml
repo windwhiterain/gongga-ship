@@ -168,6 +168,13 @@ in a shell, or the `skill` tool with the same `cmd`. It answers with the continu
 
 Failing tests and unfinished work are valid state: record them, do not fix them first. Every request made before the handoff is paid for at this size.'''
 
+# What an archive is told when a request gets big: the numbers, and nothing to do about
+# them. An archive *is* the transcript its continuation reads back, so handing it off
+# would write a second copy of the same size, born at the same ceiling. Placeholders:
+# {{session}}, {{tokens}}, {{window}}
+context_measure = '''
+Context notice for `{{session}}`: {{tokens}} input tokens of {{window}} total.'''
+
 # What the agent is told about a tool call that never returned: verify, do not
 # assume. Static.
 interrupted_call = '''tool call interrupted'''

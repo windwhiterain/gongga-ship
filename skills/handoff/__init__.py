@@ -399,10 +399,13 @@ def _ensure_mentor(conn, name, source):
     # `model_name` is the bare name and is NOT NULL; `model` is the pair. A row
     # written without the first failed the constraint outright.
     bare = str(source["model"]).split("/")[-1]
+    # `mentor_of` is the session this row archives: it is how the server knows an
+    # archive keeps the transcript and is never asked to hand it off.
     conn.execute(
-        """insert into sessions (name, status, model_name, model, cwd, created_at, updated_at)
-            values (?, 'idle', ?, ?, ?, ?, ?)""",
-        (name, bare, source["model"], source["cwd"], now, now),
+        """insert into sessions (name, status, model_name, model, cwd, created_at, updated_at,
+                                mentor_of)
+            values (?, 'idle', ?, ?, ?, ?, ?, ?)""",
+        (name, bare, source["model"], source["cwd"], now, now, source["id"]),
     )
     return (
         conn.execute("select id from sessions where name = ?", (name,)).fetchone()["id"],
@@ -450,7 +453,7 @@ def handoff(note: str, mentor: _typing.Optional[str] = None):
     mentor = _free_name(conn, mentor)
     sid = _session_id(conn, session)
     source = conn.execute(
-        "select model, cwd, context_tokens, context_limit from sessions where id = ?",
+        "select id, model, cwd, context_tokens, context_limit from sessions where id = ?",
         (sid,),
     ).fetchone()
     rows = conn.execute(

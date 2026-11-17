@@ -33,7 +33,10 @@
 # 13: this file declares commands. A protocol-12 server is told these lines by nobody:
 # it would offer the tool that forwards to one of them and then fail every call, because
 # the name it forwards to is not in its catalog.
-protocol = 13
+# 14: an archive is recorded as one (`sessions.mentor_of`) and reads `context_measure`
+# instead of `context_notice`. A protocol-13 server has no such column, so the handoff
+# package's insert would fail there; and it never asks for the template either.
+protocol = 14
 
 # Which path in this repository is the home's config.
 config = "config/config.toml"
