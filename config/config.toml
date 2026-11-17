@@ -61,9 +61,10 @@ idle_timeout_ms = 60000
 max_retries = 0
 retry_base_ms = 1000
 
-[tools.bash]
-# Output longer than this is capped: head and tail come back, the
-# whole thing lands in ~/.gongga/outputs/. 0 disables the cap.
+[tools]
+# The longest answer one tool call returns, in characters: head and tail come
+# back, the whole thing lands in ~/.gongga/outputs/, and 0 disables the cap.
+# This is the default; a call's own `max_output` states its own for that call.
 max_output_chars = 8000
 
 [scripts]

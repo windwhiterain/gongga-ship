@@ -134,7 +134,7 @@ def show(paths: list, check: bool = False):
                     f"reference is read by counting them -- copy it under another name first"
                 )
                 continue
-            lines.append(f"@image({path}) (remote={remote})")
+            lines.append(f"@image(remote://{remote}/{path})")
             continue
         path = given if _os.path.isabs(given) else _os.path.join(standing, given)
         try:

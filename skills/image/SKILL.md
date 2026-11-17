@@ -1,6 +1,6 @@
 ---
 name: image
-description: 让模型看一张图（截图、图表、设计稿、照片）。调用本 skill 的 `show(paths, check=false)` 打印 `@image(<路径>)`，harness 会自动上传并作为图片交给模型——不要用 exec + base64 自己拼。会话在远端时它打印 `@image(<远端路径>) (remote=<名字>)`，由 harness 去那台机器取图。当你要断言"这个界面/图表/图里是什么"、或需要读一张磁盘上的图片时用它。
+description: 让模型看一张图（截图、图表、设计稿、照片）。调用本 skill 的 `show(paths, check=false)` 打印 `@image(<路径>)`，harness 会自动上传并作为图片交给模型——不要用 exec + base64 自己拼。会话在远端时它打印 `@image(remote://<名字>/<远端路径>)`，由 harness 去那台机器取图。当你要断言"这个界面/图表/图里是什么"、或需要读一张磁盘上的图片时用它。
 compatibility: 需要 Python 3
 ---
 
@@ -23,10 +23,10 @@ show     # paths 是路径列表；一张图一行 `@image(...)`，check 只报�
 的目录（`GONGGA_REMOTE_CWD`）把相对路径拼成远端路径，打印
 
 ```
-@image(<远端路径>) (remote=<远端名字>)
+@image(remote://<远端名字>/<远端路径>)
 ```
 
-`(remote=...)` 就是「去那台机器读这个文件」。harness 按它去远端取字节、上传，
+`remote://` 就是「去那台机器读这个文件」，它写在括号里，引用仍然只有一层括号。harness 按它去远端取字节、上传，
 附件仍然进到模型眼里。本机会话打印的是裸 `@image(<路径>)`。
 
 ```bash
