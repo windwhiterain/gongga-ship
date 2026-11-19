@@ -47,10 +47,10 @@ def document(directory):
             typed = argument.get("type")
             # A union is JSON Schema's own list of types: `dict | list[dict]` is
             # `["object", "array"]`, so the document says what the annotation says.
+            # A union states no type: constrained decoding compiles none, and a document
+            # that named both would be the one place a reader saw a shape no call can send.
             kinds = [kind.strip() for kind in (typed or "").split("|") if kind.strip()]
-            properties[argument["name"]] = (
-                {"type": kinds[0] if len(kinds) == 1 else kinds} if kinds else {}
-            )
+            properties[argument["name"]] = {"type": kinds[0]} if len(kinds) == 1 else {}
             if argument["required"]:
                 required.append(argument["name"])
         function = {"type": "object", "properties": properties}
