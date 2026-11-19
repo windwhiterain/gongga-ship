@@ -592,7 +592,6 @@ summary = '''Read a file as JSON: a page of it, the count of every line, and whe
 
 [[tool.read.parameters]]
 name = "path"
-required = true
 positional = 1
 hint = "path"
 sentence = '''The file to read.'''
@@ -614,14 +613,12 @@ summary = '''Replace a whole file, atomically: a temp file beside it, then a ren
 
 [[tool.write.parameters]]
 name = "path"
-required = true
 positional = 1
 hint = "path"
 sentence = '''The file to write. One that does not exist is created.'''
 
 [[tool.write.parameters]]
 name = "content"
-required = true
 positional = 2
 sentence = '''The whole of the new file, as the bytes they are: nothing here parses this word by word, so a script may go here unchanged.'''
 
@@ -633,14 +630,12 @@ summary = '''Change a span of a file, and report what it removed: `old` is one s
 
 [[tool.edit.parameters]]
 name = "path"
-required = true
 positional = 1
 hint = "path"
 sentence = '''The file to change, named as `read` names it.'''
 
 [[tool.edit.parameters]]
 name = "edits"
-required = true
 positional = 2
 hint = "json"
 sentence = '''One hunk, or a list of them, each `{"old": ..., "new": ...}`. `old` is a list of segments anchored in order, so a long middle may be elided while both ends still anchor the change; one segment is the ordinary exact match.'''
