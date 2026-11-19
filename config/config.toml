@@ -638,7 +638,7 @@ sentence = '''The file to change, named as `read` names it.'''
 name = "edits"
 positional = 2
 hint = "json"
-sentence = '''One hunk, or a list of them, each `{"old": ..., "new": ...}`. `old` is a list of segments anchored in order, so a long middle may be elided while both ends still anchor the change; one segment is the ordinary exact match.'''
+sentence = '''A list of hunks, each `{"old": ..., "new": ...}`. `old` is a list of segments anchored in order, so a long middle may be elided while both ends still anchor the change; one segment is the ordinary exact match. A single hunk is a list of one.'''
 
 [[tool.edit.parameters]]
 name = "all"

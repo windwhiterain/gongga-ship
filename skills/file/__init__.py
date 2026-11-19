@@ -254,7 +254,7 @@ def write(
 
 def edit(
     path: str,
-    edits: typing.Union[dict, list[dict]],
+    edits: list[dict],
     all: bool = False,
     remote: typing.Optional[str] = None,
     cwd: typing.Optional[str] = None,
@@ -271,7 +271,7 @@ def edit(
         if isinstance(edits, dict):
             edits = [edits]
         if not isinstance(edits, list) or not edits:
-            raise Refused("edit takes `edits`: one hunk, or a list of them, each with `old` and `new`")
+            raise Refused("edit takes `edits`: a list of hunks, each with `old` and `new`")
         done = []
         for index, hunk in enumerate(edits, 1):
             if not isinstance(hunk, dict):

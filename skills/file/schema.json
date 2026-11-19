@@ -8,7 +8,12 @@
         "cwd": {
           "type": "string"
         },
-        "edits": {},
+        "edits": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
         "path": {
           "type": "string"
         },

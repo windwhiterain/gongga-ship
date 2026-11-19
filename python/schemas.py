@@ -50,7 +50,10 @@ def document(directory):
             # A union states no type: constrained decoding compiles none, and a document
             # that named both would be the one place a reader saw a shape no call can send.
             kinds = [kind.strip() for kind in (typed or "").split("|") if kind.strip()]
-            properties[argument["name"]] = {"type": kinds[0]} if len(kinds) == 1 else {}
+            property = {"type": kinds[0]} if len(kinds) == 1 else {}
+            if argument.get("items"):
+                property["items"] = {"type": argument["items"]}
+            properties[argument["name"]] = property
             if argument["required"]:
                 required.append(argument["name"])
         function = {"type": "object", "properties": properties}

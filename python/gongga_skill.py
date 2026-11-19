@@ -218,6 +218,20 @@ def type_of(annotation):
     return by_class(annotation)
 
 
+def items_of(annotation):
+    """The type an array's elements are, when the annotation names one."""
+    if annotation is inspect.Parameter.empty or annotation is None:
+        return None
+    origin = typing.get_origin(annotation)
+    if origin is typing.Annotated:
+        arguments = typing.get_args(annotation)
+        return items_of(arguments[0]) if arguments else None
+    if type_of(annotation) != "array":
+        return None
+    arguments = typing.get_args(annotation)
+    return type_of(arguments[0]) if arguments else None
+
+
 def parameters(entry):
     """What one function takes: the arguments a caller may spell, and which it must.
 
@@ -235,15 +249,16 @@ def parameters(entry):
             inspect.Parameter.VAR_KEYWORD,
         ):
             continue
-        rows.append(
-            {
-                "name": parameter.name,
-                "required": parameter.default is inspect.Parameter.empty,
-                "type": type_of(
-                    hints.get(parameter.name, parameter.annotation)
-                ),
-            }
-        )
+        annotation = hints.get(parameter.name, parameter.annotation)
+        row = {
+            "name": parameter.name,
+            "required": parameter.default is inspect.Parameter.empty,
+            "type": type_of(annotation),
+        }
+        elements = items_of(annotation)
+        if elements:
+            row["items"] = elements
+        rows.append(row)
     return rows
 
 
