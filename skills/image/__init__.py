@@ -37,6 +37,10 @@ _MAGIC = [
 ]
 
 
+#: The machine a reference names for this one, mirrored from `protocol::local_machine`.
+_MACHINE = "remote://local"
+
+
 def _die(message):
     """A refusal, in the shape a caller can catch and a package runner can print."""
     raise RuntimeError(message)
@@ -96,13 +100,31 @@ def _standing():
     return (remote, (_os.environ.get("GONGGA_REMOTE_CWD") or "").strip())
 
 
+def _this_machines(path):
+    """Whether an absolute `path` names a picture this machine holds.
+
+    # Invariant
+
+    A skill runs on this machine, so `os.path.isfile` answers for it and for no peer: a
+    clipboard's picture is here, while a peer's absolute file is not. A name that exists
+    on both machines is read as this machine's -- the peer's is what `remote://<name>/`
+    says, and a caller that means it can name that machine itself.
+    """
+    try:
+        return _os.path.isfile(path)
+    except (OSError, ValueError):
+        return False
+
+
 def show(paths: list, check: bool = False):
     r"""One `@image(<path>)` line per readable picture in `paths`.
 
     `paths` is a list of strings. A relative path is read from the calling session's
     directory -- on a peer that is the peer's directory, and the reference says which
-    machine it is on: `@image(<path>) (remote=<name>)`. `check` says what each picture is
-    instead of printing a reference -- the way to see why one did not appear.
+    machine it is on: `@image(remote://<name>/<path>)`. An absolute path this machine
+    holds is this machine's, whatever the session stands on, and says so:
+    `@image(remote://local/<path>)`. `check` says what each picture is instead of
+    printing a reference -- the way to see why one did not appear.
 
     # Invariant
 
@@ -117,7 +139,9 @@ def show(paths: list, check: bool = False):
     remote, standing = _standing()
     lines = []
     for given in paths:
-        if remote:
+        absolute = _os.path.isabs(given) or bool(_re.match(r"^[A-Za-z]:", given))
+        here = bool(remote) and absolute and _this_machines(given)
+        if remote and not here:
             # The bytes are on the peer, so this call cannot read them: it prints the
             # reference and the harness attaches it from there. A relative name is
             # joined against the peer directory the server stated.
@@ -136,7 +160,7 @@ def show(paths: list, check: bool = False):
                 continue
             lines.append(f"@image(remote://{remote}/{path})")
             continue
-        path = given if _os.path.isabs(given) else _os.path.join(standing, given)
+        path = given if absolute else _os.path.join(standing, given)
         try:
             with open(path, "rb") as handle:
                 head = handle.read(16)
@@ -164,7 +188,7 @@ def show(paths: list, check: bool = False):
                 f"reference is read by counting them -- copy it under another name first"
             )
             continue
-        lines.append(f"@image({path})")
+        lines.append(f"@image({_MACHINE}/{path})" if here else f"@image({path})")
 
     if not lines:
         _die("no picture was shown: every path was refused, and stderr says why")
