@@ -51,11 +51,15 @@ that has a *name* resolves it first, because "which file does this name open" is
 one answer and it is not Python's.
 """
 
+import collections.abc
+import enum
+import numbers
 import importlib.util
 import inspect
 import json
 import os
 import sys
+import types
 import traceback
 import typing
 
@@ -120,7 +124,8 @@ def functions(module):
     }
 
 
-# The JSON Schema type each Python type names.
+# The JSON Schema type each Python type names. `by_class` reads a type by what it is, so
+# this table is the vocabulary rather than the whole map.
 SCHEMA_TYPES = {
     str: "string",
     int: "integer",
@@ -134,6 +139,9 @@ SCHEMA_TYPES = {
     bytes: "string",
 }
 
+# The same, by the name Python wrote, for an annotation that stayed text.
+BY_NAME = {kind.__name__: schema for kind, schema in SCHEMA_TYPES.items()}
+
 
 def hints_of(entry):
     """The annotations `entry` states, resolved: a file may spell them as strings."""
@@ -143,34 +151,71 @@ def hints_of(entry):
         return {}
 
 
-def type_of(annotation):
-    """The JSON Schema type an annotation names, or None when it names none.
+def by_class(annotation):
+    """The JSON Schema type one class names, read from what it subclasses.
 
     # Invariant
 
-    Read, never guessed: an annotation this file cannot read states no type, and a
-    caller writes a string there, which `bound` hands over as it arrived.
-    `Optional[X]` is `X`'s type, because either way the value may be null, and a union of
-    two or more is each of their types joined with ` | ` -- the spelling SPEC's own
-    `dict | list[dict]` uses, so nothing about it has to be stated a second time.
+    A type is an ordinary object, so this reads every one of them: a subclass of `str`,
+    `bytes` or a path is a string, of `int` an integer (bool first, since it is one), of a
+    mapping an object, of a sequence or a set an array. Anything else is an object, which
+    is what an instance of it becomes once it crosses into JSON.
     """
-    if annotation is inspect.Parameter.empty or annotation is None:
+    if not isinstance(annotation, type):
+        return None
+    if issubclass(annotation, bool):
+        return "boolean"
+    if issubclass(annotation, (str, bytes, os.PathLike)):
+        return "string"
+    if issubclass(annotation, enum.Enum):
+        members = [member.value for member in annotation]
+        return by_class(type(members[0])) if members else "string"
+    if issubclass(annotation, int):
+        return "integer"
+    if issubclass(annotation, (float, numbers.Number)):
+        return "number"
+    if issubclass(annotation, collections.abc.Mapping):
+        return "object"
+    if issubclass(annotation, (collections.abc.Sequence, collections.abc.Set)):
+        return "array"
+    return "object"
+
+
+def type_of(annotation):
+    """The JSON Schema type an annotation names, or None when it constrains nothing.
+
+    # Invariant
+
+    Read for every annotation there is -- a type, a generic, a union, a literal, an alias,
+    or the name Python wrote when it could not resolve one -- so nothing falls through.
+    `None` is only what constrains nothing: `Any`, and a parameter with no annotation,
+    which is a function saying nothing about it. `Optional[X]` is `X`'s type, because
+    either way the value may be null, and a union of two or more is each of their types
+    joined with ` | ` -- the spelling SPEC's own `dict | list[dict]` uses.
+    """
+    if annotation is inspect.Parameter.empty:
+        return None
+    if annotation is None or annotation is type(None):
+        return "null"
+    if annotation is typing.Any:
         return None
     origin = typing.get_origin(annotation)
     if origin is not None:
         arguments = typing.get_args(annotation)
-        if origin is typing.Union or type(annotation).__name__ == "UnionType":
+        if origin is typing.Union or origin is types.UnionType:
             named = [one for one in arguments if one is not type(None)]
             if len(named) == 1:
                 return type_of(named[0])
             typed = [type_of(one) for one in named]
-            return None if None in typed else " | ".join(typed)
+            return None if None in typed else " | ".join(dict.fromkeys(typed))
         if origin is typing.Annotated:
             return type_of(arguments[0]) if arguments else None
-        return SCHEMA_TYPES.get(origin)
+        if origin is typing.Literal:
+            return type_of(type(arguments[0])) if arguments else None
+        return by_class(origin)
     if isinstance(annotation, str):
-        return None
-    return SCHEMA_TYPES.get(annotation)
+        return BY_NAME.get(annotation.strip(), "object")
+    return by_class(annotation)
 
 
 def parameters(entry):
