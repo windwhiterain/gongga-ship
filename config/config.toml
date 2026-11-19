@@ -640,7 +640,6 @@ sentence = '''The file to change, named as `read` names it.'''
 
 [[tool.edit.parameters]]
 name = "edits"
-type = "dict | list[dict]"
 required = true
 positional = 2
 hint = "json"

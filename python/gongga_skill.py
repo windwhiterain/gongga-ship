@@ -150,7 +150,9 @@ def type_of(annotation):
 
     Read, never guessed: an annotation this file cannot read states no type, and a
     caller writes a string there, which `bound` hands over as it arrived.
-    `Optional[X]` is `X`'s type, because either way the value may be null.
+    `Optional[X]` is `X`'s type, because either way the value may be null, and a union of
+    two or more is each of their types joined with ` | ` -- the spelling SPEC's own
+    `dict | list[dict]` uses, so nothing about it has to be stated a second time.
     """
     if annotation is inspect.Parameter.empty or annotation is None:
         return None
@@ -159,7 +161,10 @@ def type_of(annotation):
         arguments = typing.get_args(annotation)
         if origin is typing.Union or type(annotation).__name__ == "UnionType":
             named = [one for one in arguments if one is not type(None)]
-            return type_of(named[0]) if len(named) == 1 else None
+            if len(named) == 1:
+                return type_of(named[0])
+            typed = [type_of(one) for one in named]
+            return None if None in typed else " | ".join(typed)
         if origin is typing.Annotated:
             return type_of(arguments[0]) if arguments else None
         return SCHEMA_TYPES.get(origin)

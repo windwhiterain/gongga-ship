@@ -45,7 +45,12 @@ def document(directory):
         required = []
         for argument in arguments:
             typed = argument.get("type")
-            properties[argument["name"]] = {"type": typed} if typed else {}
+            # A union is JSON Schema's own list of types: `dict | list[dict]` is
+            # `["object", "array"]`, so the document says what the annotation says.
+            kinds = [kind.strip() for kind in (typed or "").split("|") if kind.strip()]
+            properties[argument["name"]] = (
+                {"type": kinds[0] if len(kinds) == 1 else kinds} if kinds else {}
+            )
             if argument["required"]:
                 required.append(argument["name"])
         function = {"type": "object", "properties": properties}

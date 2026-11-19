@@ -254,7 +254,7 @@ def write(
 
 def edit(
     path: str,
-    edits,
+    edits: typing.Union[dict, list[dict]],
     all: bool = False,
     remote: typing.Optional[str] = None,
     cwd: typing.Optional[str] = None,
