@@ -221,35 +221,25 @@ def read_remotes():
     return {name: row for name, row in tables.items() if isinstance(row, dict)}
 
 
-def home_prefixes():
-    """The spellings of the home this server runs in: paths that are this machine's own.
+def machine_of(path):
+    """The machine a path names, and the path in that machine's own spelling.
 
     # Invariant
 
-    A home is never on a peer: the harness, its skills and its generated schemas live where
-    the server runs, so a path under it is read here whatever machine the session stands on.
-    This file is installed as `<home>/lib/gongga_space.py`, so its own place names the home
-    even when the server exported nothing.
+    One spelling for every door: `remote://<name>/<path>` is that machine's,
+    `remote://local/<path>` and `remote://none/<path>` are this one, and a bare path names
+    no machine at all -- the caller's own answer stands. See `docs/notes/server-meta.md`.
     """
-    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    raw = (os.environ.get("GONGGA_HOME") or "").strip()
-    roots = {here}
-    if raw:
-        roots.add(os.path.abspath(os.path.expanduser(raw)))
-    spellings = set()
-    for one in roots:
-        spellings.add(one.replace(os.sep, "/"))
-    return [one for one in spellings if one]
-
-
-def is_home_path(path):
-    """Whether a path names something inside this server's home."""
-    normal = str(path).replace(os.sep, "/")
-    for prefix in home_prefixes():
-        one = prefix.rstrip("/")
-        if normal == one or normal.lower().startswith(one.lower() + "/"):
-            return True
-    return False
+    text = str(path)
+    if not text.startswith("remote://"):
+        return (None, text)
+    rest = text[len("remote://"):]
+    name, sep, tail = rest.partition("/")
+    if not sep:
+        return (None, text)
+    if name in ("", "local", "none"):
+        return (None, tail)
+    return (name, tail)
 
 
 def space_for(remote=None, cwd=None, path=None):
@@ -270,9 +260,11 @@ def space_for(remote=None, cwd=None, path=None):
         name = None
     else:
         name = stated
-    # A home path is this machine's whatever the session says: the harness is here.
-    if name is not None and path is not None and is_home_path(path):
-        name = None
+    # The path itself may name a machine, and then nothing else decides it.
+    if path is not None:
+        named_in_path, rest = machine_of(path)
+        if named_in_path is not None:
+            name = named_in_path
     space = Space.named(name)
     directory = cwd if cwd is not None else (session_cwd() or os.getcwd())
     return space, directory

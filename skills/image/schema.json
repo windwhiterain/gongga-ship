@@ -10,9 +10,6 @@
         },
         "paths": {
           "type": "array"
-        },
-        "remote": {
-          "type": "string"
         }
       },
       "required": [

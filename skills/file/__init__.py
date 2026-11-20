@@ -35,7 +35,7 @@ class Refused(ValueError):
     """A call this file will not make, said in one line to the caller."""
 
 
-def _space(remote, cwd, path=None):
+def _space(cwd, path=None):
     """The machine this call's path lives on, and the directory a relative one resolves in.
 
     # Invariant
@@ -45,7 +45,7 @@ def _space(remote, cwd, path=None):
     omitted one is the session's own. See `docs/notes/server-remote.md`.
     """
     try:
-        return gongga_space.space_for(remote, cwd, path)
+        return gongga_space.space_for(cwd=cwd, path=path)
     except gongga_space.SpaceError as refused:
         raise Refused(str(refused)) from None
 
@@ -168,7 +168,6 @@ def read(
     path: str,
     offset: int = 0,
     limit: int = 0,
-    remote: typing.Optional[str] = None,
     cwd: typing.Optional[str] = None,
 ):
     """Lines `offset` to `offset + limit` of a file, and how many there are in all.
@@ -176,7 +175,8 @@ def read(
     `remote` is the machine the path lives on (the session's own by default); `cwd`
     is the directory a relative path resolves in.
     """
-    space, directory = _space(remote, cwd, path)
+    space, directory = _space(cwd, path)
+    path = gongga_space.machine_of(path)[1]
     try:
         path = space.resolve(path, directory)
         text, _ = _load(space, path)
@@ -199,7 +199,6 @@ def read(
 def write(
     path: str,
     content: str,
-    remote: typing.Optional[str] = None,
     cwd: typing.Optional[str] = None,
 ):
     """Replace a whole file with `content`, creating its directory if it is new.
@@ -209,7 +208,8 @@ def write(
     """
     if not isinstance(content, str):
         raise Refused(f"write takes `content` as a string, and this one is {type(content).__name__}")
-    space, directory = _space(remote, cwd, path)
+    space, directory = _space(cwd, path)
+    path = gongga_space.machine_of(path)[1]
     try:
         path = space.resolve(path, directory)
         existed = space.stat(path)["exists"]
@@ -233,7 +233,6 @@ def edit(
     path: str,
     edits: list[dict],
     all: bool = False,
-    remote: typing.Optional[str] = None,
     cwd: typing.Optional[str] = None,
 ):
     """Replace the span each hunk anchors, in one write, or change nothing.
@@ -241,7 +240,8 @@ def edit(
     `remote` is the machine the path lives on (the session's own by default); `cwd`
     is the directory a relative path resolves in.
     """
-    space, directory = _space(remote, cwd, path)
+    space, directory = _space(cwd, path)
+    path = gongga_space.machine_of(path)[1]
     try:
         path = space.resolve(path, directory)
         text, bom = _load(space, path)

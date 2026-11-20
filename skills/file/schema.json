@@ -16,9 +16,6 @@
         },
         "path": {
           "type": "string"
-        },
-        "remote": {
-          "type": "string"
         }
       },
       "required": [
@@ -40,9 +37,6 @@
         },
         "path": {
           "type": "string"
-        },
-        "remote": {
-          "type": "string"
         }
       },
       "required": [
@@ -59,9 +53,6 @@
           "type": "string"
         },
         "path": {
-          "type": "string"
-        },
-        "remote": {
           "type": "string"
         }
       },

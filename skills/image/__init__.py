@@ -40,10 +40,6 @@ _MAGIC = [
 ]
 
 
-#: The machine a reference names for this one, mirrored from `protocol::local_machine`.
-_MACHINE = "remote://local"
-
-
 def _die(message):
     """A refusal, in the shape a caller can catch and a package runner can print."""
     raise RuntimeError(message)
@@ -76,51 +72,7 @@ def _media_type(path, head):
     return None
 
 
-def _shell_path(path):
-    """`path` as the peer's own shell spells it: `/` throughout.
-
-    # Invariant
-
-    The spelling the harness joins a peer's reference against: `remote.py`'s
-    `Space.resolve` and `space.rs::spell` both read a name with `/`, so a Windows path
-    printed by `os.path` is rewritten here rather than refused there.
-    """
-    return path.replace("\\", "/")
-
-
-def _standing():
-    """The machine and directory this call stands in: `(remote, directory)`.
-
-    # Invariant
-
-    A skill runs on this machine, so `os.getcwd()` is this machine's directory even when
-    the session stands on a peer. `GONGGA_REMOTE`/`GONGGA_REMOTE_CWD` are what the server
-    puts beside it, and they are the only answer for a relative path a message names.
-    """
-    remote = (_os.environ.get("GONGGA_REMOTE") or "").strip()
-    if not remote:
-        return (None, _os.getcwd())
-    return (remote, (_os.environ.get("GONGGA_REMOTE_CWD") or "").strip())
-
-
-def _this_machines(path):
-    """Whether an absolute `path` names a picture this machine holds.
-
-    # Invariant
-
-    A skill runs on this machine, so `os.path.isfile` answers for it and for no peer: a
-    clipboard's picture is here, while a peer's absolute file is not. A name that exists
-    on both machines is read as this machine's -- the peer's is what `remote://<name>/`
-    says, and a caller that means it can name that machine itself.
-    """
-    try:
-        return _os.path.isfile(path)
-    except (OSError, ValueError):
-        return False
-
-
-def show(paths: list, check: bool = False, remote: typing.Optional[str] = None,
-         cwd: typing.Optional[str] = None):
+def show(paths: list, check: bool = False, cwd: typing.Optional[str] = None):
     r"""One `@image(<path>)` line per readable picture in `paths`.
 
     # Invariant
@@ -140,10 +92,10 @@ def show(paths: list, check: bool = False, remote: typing.Optional[str] = None,
     lines = []
     for given in paths:
         try:
-            space, directory = gongga_space.space_for(remote, cwd, given)
+            space, directory = gongga_space.space_for(cwd=cwd, path=given)
         except gongga_space.SpaceError as refused:
             _die(str(refused))
-        path = space.resolve(given, directory)
+        path = space.resolve(gongga_space.machine_of(given)[1], directory)
         if not space.is_local:
             if check:
                 lines.append(f"{given}: on remote {space.name}, as {path}")
