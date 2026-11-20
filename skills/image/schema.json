@@ -5,8 +5,14 @@
         "check": {
           "type": "boolean"
         },
+        "cwd": {
+          "type": "string"
+        },
         "paths": {
           "type": "array"
+        },
+        "remote": {
+          "type": "string"
         }
       },
       "required": [

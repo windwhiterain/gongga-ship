@@ -40,37 +40,14 @@ def _space(remote, cwd):
 
     # Invariant
 
-    The default is the session's own machine (`GONGGA_REMOTE`), like `exec`; `local`
-    or an empty name is this machine. A session works on one machine, so a name that
-    is not its own is refused rather than run here -- never a quiet local fallback.
-    See `docs/notes/server-remote.md`.
+    One rule with every other skill that takes a path (`gongga_space.space_for`): a stated
+    name is read from this machine's remotes whatever machine the session stands on, and an
+    omitted one is the session's own. See `docs/notes/server-remote.md`.
     """
-    session_remote = (os.environ.get("GONGGA_REMOTE") or "").strip() or None
-    if remote is None:
-        name = session_remote
-    else:
-        stated = str(remote).strip()
-        if stated.lower() in ("", "local", "none"):
-            name = None
-        elif stated == session_remote:
-            name = stated
-        elif session_remote is None:
-            raise Refused(
-                f"this call ran nothing: this session names no remote, so it has no peer "
-                f"to work on, and {stated!r} is not one it can reach from here. "
-                f"`set_session --remote {stated}` moves it there."
-            )
-        else:
-            raise Refused(
-                f"this call ran nothing: this session's directory is on remote "
-                f"{session_remote!r}, and its files are there -- {stated!r} is another "
-                f"machine, which this session has no directory on. A session works on one "
-                f"machine: `set_session --remote {stated}` moves it there, and ends these "
-                f"shells first."
-            )
-    space = gongga_space.Space.named(name)
-    directory = cwd if cwd is not None else (gongga_space.session_cwd() or os.getcwd())
-    return space, directory
+    try:
+        return gongga_space.space_for(remote, cwd)
+    except gongga_space.SpaceError as refused:
+        raise Refused(str(refused)) from None
 
 
 def _load(space, path):

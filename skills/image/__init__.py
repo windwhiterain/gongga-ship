@@ -14,9 +14,12 @@ harness would try to upload.
 """
 
 import os as _os
+import typing
 import posixpath as _posixpath
 import re as _re
 import sys as _sys
+
+import gongga_space
 
 #: The extensions the harness accepts, mirrored from `crates/server/src/image.rs`.
 #: Anything else is refused here rather than uploaded and refused there.
@@ -116,41 +119,35 @@ def _this_machines(path):
         return False
 
 
-def show(paths: list, check: bool = False):
+def show(paths: list, check: bool = False, remote: typing.Optional[str] = None,
+         cwd: typing.Optional[str] = None):
     r"""One `@image(<path>)` line per readable picture in `paths`.
-
-    `paths` is a list of strings. A relative path is read from the calling session's
-    directory -- on a peer that is the peer's directory, and the reference says which
-    machine it is on: `@image(remote://<name>/<path>)`. An absolute path this machine
-    holds is this machine's, whatever the session stands on, and says so:
-    `@image(remote://local/<path>)`. `check` says what each picture is instead of
-    printing a reference -- the way to see why one did not appear.
 
     # Invariant
 
-    A path is printed whole inside the parentheses, and the parser counts them, so a
-    path that opens more than it closes is refused rather than printed.
+    One path rule with `read`/`write`/`edit` (`gongga_space.space_for`): `remote` names the
+    machine the bytes are on, `cwd` the directory a relative name is joined against, and an
+    omitted `remote` is the session's own. A picture on a peer travels as
+    `@image(remote://<name>/<path>)`, which the harness fetches there; one here as
+    `@image(<path>)`. `check` says what each picture is instead of printing a reference.
+    A path is printed whole inside the parentheses, and the parser counts them, so a path
+    that opens more than it closes is refused rather than printed.
     """
     if not isinstance(paths, list) or not all(isinstance(item, str) for item in paths):
         _die('paths is a list of path strings, e.g. ["C:/shots/a.png"]')
     if not paths:
         _die("name at least one picture")
+    try:
+        space, directory = gongga_space.space_for(remote, cwd)
+    except gongga_space.SpaceError as refused:
+        _die(str(refused))
 
-    remote, standing = _standing()
     lines = []
     for given in paths:
-        absolute = _os.path.isabs(given) or bool(_re.match(r"^[A-Za-z]:", given))
-        here = bool(remote) and absolute and _this_machines(given)
-        if remote and not here:
-            # The bytes are on the peer, so this call cannot read them: it prints the
-            # reference and the harness attaches it from there. A relative name is
-            # joined against the peer directory the server stated.
-            named = given if _os.path.isabs(given) or _re.match(r"^[A-Za-z]:", given) else _posixpath.join(
-                _shell_path(standing), _shell_path(given)
-            )
-            path = _shell_path(named)
+        path = space.resolve(given, directory)
+        if not space.is_local:
             if check:
-                lines.append(f"{given}: on remote {remote}, as {path}")
+                lines.append(f"{given}: on remote {space.name}, as {path}")
                 continue
             if path.count("(") != path.count(")"):
                 _note(
@@ -158,9 +155,8 @@ def show(paths: list, check: bool = False):
                     f"reference is read by counting them -- copy it under another name first"
                 )
                 continue
-            lines.append(f"@image(remote://{remote}/{path})")
+            lines.append(f"@image(remote://{space.name}/{path})")
             continue
-        path = given if absolute else _os.path.join(standing, given)
         try:
             with open(path, "rb") as handle:
                 head = handle.read(16)
@@ -188,7 +184,7 @@ def show(paths: list, check: bool = False):
                 f"reference is read by counting them -- copy it under another name first"
             )
             continue
-        lines.append(f"@image({_MACHINE}/{path})" if here else f"@image({path})")
+        lines.append(f"@image({path})")
 
     if not lines:
         _die("no picture was shown: every path was refused, and stderr says why")

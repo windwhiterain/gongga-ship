@@ -221,6 +221,29 @@ def read_remotes():
     return {name: row for name, row in tables.items() if isinstance(row, dict)}
 
 
+def space_for(remote=None, cwd=None):
+    """The machine a call's path lives on, and the directory a relative one resolves in.
+
+    # Invariant
+
+    One rule for every skill that takes a path: a stated name is read from this machine's
+    remotes, whatever machine the session stands on -- a call may look at another machine
+    without the session moving there. Omitted is the session's own (`GONGGA_REMOTE`);
+    `local`, `none` or an empty name is this machine. A directory is the caller's: `cwd`
+    when given, else the session's own, else this process's.
+    """
+    stated = "" if remote is None else str(remote).strip()
+    if remote is None:
+        name = (os.environ.get("GONGGA_REMOTE") or "").strip() or None
+    elif stated.lower() in ("", "local", "none"):
+        name = None
+    else:
+        name = stated
+    space = Space.named(name)
+    directory = cwd if cwd is not None else (session_cwd() or os.getcwd())
+    return space, directory
+
+
 def session_cwd():
     """The calling session's directory, read-only from its home's row, or None.
 
