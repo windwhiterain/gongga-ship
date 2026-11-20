@@ -35,7 +35,7 @@ class Refused(ValueError):
     """A call this file will not make, said in one line to the caller."""
 
 
-def _space(remote, cwd):
+def _space(remote, cwd, path=None):
     """The machine this call's path lives on, and the directory a relative one resolves in.
 
     # Invariant
@@ -45,7 +45,7 @@ def _space(remote, cwd):
     omitted one is the session's own. See `docs/notes/server-remote.md`.
     """
     try:
-        return gongga_space.space_for(remote, cwd)
+        return gongga_space.space_for(remote, cwd, path)
     except gongga_space.SpaceError as refused:
         raise Refused(str(refused)) from None
 
@@ -176,7 +176,7 @@ def read(
     `remote` is the machine the path lives on (the session's own by default); `cwd`
     is the directory a relative path resolves in.
     """
-    space, directory = _space(remote, cwd)
+    space, directory = _space(remote, cwd, path)
     try:
         path = space.resolve(path, directory)
         text, _ = _load(space, path)
@@ -209,7 +209,7 @@ def write(
     """
     if not isinstance(content, str):
         raise Refused(f"write takes `content` as a string, and this one is {type(content).__name__}")
-    space, directory = _space(remote, cwd)
+    space, directory = _space(remote, cwd, path)
     try:
         path = space.resolve(path, directory)
         existed = space.stat(path)["exists"]
@@ -241,7 +241,7 @@ def edit(
     `remote` is the machine the path lives on (the session's own by default); `cwd`
     is the directory a relative path resolves in.
     """
-    space, directory = _space(remote, cwd)
+    space, directory = _space(remote, cwd, path)
     try:
         path = space.resolve(path, directory)
         text, bom = _load(space, path)

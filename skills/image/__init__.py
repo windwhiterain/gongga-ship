@@ -137,13 +137,12 @@ def show(paths: list, check: bool = False, remote: typing.Optional[str] = None,
         _die('paths is a list of path strings, e.g. ["C:/shots/a.png"]')
     if not paths:
         _die("name at least one picture")
-    try:
-        space, directory = gongga_space.space_for(remote, cwd)
-    except gongga_space.SpaceError as refused:
-        _die(str(refused))
-
     lines = []
     for given in paths:
+        try:
+            space, directory = gongga_space.space_for(remote, cwd, given)
+        except gongga_space.SpaceError as refused:
+            _die(str(refused))
         path = space.resolve(given, directory)
         if not space.is_local:
             if check:

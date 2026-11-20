@@ -221,7 +221,38 @@ def read_remotes():
     return {name: row for name, row in tables.items() if isinstance(row, dict)}
 
 
-def space_for(remote=None, cwd=None):
+def home_prefixes():
+    """The spellings of the home this server runs in: paths that are this machine's own.
+
+    # Invariant
+
+    A home is never on a peer: the harness, its skills and its generated schemas live where
+    the server runs, so a path under it is read here whatever machine the session stands on.
+    This file is installed as `<home>/lib/gongga_space.py`, so its own place names the home
+    even when the server exported nothing.
+    """
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    raw = (os.environ.get("GONGGA_HOME") or "").strip()
+    roots = {here}
+    if raw:
+        roots.add(os.path.abspath(os.path.expanduser(raw)))
+    spellings = set()
+    for one in roots:
+        spellings.add(one.replace(os.sep, "/"))
+    return [one for one in spellings if one]
+
+
+def is_home_path(path):
+    """Whether a path names something inside this server's home."""
+    normal = str(path).replace(os.sep, "/")
+    for prefix in home_prefixes():
+        one = prefix.rstrip("/")
+        if normal == one or normal.lower().startswith(one.lower() + "/"):
+            return True
+    return False
+
+
+def space_for(remote=None, cwd=None, path=None):
     """The machine a call's path lives on, and the directory a relative one resolves in.
 
     # Invariant
@@ -239,6 +270,9 @@ def space_for(remote=None, cwd=None):
         name = None
     else:
         name = stated
+    # A home path is this machine's whatever the session says: the harness is here.
+    if name is not None and path is not None and is_home_path(path):
+        name = None
     space = Space.named(name)
     directory = cwd if cwd is not None else (session_cwd() or os.getcwd())
     return space, directory
