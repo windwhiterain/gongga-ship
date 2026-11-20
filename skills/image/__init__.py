@@ -72,6 +72,18 @@ def _media_type(path, head):
     return None
 
 
+def _reference(path, session_space):
+    """A picture this machine holds, as a message in this session must spell it.
+
+    # Invariant
+
+    Bare here, where a bare path is this machine's; `remote://local/` in a session
+    standing on a peer, where a bare path would be read on that peer. See
+    `docs/notes/server-meta.md`.
+    """
+    return f"remote://local/{path}" if session_space.name else path
+
+
 def show(paths: list, check: bool = False, cwd: typing.Optional[str] = None):
     r"""One `@image(<path>)` line per readable picture in `paths`.
 
@@ -79,23 +91,32 @@ def show(paths: list, check: bool = False, cwd: typing.Optional[str] = None):
 
     One path rule with `read`/`write`/`edit` (`gongga_space.space_for`): `remote` names the
     machine the bytes are on, `cwd` the directory a relative name is joined against, and an
-    omitted `remote` is the session's own. A picture on a peer travels as
-    `@image(remote://<name>/<path>)`, which the harness fetches there; one here as
-    `@image(<path>)`. `check` says what each picture is instead of printing a reference.
-    A path is printed whole inside the parentheses, and the parser counts them, so a path
-    that opens more than it closes is refused rather than printed.
+    omitted `remote` is the session's own. A picture a peer holds travels as
+    `@image(remote://<name>/<path>)`, which the harness fetches there; one this machine
+    holds, in a session standing here, as `@image(<path>)`. A session standing on a peer
+    states the machine even for a picture here (`remote://local/`), because a bare path is
+    read where that session stands. `check` says what each picture is instead of printing
+    a reference. A path is printed whole inside the parentheses, and the parser counts
+    them, so a path that opens more than it closes is refused rather than printed.
     """
     if not isinstance(paths, list) or not all(isinstance(item, str) for item in paths):
         _die('paths is a list of path strings, e.g. ["C:/shots/a.png"]')
     if not paths:
         _die("name at least one picture")
+    session_space, _ = gongga_space.space_for(cwd=cwd)
     lines = []
     for given in paths:
         try:
             space, directory = gongga_space.space_for(cwd=cwd, path=given)
         except gongga_space.SpaceError as refused:
             _die(str(refused))
-        path = space.resolve(gongga_space.machine_of(given)[1], directory)
+        stated, plain = gongga_space.machine_of(given)
+        # A path this machine holds is this machine's, whatever session asked: a caller's
+        # own file is here, and a reference naming the peer for it is one nothing can
+        # read there. Only a path the call did not place, and that is here, is re-homed.
+        if stated is None and space.name and _os.path.exists(plain) and _os.path.isabs(plain):
+            space = gongga_space.Space.named(None)
+        path = space.resolve(plain, directory)
         if not space.is_local:
             if check:
                 lines.append(f"{given}: on remote {space.name}, as {path}")
@@ -135,7 +156,7 @@ def show(paths: list, check: bool = False, cwd: typing.Optional[str] = None):
                 f"reference is read by counting them -- copy it under another name first"
             )
             continue
-        lines.append(f"@image({path})")
+        lines.append(f"@image({_reference(path, session_space)})")
 
     if not lines:
         _die("no picture was shown: every path was refused, and stderr says why")
