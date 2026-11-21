@@ -1,6 +1,6 @@
 ---
 name: handoff
-description: 把当前上下文交接出去（handoff）——先把文档、历史/记忆和引用整理好，再把当前目标、试过什么、成败与失败原因、文件状态和下一步写成一份交接笔记；这个包把 transcript 整份存进 mentor 会话、清空当前会话，再把笔记作为一条消息发给自己，你带着新上下文从那条消息继续当前工作。收到「Context notice」是要求尽快交接，但不是立刻砍断：先整理好交接材料再运行 handoff，不要求任务完成或测试全绿。本 skill 是一个包，函数是 `read(after, limit, preview)` 与 `handoff(note, mentor)`；删行之前会逐行校验 mentor 的完整副本。没有 `session` 参数：会话名取自 `$GONGGA_SESSION`。`mentor` 默认 `<你的会话>/mentor`，且必须在你自己的路径下；已被占就加 `/2`——一代档案一份会话，绝不续进上一代。
+description: 把当前上下文交接出去（handoff）——先把文档、历史/记忆和引用整理好，再把当前目标、试过什么、成败与失败原因、文件状态和下一步写成一份交接笔记；这个包把 transcript 整份存进 mentor 会话、清空当前会话，再把笔记作为一条消息发给自己，你带着新上下文从那条消息继续当前工作。收到「Context notice」是要求尽快交接，但不是立刻砍断：先整理好交接材料再运行 handoff，不要求任务完成或测试全绿。本 skill 是一个包，函数是 `read(after, limit, preview)` 与 `handoff(note, mentor, continue=true)`；`continue=false` 只把笔记写进 context，不开续接的 turn。删行之前会逐行校验 mentor 的完整副本。没有 `session` 参数：会话名取自 `$GONGGA_SESSION`。`mentor` 默认 `<你的会话>/mentor`，且必须在你自己的路径下；已被占就加 `/2`——一代档案一份会话，绝不续进上一代。
 compatibility: 需要 Python 3 与 sqlite3
 ---
 
@@ -34,6 +34,10 @@ compatibility: 需要 Python 3 与 sqlite3
 read     # 这条会话真正会发出去的消息
 handoff  # 存进 mentor、校验、剪空、把笔记发给自己
 ```
+
+`handoff` 的 `continue` 默认是 `true`：笔记落成消息并开启续接 turn。给 `false` 时，
+笔记只写进这条会话的 context，当前 agent loop 结束而 turn 保留；要继续时你再发一条
+`send_message`。交接本身（存档、校验、剪空）两种取值都做。
 
 ```bash
 # 一次调用怎么拼、退出码什么意思，是 `@skill(skill)` 的事；这里只写两个函数自己的参数。

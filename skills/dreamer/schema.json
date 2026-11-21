@@ -1,0 +1,12 @@
+{
+  "functions": {
+    "dream": {
+      "properties": {},
+      "type": "object"
+    },
+    "mute_keep_alive": {
+      "properties": {},
+      "type": "object"
+    }
+  }
+}

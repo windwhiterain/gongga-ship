@@ -53,6 +53,7 @@ one answer and it is not Python's.
 
 import collections.abc
 import enum
+import keyword
 import numbers
 import importlib.util
 import inspect
@@ -232,6 +233,14 @@ def items_of(annotation):
     return type_of(arguments[0]) if arguments else None
 
 
+def public_name(parameter):
+    """The spelled name a caller uses: a trailing `_` frees a Python keyword."""
+    name = parameter.name
+    if name.endswith("_") and keyword.iskeyword(name[:-1]):
+        return name[:-1]
+    return name
+
+
 def parameters(entry):
     """What one function takes: the arguments a caller may spell, and which it must.
 
@@ -251,7 +260,7 @@ def parameters(entry):
             continue
         annotation = hints.get(parameter.name, parameter.annotation)
         row = {
-            "name": parameter.name,
+            "name": public_name(parameter),
             "required": parameter.default is inspect.Parameter.empty,
             "type": type_of(annotation),
         }
@@ -306,12 +315,13 @@ def bound(entry, args):
     """The call `args` makes of `entry`, or the reason it is not one."""
     signature = inspect.signature(entry)
     parameters = list(signature.parameters.values())
-    named = {
-        parameter.name
+    by_name = {
+        public_name(parameter): parameter.name
         for parameter in parameters
         if parameter.kind
         in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
     }
+    named = set(by_name)
     # A `**named` parameter takes any name, so nothing is unknown to such a function.
     if not any(parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters):
         unknown = sorted(name for name in args if name not in named)
@@ -322,8 +332,9 @@ def bound(entry, args):
                 + "; it takes "
                 + (", ".join(sorted(named)) or "nothing")
             )
+    bound_args = {by_name.get(name, name): value for name, value in args.items()}
     try:
-        return signature.bind(**args)
+        return signature.bind(**bound_args)
     except TypeError as mistake:
         # A missing, doubled or positional-only argument: Python's sentence names the
         # parameter, and a second wording here would be a second answer to the same

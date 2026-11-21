@@ -2,6 +2,9 @@
   "functions": {
     "handoff": {
       "properties": {
+        "continue": {
+          "type": "boolean"
+        },
         "mentor": {
           "type": "string"
         },

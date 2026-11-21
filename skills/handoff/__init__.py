@@ -264,7 +264,7 @@ def _command_result(stdout):
     return None
 
 
-def _send_note(session, note):
+def _send_note(session, note, continue_turn=True):
     """Puts the handoff note in the session as an ordinary message.
 
     # Invariant
@@ -292,7 +292,14 @@ def _send_note(session, note):
     else:
         words = _command_words(
             cli,
-            _json.dumps({"name": "send_message", "args": {"session": session, "message": note}}),
+            _json.dumps({
+                "name": "send_message",
+                "args": {
+                    "session": session,
+                    "message": note,
+                    "continue": continue_turn,
+                },
+            }),
         )
         try:
             sent = _subprocess.run(words, capture_output=True, text=True)
@@ -318,8 +325,14 @@ def _send_note(session, note):
     )
 
 
-def _continuation_message(session, mentor, kept):
+def _continuation_message(session, mentor, kept, continue_turn=True):
     """What the continuation reads as the answer to the call that started it."""
+    if not continue_turn:
+        return (
+            f"You archived `{session}` into `{mentor}` and wrote the handoff note into this "
+            "session's context without opening a turn. The agent loop ends here; the turn "
+            "keeps that context. Send a message when you want the continuation to run."
+        )
     return (
         f"You are continuing `{session}` with a fresh context, and `{mentor}` holds the complete transcript. "
         f"This session is empty {'down to the call you are reading this from' if kept else 'for your next request'}. "
@@ -413,7 +426,7 @@ def _ensure_mentor(conn, name, source):
     )
 
 
-def handoff(note: str, mentor: _typing.Optional[str] = None):
+def handoff(note: str, mentor: _typing.Optional[str] = None, continue_: bool = True):
     """Archive this session's transcript in `mentor`, verify it, empty this one.
 
     `mentor` is where the archive goes, and it is always a child of this session:
@@ -422,8 +435,12 @@ def handoff(note: str, mentor: _typing.Optional[str] = None):
     added under it -- so one archive never becomes two.
 
     Answers what the handover did as JSON text, including `you`: the instructions the
-    continuation reads as this call's result.
+    continuation reads as this call's result. `continue=false` writes the note as
+    context without opening the continuation's turn.
     """
+    if not isinstance(continue_, bool):
+        _die("continue must be a boolean: true starts the continuation's turn")
+    continue_turn = continue_
     session = _caller()
     # A segment, not a prefix: the archive hangs under the session it came from,
     # where the session list already draws it as a child.
@@ -645,7 +662,7 @@ def handoff(note: str, mentor: _typing.Optional[str] = None):
     # Sent from here rather than written into the database: a row inserted between
     # the call in flight and its result is a transcript no provider accepts, and
     # `send_message` is what puts a note where an operator's message would go.
-    delivery = _send_note(session, note)
+    delivery = _send_note(session, note, continue_turn)
 
     return _json.dumps(
         {
@@ -659,7 +676,7 @@ def handoff(note: str, mentor: _typing.Optional[str] = None):
             "deleted": len(moved),
             "note_chars": len(note),
             "note_delivery": delivery,
-            "you": _continuation_message(session, mentor, kept is not None),
+            "you": _continuation_message(session, mentor, kept is not None, continue_turn),
         },
         ensure_ascii=False,
         indent=2,
