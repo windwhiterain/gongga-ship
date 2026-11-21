@@ -19,6 +19,7 @@ import time as _time
 import typing as _typing
 
 COMMAND_VARIABLE = "GONGGA_CLI"
+LAYER = "gongga_cli.py"
 
 DREAM_NOTICE = (
     "(dream notice: you are a dream, a disposable copy of the session that spawned you. "
@@ -49,28 +50,63 @@ def _command_layer():
     return cli
 
 
-def _command_words(cli, payload):
-    # On Windows `GONGGA_CLI` names a `#!` script that only a shell can start.
-    if _os.name == "nt" and cli.lower().endswith((".py", ".pyw")):
-        return [_sys.executable, cli, payload]
-    return [cli, payload]
+def _posix_script(path):
+    """Whether `path` is a `#!` script: `CreateProcess` cannot start one on Windows."""
+    try:
+        with open(path, "rb") as program:
+            return program.read(2) == b"#!"
+    except OSError:
+        return False
+
+
+def _layer_beside_contract():
+    """The command layer beside the contract that started this skill process."""
+    running = _os.path.abspath(_sys.argv[0]) if _sys.argv and _sys.argv[0] else ""
+    return _os.path.join(_os.path.dirname(running), LAYER) if running else ""
+
+
+def _command_words(cli, command):
+    """The argv that runs one JSON command without letting a shell parse it."""
+    if _os.name != "nt" or not _posix_script(cli):
+        return [cli, command]
+    layer = _layer_beside_contract()
+    if layer and _os.path.isfile(layer):
+        return [_sys.executable, layer, command]
+    return [cli, command]
+
+
+def _command_result(stdout):
+    """The terminal `cmd_result`, through the envelopes a command layer prints."""
+    for line in stdout.splitlines():
+        try:
+            envelope = _json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(envelope, dict):
+            continue
+        if envelope.get("t") == "cmd_result":
+            return envelope
+        if envelope.get("t") not in ("event", "row"):
+            continue
+        carried = envelope.get("v")
+        event = carried.get("event") if isinstance(carried, dict) else None
+        if isinstance(event, dict) and event.get("t") == "cmd_result":
+            return event
+    return None
 
 
 def _call(payload):
     cli = _command_layer()
     words = _command_words(cli, _json.dumps(payload))
     done = _subprocess.run(words, capture_output=True, text=True)
-    for line in (done.stdout or "").splitlines():
-        try:
-            row = _json.loads(line)
-        except ValueError:
-            continue
-        if isinstance(row, dict) and "cmd_result" in row:
-            answer = row["cmd_result"]
-            if isinstance(answer, dict) and answer.get("ok"):
-                return answer
-            raise RuntimeError((answer or {}).get("message") or f"command refused: {payload}")
-    detail = (done.stderr or "").strip() or f"command exited {done.returncode}"
+    outcome = _command_result(done.stdout or "")
+    if done.returncode == 0 and isinstance(outcome, dict) and outcome.get("ok"):
+        return outcome
+    detail = (
+        (outcome or {}).get("message")
+        if isinstance(outcome, dict)
+        else None
+    ) or (done.stderr or "").strip() or f"command exited {done.returncode}"
     raise RuntimeError(f"{detail}: {payload}")
 
 
