@@ -104,11 +104,17 @@ class Client:
     """One connection: a handshake, then commands by name until `close`."""
 
     def __init__(self, port, key, host="127.0.0.1", timeout=30.0, label="python",
-                 mtu=None):
+                 mtu=None, client=False):
         self.address = (host, int(port))
         self.key = key
         self.timeout = timeout
         self.label = label
+        # Whether this greeting is a client (a person at a window) or a command
+        # line. Only a client's `send_message` is a new user prompt; an RPC line
+        # from the CLI -- including a skill's own note -- is not. SPEC's `rpc`
+        # is the CLI layer, so the default is False; an operator driving a test
+        # sets `GONGGA_CLIENT=1` to speak as a client. See `server-dream.md`.
+        self.client = client
         self.sessions = []
         self.cursor = None
         self.models = []
@@ -164,6 +170,9 @@ class Client:
         self._sequence = 0
         self._send({"t": "hello", "client": {
             "version": "python", "build": "python", "label": self.label,
+            # A person at a window is a client; a command line is the `rpc`
+            # layer. Only the former's messages are new user prompts.
+            "client": self.client,
             # Which session this client speaks for: a command notices it (a
             # subscription is armed on the session its shell belongs to), and a
             # client that says nothing is a client nobody can arm.
@@ -421,4 +430,8 @@ def connect(port=None, key=None, host=None, home=None, timeout=30.0):
     if key is None:
         with open(os.path.join(home, "server.key"), encoding="utf-8") as handle:
             key = handle.read().strip()
-    return Client(port, key, host=host, timeout=timeout).connect()
+    # The one-shot CLI is the `rpc` layer by default: its messages are not user
+    # prompts. `GONGGA_CLIENT=1` lets it declare itself a client (a test driving
+    # the same wire a window would). See `server-dream.md`.
+    client = os.environ.get("GONGGA_CLIENT", "").strip().lower() in ("1", "true", "yes")
+    return Client(port, key, host=host, timeout=timeout, client=client).connect()
