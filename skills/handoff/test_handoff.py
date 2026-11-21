@@ -280,7 +280,7 @@ def test_handoff_moves_every_row_then_empties():
         # The note went out as the message an operator would send, to this
         # session, and the measurement of a transcript that no longer exists is
         # zeroed so the next step does not remind about it.
-        assert [json.loads(e[0]) for e in h.sent()] == [{"name": "send_message", "args": {"session": "main", "message": note}}], h.sent()
+        assert [json.loads(e[0]) for e in h.sent()] == [{"name": "send_message", "args": {"session": "main", "message": note, "continue": True}}], h.sent()
         s = h.c.execute("select context_tokens from sessions where id=?", (sid,)).fetchone()
         assert s["context_tokens"] == 0, dict(s)
         h.add(sid, "text", {"role": "user", "text": "醒来第一句"})
@@ -343,7 +343,7 @@ def test_handoff_keeps_the_call_in_flight():
         mine = h.rows(sid)
         assert [r["kind"] for r in mine] == ["tool_call"], [dict(r) for r in mine]
         assert mine[0]["seq"] == 1, [dict(r) for r in mine]
-        assert [json.loads(e[0]) for e in h.sent()] == [{"name": "send_message", "args": {"session": "main", "message": "要做 X；Y 失败因为 Z"}}], h.sent()
+        assert [json.loads(e[0]) for e in h.sent()] == [{"name": "send_message", "args": {"session": "main", "message": "要做 X；Y 失败因为 Z", "continue": True}}], h.sent()
 
         # The archive holds the whole exchange, and the copied call is answered
         # there: a mentor reads its own transcript back as a valid request.
@@ -396,7 +396,7 @@ def test_a_bad_copy_rolls_everything_back():
         assert len(h.rows(sid)) == mine_before, "the learner kept every row"
         assert len(h.rows(mid)) == mentor_before, "the mentor gained nothing"
         # Only the first, successful handover reached the command layer.
-        assert [json.loads(e[0]) for e in h.sent()] == [{"name": "send_message", "args": {"session": "main", "message": "第一轮"}}], h.sent()
+        assert [json.loads(e[0]) for e in h.sent()] == [{"name": "send_message", "args": {"session": "main", "message": "第一轮", "continue": True}}], h.sent()
         h.close()
 
 
