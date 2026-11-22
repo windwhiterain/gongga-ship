@@ -197,8 +197,11 @@ def distribution(args: _Options) -> tuple[Path, str]:
 
 
 def peer_home(peer: Peer) -> tuple[str, str]:
-    result = checked(peer.ssh(f"{BASH} -c 'pwd -W'", timeout=20), "reading the peer home")
-    windows = text(result.stdout).replace("\\", "/").rstrip("/")
+    # `pwd -W` is a Git Bash builtin: a POSIX peer's non-zero exit is the signal to
+    # fall through to the POSIX probe below, not a failure. Wrapping this probe in
+    # checked() raised first and made that fallback unreachable.
+    result = peer.ssh(f"{BASH} -c 'pwd -W'", timeout=20)
+    windows = text(result.stdout).replace("\\", "/").rstrip("/") if result.returncode == 0 else ""
     if len(windows) > 2 and windows[1] == ":":
         # Shell cwd is /c/... while SFTP receives C:/...; these are different
         # namespaces even though both belong to the same Windows peer.
