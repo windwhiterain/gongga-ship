@@ -172,8 +172,9 @@ def read(
 ):
     """Lines `offset` to `offset + limit` of a file, and how many there are in all.
 
-    `remote` is the machine the path lives on (the session's own by default); `cwd`
-    is the directory a relative path resolves in.
+    The path names its machine -- `remote://<peer>/…` for a peer, bare or
+    `remote://local/…` for this one; `cwd` is the directory a relative path resolves
+    in, and a relative path naming another machine has to state one.
     """
     space, directory = _space(cwd, path)
     path = gongga_space.machine_of(path)[1]
@@ -203,8 +204,9 @@ def write(
 ):
     """Replace a whole file with `content`, creating its directory if it is new.
 
-    `remote` is the machine the path lives on (the session's own by default); `cwd`
-    is the directory a relative path resolves in.
+    The path names its machine -- `remote://<peer>/…` for a peer, bare or
+    `remote://local/…` for this one; `cwd` is the directory a relative path resolves
+    in, and a relative path naming another machine has to state one.
     """
     if not isinstance(content, str):
         raise Refused(f"write takes `content` as a string, and this one is {type(content).__name__}")
@@ -237,8 +239,9 @@ def edit(
 ):
     """Replace the span each hunk anchors, in one write, or change nothing.
 
-    `remote` is the machine the path lives on (the session's own by default); `cwd`
-    is the directory a relative path resolves in.
+    The path names its machine -- `remote://<peer>/…` for a peer, bare or
+    `remote://local/…` for this one; `cwd` is the directory a relative path resolves
+    in, and a relative path naming another machine has to state one.
     """
     space, directory = _space(cwd, path)
     path = gongga_space.machine_of(path)[1]

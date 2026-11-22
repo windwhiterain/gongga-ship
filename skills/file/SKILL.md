@@ -48,16 +48,20 @@ are printed.
 
 ## Which machine
 
-Every function takes `remote` and `cwd`. By default the path lives on the **session's
-own machine** (`GONGGA_REMOTE`, the same default `exec` uses), so a session standing
-on a peer reads and writes there with no extra argument. `remote="local"` (or `""`)
-means this machine instead. A session works on one machine: naming a peer that is not
-the session's own is refused, and a name no remotes table configures is refused --
-never a quiet fall back to here.
+The **path names its machine**. `remote://whiting_main/home/whting/x` is that peer's
+file, `remote://local/x` and a bare `x` are this machine's, and a bare path with no
+prefix belongs to the session's own machine (`GONGGA_REMOTE`, the same default `exec`
+uses) -- so a session standing on a peer reads and writes there with no extra argument.
+Any peer `~/.agents/remotes.toml` configures is reachable from any session, so one call
+may look at another machine without the session moving there; a name no table
+configures is refused, never a quiet fall back to here.
 
-`cwd` is the directory a relative path resolves in; it defaults to the session's
-directory. An absolute path is used as it is. A peer's path is spelled with `/`
-(`C:/Users/...` or `/home/...`), the way that machine spells it.
+A **relative** path is resolved by the machine that holds it, against `cwd`, which
+defaults to the session's directory -- and that directory is on the session's own
+machine. So a relative path naming *another* machine is refused: it would be looked for
+under a directory that does not exist there. Write it in that machine's spelling (an
+absolute path, with `/`: `C:/Users/...` or `/home/...`), or pass `cwd` as a directory on
+that machine.
 
 The bytes travel through the peer's runner; the matching, the BOM and the
 all-or-nothing batch are the same code on either machine.

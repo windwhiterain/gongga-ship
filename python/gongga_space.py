@@ -228,7 +228,10 @@ def machine_of(path):
 
     One spelling for every door: `remote://<name>/<path>` is that machine's,
     `remote://local/<path>` and `remote://none/<path>` are this one, and a bare path names
-    no machine at all -- the caller's own answer stands. See `docs/notes/server-meta.md`.
+    no machine at all -- the caller's own answer stands. This machine is the **empty**
+    name, not `None`, so a caller can tell a path that names this machine from one that
+    names none: `remote://local/x` is this machine's however the session is placed. See
+    `docs/notes/server-meta.md`.
     """
     text = str(path)
     if not text.startswith("remote://"):
@@ -238,7 +241,7 @@ def machine_of(path):
     if not sep:
         return (None, text)
     if name in ("", "local", "none"):
-        return (None, tail)
+        return ("", tail)
     return (name, tail)
 
 
@@ -252,6 +255,15 @@ def space_for(remote=None, cwd=None, path=None):
     without the session moving there. Omitted is the session's own (`GONGGA_REMOTE`);
     `local`, `none` or an empty name is this machine. A directory is the caller's: `cwd`
     when given, else the session's own, else this process's.
+
+    # Invariant
+
+    The one directory this call can default to is the session's, and it is a directory on
+    the session's own machine. So a relative path naming a *different* machine is refused
+    rather than resolved here and sent there: that reaches the right machine with a path
+    from the wrong one, and answers "no such file" about a directory nobody named. An
+    absolute path needs no directory, and `cwd` is the caller's own statement, so neither
+    is refused. See `docs/notes/server-space.md`.
     """
     stated = "" if remote is None else str(remote).strip()
     if remote is None:
@@ -260,14 +272,35 @@ def space_for(remote=None, cwd=None, path=None):
         name = None
     else:
         name = stated
+    tail = None
     # The path itself may name a machine, and then nothing else decides it.
     if path is not None:
         named_in_path, rest = machine_of(path)
         if named_in_path is not None:
             name = named_in_path
+            tail = rest
+        else:
+            tail = str(path)
     space = Space.named(name)
-    directory = cwd if cwd is not None else (session_cwd() or os.getcwd())
+    given = None if cwd is None else (str(cwd).strip() or None)
+    directory = given if given is not None else (session_cwd() or os.getcwd())
+    if tail is not None and given is None and not space.is_absolute(tail):
+        here = (os.environ.get("GONGGA_REMOTE") or "").strip() or None
+        if space.name != here:
+            raise SpaceError(
+                f"{tail!r} is relative and no `cwd` says where it is, so this call would "
+                f"look for it under {directory!r}, the session's own directory, which is "
+                f"on {_machine_label(here)}. A relative path is resolved by the machine "
+                f"that holds it, so a path on {_machine_label(space.name)} has to be "
+                f"absolute in that machine's spelling, or `cwd` has to be a directory "
+                f"there."
+            )
     return space, directory
+
+
+def _machine_label(name):
+    """How a refusal names a machine: this one, or the operator's name for a peer."""
+    return "this machine" if name is None else f"remote {name!r}"
 
 
 def session_cwd():
@@ -457,6 +490,20 @@ class Space:
         runner = self.table.get("runner") or DEFAULT_RUNNER
         return f"ssh {host} ({runner})" if host else f"direct runner ({runner})"
 
+    def is_absolute(self, path):
+        """Whether a path is whole in this space's spelling, so no directory is needed.
+
+        # Invariant
+
+        One reader of "needs a directory", so a caller deciding whether it can default
+        one reads the same rule [`Space.resolve`] resolves by.
+        """
+        text = str(path)
+        if self.is_local:
+            return os.path.isabs(text)
+        norm = text.replace("\\", "/")
+        return posixpath.isabs(norm) or re.match(r"^[A-Za-z]:", norm) is not None
+
     def resolve(self, path, cwd=None):
         """One path absolute in this space's spelling, relative to `cwd` when it is not.
 
@@ -466,9 +513,9 @@ class Space:
         path = str(path)
         if self.is_local:
             return os.path.abspath(os.path.join(cwd or os.getcwd(), path))
+        if self.is_absolute(path):
+            return path.replace("\\", "/")
         norm = path.replace("\\", "/")
-        if posixpath.isabs(norm) or re.match(r"^[A-Za-z]:", norm):
-            return norm
         base = (cwd or "").replace("\\", "/").rstrip("/")
         return posixpath.join(base, norm) if base else norm
 
