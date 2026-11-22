@@ -146,9 +146,18 @@ def migrate_session(conn, session_id, now):
                 (SHIFT, session_id),
             )
     if "live_compact_artifacts" in tables(conn):
+        # `(session_id, message_seq)` is the primary key, so a plain `+ ?` meets a
+        # row that has not moved yet: 449 + 3 lands on a 452 that still exists.
+        # Park them at negative seqs first, the same way the messages above are
+        # parked, then shift from there.
         conn.execute(
-            "UPDATE live_compact_artifacts SET message_seq = message_seq + ? "
+            "UPDATE live_compact_artifacts SET message_seq = -message_seq "
             "WHERE session_id = ? AND message_seq >= 3",
+            (session_id,),
+        )
+        conn.execute(
+            "UPDATE live_compact_artifacts SET message_seq = -message_seq + ? "
+            "WHERE session_id = ? AND message_seq < 0",
             (SHIFT, session_id),
         )
     return True

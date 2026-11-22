@@ -113,6 +113,13 @@ class SixToSeven(unittest.TestCase):
             "INSERT INTO live_compact_artifacts (session_id, message_seq, checkpoint_id) "
             "VALUES (1, 5, 1)"
         )
+        # Three apart, so a single `message_seq + 3` would land the first on the
+        # second: `(session_id, message_seq)` is a primary key, and a real home has
+        # hundreds of these at neighbours' distance.
+        conn.execute(
+            "INSERT INTO live_compact_artifacts (session_id, message_seq, checkpoint_id) "
+            "VALUES (1, 8, 1)"
+        )
         conn.commit()
         conn.close()
         return home, db
@@ -188,10 +195,14 @@ class SixToSeven(unittest.TestCase):
                 (6, 7, 8, 8, 9),
             )
             self.assertEqual(
-                conn.execute(
-                    "SELECT message_seq FROM live_compact_artifacts WHERE session_id = 1"
-                ).fetchone()[0],
-                8,
+                [
+                    row[0]
+                    for row in conn.execute(
+                        "SELECT message_seq FROM live_compact_artifacts "
+                        "WHERE session_id = 1 ORDER BY message_seq"
+                    )
+                ],
+                [8, 11],
             )
         finally:
             conn.close()
