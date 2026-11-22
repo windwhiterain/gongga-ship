@@ -41,6 +41,10 @@ import typing as _typing
 
 DEFAULT_LIMIT = 40
 PREVIEW_CHARS = 120
+# The first five seqs of a session are the head: instructions, the tool set,
+# agents.md, the index and the card. Ordinary rows start after them, and an
+# archive's copied transcript is ordinary rows.
+HEAD_SLOTS = 5
 # The server writes are short but frequent; give a racing write time to clear
 # instead of failing the one operation that must not fail halfway.
 BUSY_TIMEOUT_MS = 5000
@@ -498,9 +502,15 @@ def handoff(note: str, mentor: _typing.Optional[str] = None, continue_: bool = T
 
     with conn:
         mid, created = _ensure_mentor(conn, mentor, source)
-        base = conn.execute(
-            "select coalesce(max(seq), 0) from messages where session_id = ?", (mid,)
-        ).fetchone()[0]
+        # Slots 1 through 5 are the head the server stamps on a session's first
+        # request. An archive is a session too, so its transcript starts past them,
+        # the way the server's own append reserves them.
+        base = max(
+            conn.execute(
+                "select coalesce(max(seq), 0) from messages where session_id = ?", (mid,)
+            ).fetchone()[0],
+            HEAD_SLOTS,
+        )
         now = int(_time.time() * 1000)
         conn.execute(
             """insert into messages (session_id, seq, kind, content, display, call_id, created_at)
@@ -589,10 +599,11 @@ def handoff(note: str, mentor: _typing.Optional[str] = None, continue_: bool = T
         if kept is not None:
             conn.execute(
                 """insert into messages (session_id, seq, kind, content, display, call_id, created_at)
-                    values (?, (select coalesce(max(seq), 0) + 1 from messages where session_id = ?),
+                    values (?, (select max(coalesce(max(seq), 0), ?) + 1 from messages where session_id = ?),
                             ?, ?, ?, ?, ?)""",
                 (
                     sid,
+                    HEAD_SLOTS,
                     sid,
                     kept["kind"],
                     kept["content"],

@@ -339,10 +339,12 @@ def test_handoff_keeps_the_call_in_flight():
 
         # The session keeps exactly the call whose result the server has yet to write.
         # A cut only takes the tail, so the call is cut with the history and appended
-        # back at the head: it is the only row left, at seq 1.
+        # back. It sits past the head slots: those five seqs are what the server
+        # stamps the prompt and the tool set on, and an ordinary row at 1 would take
+        # the slot the head needs.
         mine = h.rows(sid)
         assert [r["kind"] for r in mine] == ["tool_call"], [dict(r) for r in mine]
-        assert mine[0]["seq"] == 1, [dict(r) for r in mine]
+        assert mine[0]["seq"] == 6, [dict(r) for r in mine]
         assert [json.loads(e[0]) for e in h.sent()] == [{"name": "send_message", "args": {"session": "main", "message": "要做 X；Y 失败因为 Z", "continue": True}}], h.sent()
 
         # The archive holds the whole exchange, and the copied call is answered
@@ -358,7 +360,7 @@ def test_handoff_keeps_the_call_in_flight():
         h.add(sid, "tool_result", {"call_id": "c-live", "output": p.stdout, "images": []})
         left = h.rows(sid)
         assert [r["kind"] for r in left] == ["tool_call", "tool_result"], [dict(r) for r in left]
-        assert [r["seq"] for r in left] == [1, 2], [dict(r) for r in left]
+        assert [r["seq"] for r in left] == [6, 7], [dict(r) for r in left]
         h.close()
 
 def test_a_bad_copy_rolls_everything_back():
