@@ -1,6 +1,6 @@
 ---
 name: remote
-description: Configure and verify a Gongga session whose shells run on another machine over SSH. Use for 远端 / 远程主机 / remote host / set_session --remote / runner deployment. Covers installing the matching gongga distribution, writing the machine's ~/.agents/remotes.toml, checking the real SSH connection, and what a session with a remote can and cannot do. This is not a general-purpose SSH or PowerShell-remoting skill.
+description: Configure and verify a Gongga session whose shells run on another machine over SSH. Use for 远端 / 远程主机 / remote host / `remote://<name>/…` paths / runner deployment. Covers installing the matching gongga distribution, writing the machine's ~/.agents/remotes.toml, checking the real SSH connection, and what a session with a remote can and cannot do. This is not a general-purpose SSH or PowerShell-remoting skill.
 compatibility: Needs Python 3.11+ (tomllib), an OpenSSH client, and on Windows a Git Bash (not the Store alias)
 ---
 
@@ -137,10 +137,11 @@ file is read at startup.
 
 ## Use the endpoint
 
-A session with a remote runs its programs on the peer: `exec` starts a channel there
-by default, and `remote` names another machine from `[remotes]` when a call asks for one.
-It has one directory, and that directory belongs to the peer. The word is `remote`
-everywhere: `set_session --remote`, `configure --remote`, `[remotes.<name>]`.
+A session with a remote runs its programs on the peer: `exec` starts a channel there,
+and a `cwd` that names another machine from `[remotes]` starts it there instead. It has
+one directory, and that directory belongs to the peer. The word for the peer in a path is
+`remote://<name>/…`; `configure` and `[remotes.<name>]` are the rest of the vocabulary,
+and `set_session --cwd 'remote://<name>/<abs path>'` is how a session moves there.
 
 The agent is told where it stands. The session's start card (`dynamic_tail_remote`
 in the shipped config) names the peer beside the directory, so a model asked to run
@@ -159,10 +160,11 @@ cwd. The server stores the endpoint-reported cwd after the shell connects. Use a
 Windows path for a Windows peer and a POSIX path for a POSIX peer. A relative remote
 path is relative to the runner's starting directory, so an absolute path is clearer.
 
-`--remote none` moves a session back to this machine; omitting the flag leaves the
-machine as it is. Both end every channel on the machine being left. A move asked for
-while a turn is running is queued, not refused: it is applied when that turn ends, and
-the command says so.
+A `cwd` that names the machine moves the session; one that names none leaves it where it
+is. `--cwd 'remote://local/<abs path>'` is what moves a session back to this machine, and
+both kinds of move end every channel on the machine being left. A move asked for while a
+turn is running is queued, not refused: it is applied when that turn ends, and the command
+says so.
 
 The project is not synchronised. Clone/copy it on the peer first, using ordinary SSH,
 SFTP or Git from a local shell. Keep remote sessions separate even when they name the
@@ -184,12 +186,12 @@ on the peer is how the peer's files are read and edited.
   in an `exec` result on the peer are the peer's, and the same reference in a result on
   this machine is this machine's. The prompt's index reads the peer's `AGENTS.md`.
 
-Nothing in a local session's tool list mentions a remote: `exec` is offered there
-without its `remote` argument, so a local call cannot name a peer. A model that wants
-to know whether this session has a peer asks for this skill; that is the one place the
-answer is written. A local session that wants to work on another machine either moves
-there (`set_session --remote`, which is a command and takes effect when its turn ends,
-not in the turn that asked) or drives the peer through SSH from `exec`; this skill's own
+Nothing is chosen by a flag: a path names the machine, and that is the whole rule. So a
+local session asks nothing special to reach a peer -- `read`/`write`/`exec` take
+`remote://<name>/<abs path>` wherever a path goes -- and a session's own machine is what a
+bare path means. A session that wants its shells to move there moves: `set_session --cwd
+'remote://<name>/<abs path>'`, which is a command and takes effect when its turn ends, not
+in the turn that asked. This skill's own
 launcher only installs and verifies an endpoint, it runs nothing there.
 
 The project is not synchronised either way: a file on the peer is not here, and a

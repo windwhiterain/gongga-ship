@@ -258,12 +258,13 @@ def space_for(remote=None, cwd=None, path=None):
 
     # Invariant
 
-    The one directory this call can default to is the session's, and it is a directory on
-    the session's own machine. So a relative path naming a *different* machine is refused
-    rather than resolved here and sent there: that reaches the right machine with a path
-    from the wrong one, and answers "no such file" about a directory nobody named. An
-    absolute path needs no directory, and `cwd` is the caller's own statement, so neither
-    is refused. See `docs/notes/server-space.md`.
+    A path that names a machine names a *whole* path: `remote://<name>/<absolute>` has no
+    directory to fall back on, because the only one this call knows is on this machine, and
+    joining the two reaches the right machine with a path from the wrong one. So a relative
+    tail is refused whoever it names, this machine included -- a relative path is spelled
+    bare, where the caller's own directory stands. An absolute path needs no directory, and
+    `cwd` is the caller's own statement, so neither is refused. See
+    `docs/notes/server-space.md`.
     """
     stated = "" if remote is None else str(remote).strip()
     if remote is None:
@@ -273,17 +274,30 @@ def space_for(remote=None, cwd=None, path=None):
     else:
         name = stated
     tail = None
+    named = False
     # The path itself may name a machine, and then nothing else decides it.
     if path is not None:
         named_in_path, rest = machine_of(path)
-        if named_in_path is not None:
-            name = named_in_path
+        if named_in_path is not None or str(path).startswith("remote://"):
+            named = True
+            name = named_in_path if named_in_path is not None else name
             tail = rest
         else:
             tail = str(path)
     space = Space.named(name)
     given = None if cwd is None else (str(cwd).strip() or None)
     directory = given if given is not None else (session_cwd() or os.getcwd())
+    # A name and nothing after it states no directory: the machine's own stands.
+    if named and tail == "":
+        return space, directory
+    if named and tail is not None and not space.is_absolute(tail):
+        raise SpaceError(
+            f"{tail!r} is relative, and a `remote://` path names a machine and a whole path: "
+            f"it would be looked for under {directory!r}, a directory on this machine, and "
+            f"then sent to {_machine_label(space.name)}. Spell it in that machine's own "
+            f"absolute spelling, or write a bare relative path -- that is this call's own "
+            f"directory."
+        )
     if tail is not None and given is None and not space.is_absolute(tail):
         here = (os.environ.get("GONGGA_REMOTE") or "").strip() or None
         if space.name != here:

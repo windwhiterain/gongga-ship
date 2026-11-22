@@ -40,7 +40,13 @@
 # start on content that does not carry the template -- it would send a request with no
 # words for a masked turn -- so the commit that adds it is a step of its own. A
 # protocol-14 server reads the same file and never asks for the name.
-protocol = 15
+#
+# 16: a path is the only thing that names a machine -- `remote://<name>/<abs path>` -- and
+# every argument that named one beside it is gone: `exec`'s `remote`, `new_channel`'s
+# `remote` (its `cwd` says it), `list_paths`' `remote` (its `path` says it) and
+# `Workspace.remote` (its `cwd` says it). A protocol-15 server would offer a row naming
+# `remote` and run the call on the session's machine instead, which is the wrong one.
+protocol = 16
 
 # Which path in this repository is the home's config.
 config = "config/config.toml"

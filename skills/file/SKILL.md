@@ -48,13 +48,14 @@ are printed.
 
 ## Which machine
 
-The **path names its machine**. `remote://whiting_main/home/whting/x` is that peer's
-file, `remote://local/x` and a bare `x` are this machine's, and a bare path with no
-prefix belongs to the session's own machine (`GONGGA_REMOTE`, the same default `exec`
-uses) -- so a session standing on a peer reads and writes there with no extra argument.
-Any peer `~/.agents/remotes.toml` configures is reachable from any session, so one call
-may look at another machine without the session moving there; a name no table
-configures is refused, never a quiet fall back to here.
+The **path names its machine**. `remote://whiting_main//home/whting/x` is that peer's
+file -- note the two slashes: the name ends at the first `/` and the path is the peer's
+own absolute one, which starts with `/` too. `remote://local/x` and a bare `x` are this
+machine's, and a bare path with no prefix belongs to the session's own machine
+(`GONGGA_REMOTE`, the same default `exec` uses) -- so a session standing on a peer reads
+and writes there with no extra argument. Any peer `~/.agents/remotes.toml` configures is
+reachable from any session, so one call may look at another machine without the session
+moving there; a name no table configures is refused, never a quiet fall back to here.
 
 A **relative** path is resolved by the machine that holds it, against `cwd`, which
 defaults to the session's directory -- and that directory is on the session's own

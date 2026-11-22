@@ -202,6 +202,8 @@ Besides the arguments its own row lists, a tool call may carry these, and every 
 
 - `description`: one sentence saying what this call is for, in your own words. It is read on the call's own row -- a folded call shows it after its name -- and it names the file a capped answer was written to. Write it on every call: a call whose purpose nobody can read is a call nobody can review.
 - `max_output`: the longest answer this call returns. Past it the middle is cut and the whole of it goes to a file the answer names.
+
+A **path** may name the machine that holds it, and that is the only way a call names one: `remote://<machine>/<path in that machine's own spelling>`. On a peer whose paths start with `/` the name and the path give two slashes in a row -- `remote://build//home/build/x`. `remote://local/<path>` is this machine stated, and a bare path is wherever the call already stands (the session's own machine, or the one its `cwd` names). A prefixed path has to be absolute: a relative one would be looked for on this machine and then sent to another. Any machine `[remotes]` configures is reachable from any call, so one call may look at a peer without the session moving there; a name no table configures is refused, never quietly this machine.
 '''
 
 # What opens the input: the facts of this session, one message, before the first user
@@ -508,17 +510,10 @@ type = "optional[str]"
 sentence = '''Read until this text appears, and answer with what came before it. Omitted, `[channel.<name>]` may name one.'''
 
 [[tool.exec.parameters]]
-name = "remote"
-type = "optional[str]"
-hint = "name"
-completion = "remotes"
-sentence = '''Which machine it runs on, named by `[remotes]`; `none` (or a stated `null`) is the machine this server runs on. Omitted is the session's own, so a remote session names `none` to run the harness's own programs here. Naming another is not a change of session.'''
-
-[[tool.exec.parameters]]
 name = "cwd"
 type = "optional[path]"
 hint = "path"
-sentence = '''Where the program starts. Omitted: this session's directory when it asked for this session's machine, else that machine's own.'''
+sentence = '''Where the program starts, and which machine it runs on: a `remote://<machine>/<absolute path>` runs it there, a bare one here -- or on the session's own machine when it has a remote, in the session's directory. Omitted is the session's own directory and machine. A channel keeps the machine it was started on; this decides it once.'''
 
 [tool.wait]
 cmd = "wait"

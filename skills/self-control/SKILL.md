@@ -121,7 +121,7 @@ One JSON object, SPEC's `SessionConfig`:
     "ctx_limit": "70%",
     "cache_tier": "1h"
   },
-  "workspace": {"remote": "none", "cwd": "C:/resource/gongga"},
+  "workspace": {"cwd": "C:/resource/gongga"},
   "keep_alive": true
 }
 ```
@@ -132,8 +132,7 @@ One JSON object, SPEC's `SessionConfig`:
 | `model_config.thinking` | a level the model declares, or `default` | checked against the model this session runs on, so a typo fails now; `default` clears an earlier level |
 | `model_config.ctx_limit` | `"70%"`, `"70"`, or `0` | percent of the model's context window; `0` means never notice. Needs the model to declare a window |
 | `model_config.cache_tier` | a tier the model declares, or `none` | validated against the roster entry, so a tier from another provider is refused here |
-| `workspace.remote` | a remote's name, or `none` | `none` is this machine; a name not in the roster is refused before anything is created |
-| `workspace.cwd` | a path | read on the machine the session lands on; moving to another machine does not carry the source's directory |
+| `workspace.cwd` | a path | says both where the session works and which machine: `remote://<name>/<absolute path>` puts it on that peer, a bare or `remote://local/<path>` one on this machine — read on the machine it lands on, so moving to another machine does not carry the source's directory |
 | `keep_alive` | `true` / `false` | SPEC's `keep_alive`: send a message at the step boundary when the cache's life is nearly over |
 
 Every field is optional, at every level. For `new_session` an omitted field takes the
@@ -170,24 +169,23 @@ completing from the catalog will never offer them:
 | `ctx_limit` | `config.model_config.ctx_limit` |
 | `cache_tier` | `config.model_config.cache_tier` |
 | `keep_alive` | `config.keep_alive` |
-| `remote` | `config.workspace.remote` |
 | `cwd` | `config.workspace.cwd` |
 
 Three rules that make the delta safe:
 
 - **An omitted argument is a decision, not a default.** The session keeps what it had,
   at every level of the object.
-- **`none` is a statement.** `remote: "none"` and `cache_tier: "none"` clear those two;
-  leaving them out keeps them.
+- **`none` is a statement.** `cache_tier: "none"` clears it; leaving it out keeps it.
 - **Writing a model re-defaults what belongs to a model.** A new model re-resolves the
   thinking level and validates the cache tier against itself.
 
-Workspace changes are moves, not edits. A `cwd` is read on the destination's side; a
-`remote` change lands the session on that machine; a move asked for while a turn is
-running is queued and happens when that turn ends (`move_pending` in the answer says
-so). Changing `mode` to `explore` or back injects a notice the agent reads at its next
-step boundary, and `explore` -> `work` also opens the live-compact checkpoint SPEC asks
-for.
+Workspace changes are moves, not edits. A `cwd` is read on the destination's side, and a
+`cwd` that names a machine is what moves the session there: `remote://build//home/build/x`
+lands it on `build` in that directory, and a bare one keeps the machine it records. A move
+asked for while a turn is running is queued and happens when that turn ends
+(`move_pending` in the answer says so). Changing `mode` to `explore` or back injects a
+notice the agent reads at its next step boundary, and `explore` -> `work` also opens the
+live-compact checkpoint SPEC asks for.
 
 The answer is a sentence and:
 
@@ -312,12 +310,13 @@ directory and environment, and is named by a path in the session's namespace
 |---|---|---|---|
 | `id` | positional (`<id>`) | yes | the name it is called by: a path in this session's namespace |
 | `name` | positional (`<name>`) | yes | the program: a path, or a name the config's `[channel.<name>]` rows know (that row supplies the spawn words) |
-| `remote` | named (`--remote`) | no | the machine its program runs on; omitted is the session's, `none` is this one |
+| `cwd` | named (`--cwd`) | no | where its program runs, and so which machine: `remote://<name>/<absolute path>` there, a bare or `remote://local/<path>` one here or in the session's own directory |
 | `session` | named (`--session`), kind `session` | yes | the owner; the channel starts in that session's directory and environment |
 
 A name already in use is refused -- `exec` speaks to that one. The answer carries the
-pid. `remote` is SPEC's `optional[str]`: absent is the session's machine, a stated `none`
-is this one, and a name is that peer -- the same reading `exec`'s `remote` gets.
+pid. `cwd` is the call's whole statement about placement: a path that names a machine is
+that peer, and one that names none is the session's own machine. There is no second
+argument to disagree with it.
 
 ```bash
 gongga-cli '{"name":"new_channel","args":{"id":"/bash/default","name":"bash","session":"work/child"}}'
@@ -371,7 +370,7 @@ gongga-cli '{"name":"input_channel","args":{"id":"/bash/default","input":"ls","s
 | `path` | positional | no | a name prefix; omitted is every channel the session has |
 | `session` | named (`--session`), kind `session` | yes | whose channels |
 
-A JSON array in the `message`: `id`, `session`, `program`, `remote`, `pid`, `dir`,
+A JSON array in the `message`: `id`, `session`, `program`, `remote` (the machine it runs on), `pid`, `dir`,
 `started_at`, `ended_at`, `exit`, and `unread` (the lines nobody has read). Nothing
 matching answers a sentence instead.
 
@@ -549,15 +548,15 @@ gongga-cli '{"name":"trigger_event","args":{"event":"work/child:built"}}'
 
 ## Paths
 
-### `list_paths` -- one directory on a machine
+### `list_paths` -- one directory, on the machine its path names
 
 | argument | spelling | required | meaning |
 |---|---|---|---|
-| `remote` | named (`--remote`) | no | which machine's filesystem; omitted is this one |
-| `path` | named (`--path`) | no | what to list, as that machine spells it; empty is where its shell starts |
+| `path` | named (`--path`) | no | what to list: `remote://<name>/<path>` for a peer, bare or `remote://local/<path>` for this machine; empty is where that machine's shell starts |
 
 For a front-end completing a `cwd`; an agent reads its own shell's directories better by
-running `ls` in it. The answer is `{path, remote, entries: [{name, dir}, ...]}`.
+running `ls` in it. The answer is `{path, entries: [{name, dir}, ...]}`, where `path` is
+the one it was asked for.
 
 ```bash
 gongga-cli '{"name":"list_paths","args":{"path":"C:/resource"}}'
