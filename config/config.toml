@@ -103,6 +103,12 @@ cache_invalid_rate = 0.0
 # planned for as though it had not.
 cache_ttl_secs = 0
 
+# Checkpoints default to `live_compact_mode = "cut"`. Mask mode keeps the canonical
+# tape and needs `memory_max_unmasked_blocks` set to a positive count: recall is the
+# only way original spans become visible, and the harness masks the oldest unmasked
+# entries when the count is exceeded. The endpoint must declare
+# `api = "openai-responses-memory-mask"`; an ordinary provider stays in cut mode.
+
 [transport]
 mtu = 1200
 window = 64
@@ -420,6 +426,10 @@ The server stopped while these notices were owed to you and took them with it. T
 live_compact_notice = '''
 The live-compaction interval has elapsed. Call `live_compact` with two parts. `settled`: the closed record of what a later turn cannot recover from the transcript -- the decisions taken, the paths and identifiers the next step needs, and the facts it depends on. Write only what is decided: it accumulates across checkpoints, so an open question left here is reopened every later turn. `next`: the tasks still to do -- placed after the checkpoint and cut at the next one, so put the open work here, not in `settled`. The server keeps the latest complete tool-call round and every earlier `settled` verbatim, so do not restate them. `settled` may cite a file as `@file(<path>)`: the citation embeds that file whole, so a later turn reads it without opening it again -- at the cost of carrying it in every later request. Keep both short. Do not use handoff and do not delete transcript rows.'''
 
+# The same interval in mask mode: summarize without cutting the canonical tape.
+memory_mask_notice = '''
+The memory-checkpoint interval has elapsed. Call `memorize` with a short `summary` of the segment since the previous checkpoint: decisions taken, paths and identifiers the next step needs, and facts it depends on. The server keeps the latest complete tool-call round and every earlier memory summary visible, so do not restate them. The original segment stays on the canonical tape but becomes masked after the commit. Use `recall` with a memory id when its original span is needed again; the harness limits the unmasked set and reports every automatic displacement. Do not use handoff and do not delete transcript rows.'''
+
 # The text a turn boundary is written with when the provider refused the transcript.
 thinking_mark = '''
 The provider refused the previous request because a step was written without thinking. This mark records that refusal at the turn boundary; continue with thinking.'''
@@ -538,6 +548,25 @@ sentence = '''The open tasks still to do, stored as a user turn after the checkp
 name = "continue"
 type = "bool"
 sentence = '''Whether the turn goes on after this step. Omitted is `true`: the checkpoint is written and the next request reads it. `false` writes the same checkpoint and ends the turn there, so the checkpoint is context only and the next message answers `next` -- the shape `send_message(continue = false)` has.'''
+
+[tool.memorize]
+cmd = "memorize"
+summary = '''Commit a memory checkpoint in mask mode. Summarize the segment since the previous checkpoint through the latest complete ordinary round. The server returns a stable memory id, keeps this summary call and its result visible, and masks the original source span without deleting or moving it.'''
+
+[[tool.memorize.parameters]]
+name = "summary"
+required = true
+sentence = '''The closed record of this memory segment: decisions taken, paths and identifiers needed later, and facts the next step depends on. Keep it short and do not restate earlier summaries or the latest complete round.'''
+
+[tool.recall]
+cmd = "recall"
+summary = '''Unmask the original spans of memory blocks in mask mode. Ids take effect in argument order for the next request. The harness enforces its configured unmasked-block count by masking the earliest entries in the current unmasked set; the result names both recalled and automatically masked ids.'''
+
+[[tool.recall.parameters]]
+name = "ids"
+type = "list[str]"
+required = true
+sentence = '''Memory ids returned by memorize. Recalling an already unmasked block is idempotent and does not change its queue position.'''
 
 # SPEC's `fn gongga_cli(cmd: Cmd)`: one tool that routes a call to a server command, so a
 # command this build has no row of its own for is reached the same way. The command's
