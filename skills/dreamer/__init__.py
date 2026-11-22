@@ -25,8 +25,8 @@ DREAM_NOTICE = (
     "(dream notice: you are a dream, a disposable copy of the session that spawned you. "
     "Your only work is to organize the workspace's documents: consolidate, deduplicate "
     "and retire stale notes under .agents/notes/ and docs/notes/. Write no code, write no "
-    "tests, and make no git writes. The files you leave are the memory; when they are "
-    "in order, delete this dreamer session with del_session and end the turn.)"
+    "tests, and make no git writes. The files you leave are the memory. Do not delete "
+    "this session: the server discards a dreamer when its turn truly ends. End the turn.)"
 )
 
 
@@ -123,7 +123,7 @@ def dream() -> str:
     copied = _call(
         {
             "name": "clone_session",
-            "args": {"id": session, "new_id": name},
+            "args": {"id": session, "new_id": name, "dream_of": True},
         }
     )
     _call({"name": "mute_keepalive", "args": {"mute": True}})

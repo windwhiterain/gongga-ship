@@ -9,14 +9,14 @@ description: 收到 keepalive notice 后的两种选择——`dream()` 复制当
 
 | 函数 | 做的事 |
 | --- | --- |
-| `dream()` | `clone_session` 复制当前会话到 `<session>/dream/<时间>`，静音当前会话的 keepalive，再把 dream notice 发给副本、启动它的 turn |
+| `dream()` | `clone_session` 以 `dream_of=true` 复制当前会话到 `<session>/dream/<时间>`，静音当前会话的 keepalive，再把 dream notice 发给副本、启动它的 turn |
 | `mute_keep_alive()` | 只静音当前会话的 keepalive；不开副本，不改上下文 |
 
 两个函数都在当前会话的 shell 里运行：会话名取自 `GONGGA_SESSION`，命令走 `GONGGA_CLI`。不用写数据库——工具调用和它的结果之间多一行，provider 就收不到合法的 transcript。
 
 ## 什么时候用哪个
 
-- 想让缓存继续热、同时把 `.agents/notes/` 与 `docs/notes/` 的文档合并去重：用 `dream()`。副本拿走当前 prefix，整理完就把它删掉（它是普通会话，不会自动回收）。
+- 想让缓存继续热、同时把 `.agents/notes/` 与 `docs/notes/` 的文档合并去重：用 `dream()`。副本拿走当前 prefix；**不要让它自己调用 `del_session`**——那样会在自己的 turn 里等自己的 gate，120 秒后超时。带 `dream_of=true` 的副本由服务端在 turn 真正结束时清理。
 - 工作还会安静地持续很久，但现在没有文档要整理、也不想交接：用 `mute_keep_alive()`。
 - 工作本身需要换一副更大的工作记忆：不要调用本包，改调 `@skill(handoff)`。
 
