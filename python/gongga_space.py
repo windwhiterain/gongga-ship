@@ -343,9 +343,16 @@ class _Connection:
 
     Single-threaded: a request drains frames until its own reply, buffering any shell
     events that arrived first, so a one-shot run reads them back in order afterwards.
+
+    # Invariant
+
+    Every refusal this raises names the peer, because the same words from here would mean
+    another thing: "no such file" is a path this machine could have, and only the name
+    tells a caller which machine said it. See `docs/notes/server-space.md`.
     """
 
-    def __init__(self, argv):
+    def __init__(self, argv, label):
+        self.label = label
         try:
             self.process = subprocess.Popen(
                 argv,
@@ -354,14 +361,20 @@ class _Connection:
                 stderr=subprocess.PIPE,
             )
         except FileNotFoundError as bad:
-            raise SpaceError(f"could not start the runner: {bad}") from None
+            raise SpaceError(f"remote {self.label!r}: could not start the runner: {bad}") from None
         self._id = 0
         self._events = []
         try:
             hello(self._frame())
-        except BaseException:
+        except BaseException as refused:
             self.close()
-            raise
+            raise self._named(refused) from None
+
+    def _named(self, refused):
+        """The same refusal, saying which machine gave it."""
+        if isinstance(refused, SpaceError):
+            return SpaceError(f"remote {self.label!r}: {refused}")
+        return refused
 
     def _frame(self):
         line = self.process.stdout.readline()
@@ -383,22 +396,28 @@ class _Connection:
     def request(self, op):
         self._id += 1
         rid = self._id
-        self._send({"id": rid, **op})
-        while True:
-            frame = self._frame()
-            if "event" in frame:
-                self._events.append(frame)
-                continue
-            if frame.get("id") != rid:
-                raise SpaceError(f"the runner answered id {frame.get('id')}, asked {rid}")
-            if frame.get("err"):
-                raise SpaceError(frame["err"])
-            return frame.get("ok") or {}
+        try:
+            self._send({"id": rid, **op})
+            while True:
+                frame = self._frame()
+                if "event" in frame:
+                    self._events.append(frame)
+                    continue
+                if frame.get("id") != rid:
+                    raise SpaceError(f"the runner answered id {frame.get('id')}, asked {rid}")
+                if frame.get("err"):
+                    raise SpaceError(frame["err"])
+                return frame.get("ok") or {}
+        except SpaceError as refused:
+            raise self._named(refused) from None
 
     def next_event(self):
-        if self._events:
-            return self._events.pop(0)
-        return self._frame()
+        try:
+            if self._events:
+                return self._events.pop(0)
+            return self._frame()
+        except SpaceError as refused:
+            raise self._named(refused) from None
 
     def close(self):
         try:
@@ -539,7 +558,7 @@ class Space:
             else:
                 # No host is a runner this machine starts: the peer without ssh.
                 argv = runner_words(runner)
-            self._conn = _Connection(argv)
+            self._conn = _Connection(argv, self.name)
         return self._conn
 
     def close(self):
