@@ -9,7 +9,7 @@ description: 收到 keepalive notice 后的两种选择——`dream()` 复制当
 
 | 函数 | 做的事 |
 | --- | --- |
-| `dream()` | `clone_session` 以 `dream_of=true` 复制当前会话到 `<session>/dream/<时间>`，静音当前会话的 keepalive，再把 dream notice 发给副本、启动它的 turn |
+| `dream()` | `clone_session` 以 `dream_of=true` 复制当前会话到 `<session>/dream`，名字被占用时依次取 `<session>/dream/2`、`/3`……（与 subagent 相同的副本命名规则），静音当前会话的 keepalive，再把 dream notice 发给副本、启动它的 turn |
 | `mute_keep_alive()` | 只静音当前会话的 keepalive；不开副本，不改上下文 |
 
 两个函数都在当前会话的 shell 里运行：会话名取自 `GONGGA_SESSION`，命令走 `GONGGA_CLI`。不用写数据库——工具调用和它的结果之间多一行，provider 就收不到合法的 transcript。

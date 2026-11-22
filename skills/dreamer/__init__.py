@@ -15,11 +15,18 @@ import json as _json
 import os as _os
 import subprocess as _subprocess
 import sys as _sys
-import time as _time
 import typing as _typing
 
 COMMAND_VARIABLE = "GONGGA_CLI"
 LAYER = "gongga_cli.py"
+
+# How many names to try before giving up. Each attempt is one round trip, and a
+# session with a thousand dreams is a bug in the caller, not a case to serve.
+ATTEMPTS = 1000
+# What the server says when clone_session meets a taken name. Its answer is the
+# only signal that separates "name taken" from a real failure, so it is named
+# once, here. Contract: crates/server/src/store.rs duplicate_session.
+TAKEN = "already exists"
 
 DREAM_NOTICE = (
     "(dream notice: you are a dream, a disposable copy of the session that spawned you. "
@@ -116,16 +123,38 @@ def mute_keep_alive() -> str:
     return f"keepalive muted for {_caller()}; a message to this session clears it"
 
 
+def _clone_dream(session):
+    """Clone `session` into `<session>/dream`, taking `/2`, `/3`, ... while held.
+
+    The segment rule is the subagent skill's (`new_subagent`): the first child
+    takes the bare role name, and a name another session holds adds the next
+    ordinal beneath it, so two dreams of one session never share a transcript.
+    Returns the name the clone took and its cmd_result.
+    """
+    base = f"{session}/dream"
+    for attempt in range(ATTEMPTS):
+        name = base if attempt == 0 else f"{base}/{attempt + 1}"
+        try:
+            copied = _call(
+                {
+                    "name": "clone_session",
+                    "args": {"id": session, "new_id": name, "dream_of": True},
+                }
+            )
+        except RuntimeError as error:
+            if TAKEN not in str(error):
+                raise
+            continue
+        return name, copied
+    raise RuntimeError(
+        f"gave up after {ATTEMPTS} names under {base}: no dream was created"
+    )
+
+
 def dream() -> str:
     """Clone this session into a dreamer, mute here, and start the dreamer's turn."""
     session = _caller()
-    name = f"{session}/dream/{int(_time.time() * 1000)}"
-    copied = _call(
-        {
-            "name": "clone_session",
-            "args": {"id": session, "new_id": name, "dream_of": True},
-        }
-    )
+    name, copied = _clone_dream(session)
     _call({"name": "mute_keepalive", "args": {"mute": True}})
     sent = _call(
         {
