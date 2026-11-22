@@ -280,7 +280,7 @@ output_cap = '''
 
 [... {{omitted}} characters omitted ...]
 full output ({{total}} characters) written to {{path}}
-read just the part you need: `sed -n 'START,ENDp' {{path}}` or `grep -n PATTERN {{path}}` -- do not cat the whole thing again'''
+read just the part you need: `bash -lc "sed -n 'START,ENDp' {{path}}"` or `bash -lc "grep -n PATTERN {{path}}"` -- do not cat the whole thing again'''
 
 # The same cut when nothing could be spilled to disk. Placeholder: {{omitted}}
 output_omitted = '''
