@@ -53,6 +53,7 @@ import sys
 import types
 import tomllib
 
+from gongga import _event
 from gongga_space import (
     Failure,
     Peer,
@@ -589,18 +590,38 @@ def cli_command() -> list[str] | None:
     # Invariant
 
     The home's own copy comes first: it is the build whose server answers, and
-    the build that knows the protocol this machine speaks.
+    the build that knows the protocol this machine speaks. On Windows the command
+    layer is the `.cmd` the server writes; `gongga-cli.exe` is the pipe client.
+    See `crates/server/src/shell_command.rs`.
     """
     home = Path(os.environ.get("GONGGA_HOME") or (Path.home() / ".gongga"))
-    name = "gongga-cli.exe" if os.name == "nt" else "gongga-cli"
-    beside = home / "bin" / name
+    if os.name == "nt":
+        beside = home / "bin" / "gongga-cli.cmd"
+        found = str(beside) if beside.is_file() else shutil.which("gongga-cli.cmd")
+        if found:
+            return [os.environ.get("COMSPEC", "cmd.exe"), "/C", found]
+        return None
+    beside = home / "bin" / "gongga-cli"
     if beside.is_file():
         return [str(beside)]
     found = shutil.which("gongga-cli")
     return [found] if found else None
 
 
-def server_verdict(name: str, timeout: float = 30) -> dict:
+def table_peer(table: dict) -> Peer:
+    """The configured peer, with the same host/user/port/key split everywhere."""
+    user, _, address = str(table.get("host") or "").rpartition("@")
+    return Peer(
+        _Options(
+            host=address,
+            user=user or None,
+            port=int(table.get("port", 22)),
+            identity=table.get("identity"),
+        )
+    )
+
+
+def server_verdict(name: str, table: dict, timeout: float = 30) -> dict:
     """What the running server says about one remote.
 
     # Invariant
@@ -612,14 +633,20 @@ def server_verdict(name: str, timeout: float = 30) -> dict:
     question open.
 
     The vehicle is `list_paths`, because that is the command that opens an
-    endpoint today. A command of its own would answer the same thing without
-    the listing.
+    endpoint today. Its path is the peer's real home: an empty path means the
+    current directory only to a local endpoint. A command of its own would answer
+    the same thing without the listing.
     """
     command = cli_command()
     if command is None:
         return {"asked": False, "reason": "this machine has no command layer"}
     try:
-        result = run(command + [json.dumps({"name": "list_paths", "args": {"remote": name}})], timeout=timeout)
+        _, directory = peer_home(table_peer(table))
+    except Failure as error:
+        return {"asked": False, "usable": None, "reason": str(error)}
+    request = {"name": "list_paths", "args": {"remote": name, "path": directory}}
+    try:
+        result = run(command + [json.dumps(request)], timeout=timeout)
     except Failure as error:
         return {"asked": True, "usable": None, "reason": str(error)}
     answer = None
@@ -628,10 +655,18 @@ def server_verdict(name: str, timeout: float = 30) -> dict:
             frame = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if isinstance(frame, dict) and frame.get("t") == "cmd_result":
-            answer = frame
+        if not isinstance(frame, dict):
+            continue
+        event, _ = _event(frame)
+        if event.get("t") == "cmd_result":
+            answer = event
     if answer is None:
-        return {"asked": True, "usable": None, "reason": "the server did not answer"}
+        detail = text(result.stderr) or text(result.stdout)
+        return {
+            "asked": True,
+            "usable": None,
+            "reason": detail or "the server did not answer",
+        }
     if answer.get("ok"):
         return {"asked": True, "usable": True}
     message = str(answer.get("message") or "")
@@ -677,15 +712,8 @@ def reach(table: dict, timeout: float = 20) -> dict:
     host = str(table.get("host") or "")
     if not host:
         return {"connected": False, "error": "the remote names no host"}
-    user, _, address = host.rpartition("@")
-    chosen = _Options(
-        host=address,
-        user=user or None,
-        port=int(table.get("port", 22)),
-        identity=table.get("identity"),
-    )
     try:
-        greeting = probe(Peer(chosen), str(table.get("runner") or "gongga runner"), timeout=timeout)
+        greeting = probe(table_peer(table), str(table.get("runner") or "gongga runner"), timeout=timeout)
     except Failure as error:
         return {"connected": False, "error": str(error)}
     return {"connected": True, "greeting": True, "protocol": greeting["protocol"]}
@@ -711,7 +739,7 @@ def list_remotes(args: _Options) -> None:
         if args.check:
             row.update(reach(table))
             if row.get("connected"):
-                verdict = server_verdict(name)
+                verdict = server_verdict(name, table)
                 if server_started_before(path):
                     verdict["stale_config"] = True
                     verdict["note"] = (
