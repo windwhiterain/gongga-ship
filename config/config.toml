@@ -127,7 +127,7 @@ window = 64
 # are not a template: they are read as written.
 #
 # These are re-read when a prompt row is written -- the turn's first step, or
-# one whose index changed -- and the text rendered then is stored in that row
+# one whose plan changed -- and the text rendered then is stored in that row
 # and sent from it, so an edit lands at a boundary rather than at every step. Prose sits in front of the whole transcript in the provider's
 # cached prefix: re-rendering per step re-bills the history behind it once per
 # edit, and storing the render says what the model was actually told.
@@ -149,7 +149,7 @@ window = 64
 # filled -- the card states it. The cache to protect is the provider's: a byte prefix
 # at one endpoint, shared by every request that sends it, so one directory's sessions
 # warm each other's first turn. `prefix_layout` (one row per session) is this server's
-# plan for the order of the index, not that cache -- see
+# plan for the order of the plan's entries, not that cache -- see
 # docs/notes/server-prefix-cache.md. Everything a procedure can teach lives in a skill
 # rather than here.
 instructions = ''''''
@@ -164,7 +164,7 @@ Before you hand off, get these in order: commit your work in progress and tidy t
 
 A mentor is a session that keeps this transcript and can answer later questions. The `note` argument is the handoff note: the current objective, what was tried, what worked or failed, the current state, and the next action.
 
-Name in that note whatever the continuation will need to read, as `@file(<path>)` or `@skill(<name>)` -- the session is empty, so the note is its first user message, and a reference written there is text the index carries once instead of a file read again every turn. The parentheses are the delimitation: the value ends at its own `)`, so prose, spaces and Chinese punctuation after it are just prose. A group left unclosed is not a reference at all, and it says nothing when it fails. `@skill(prefix-cache)` says the rest.
+Name in that note whatever the continuation will need to read, as `@file(<path>)` or `@skill(<name>)` -- the session is empty, so the note is its first user message, and a reference written there is text the plan carries once instead of a file read again every turn. The parentheses are the delimitation: the value ends at its own `)`, so prose, spaces and Chinese punctuation after it are just prose. A group left unclosed is not a reference at all, and it says nothing when it fails. `@skill(prefix-cache)` says the rest.
 
 The `handoff` skill is one call: run
 
@@ -224,7 +224,7 @@ Session `{{session}}` on `{{model}}`, harness gongga at `{{build}}`, time {{now}
 dynamic_tail_remote_unstated = '''
 Session `{{session}}` on `{{model}}`, harness gongga at `{{build}}`, {{now}}, workspace unspecify on remote `{{remote}}`.'''
 
-# What introduces the index of the references the first message named, and of the
+# What introduces the plan of the references the first message named, and of the
 # `AGENTS.md` the session's own directory keeps: their text, each after the spelling
 # that names it, which the message then leaves as written.
 # Placeholder: {{entries}}
@@ -242,20 +242,20 @@ what this skill's functions take, generated from the package and trusted as writ
 
 {{arguments}}'''
 
-# What opens the request, before the index. A provider's first message is an
+# What opens the request, before the plan. A provider's first message is an
 # all-or-nothing unit -- one byte that differs in it costs the system text and the tool
-# schemas too -- so this is a constant, and the index begins after it. See
+# schemas too -- so this is a constant, and the plan begins after it. See
 # docs/reference/prefix-cache.md.
 index_opening = '''
-The index of this directory's rules and references follows.'''
+The plan of this directory's rules and references follows.'''
 
-# The message that keeps the opening and the index from merging into one: two user
-# messages in a row are merged, and the index would be back in the first message. A
+# The message that keeps the opening and the plan from merging into one: two user
+# messages in a row are merged, and the plan would be back in the first message. A
 # message of the other role separates them.
 index_separator = '''
 Understood.'''
 
-# What catches up an entry above that has changed since it was sent. The index keeps
+# What catches up an entry above that has changed since it was sent. The plan keeps
 # the text the provider already cached, so what changed is said once, at the end,
 # instead of re-sending the entry and everything planned after it.
 # Placeholder: {{revisions}}
