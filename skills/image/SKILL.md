@@ -32,7 +32,7 @@ show     # paths 是路径列表；一张图一行 `@image(...)`，check 只报�
 ```bash
 # 一次调用怎么拼、退出码什么意思，是 `@skill(skill)` 的事；这里只写 `show` 自己的参数。
 # 会话里更短：`skill` 工具的 `cmd` 就是同一个对象，`session` 由工具填。
-R() { gongga-cli "{\"name\":\"run_skill\",\"args\":{\"id\":\"harness/image\",\"cmd\":{\"name\":\"$1\",\"args\":$2},\"session\":\"$GONGGA_SESSION\"}}"; }
+R() { gongga-cli "{\"name\":\"$1\",\"skill\":\"image\",\"args\":$2}"; }
 R show '{"paths":["/path/to/shot.png"]}'              # 打印 `@image(...)` 引用，harness 接手
 R show '{"paths":["shot.png"],"check":true}'         # 只看它是什么、多大
 ```

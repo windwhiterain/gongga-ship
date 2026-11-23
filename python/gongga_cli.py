@@ -2,8 +2,10 @@
 
     gongga_cli.py '{"name":"<cmd>","args":{...}}'
 
-SPEC's `Cmd := {name: str, args: dict[str, any]}`: the rpc layer sends one server
-Cmd, checked under the server's schema, and prints what came back. There is no
+SPEC's `Cmd := {name: str, args: dict[str, any], skill: Skill = none}`: the rpc layer
+sends one server Cmd, checked under the server's schema, and prints what came back.
+`skill` names the skill whose function `name` is; omitted, the command is the server's
+own. There is no
 command-line flag parsing and no client command here: `set_sticky`, `set_render`,
 `connect_server`, `serve` are the client's own (SPEC `## Client Cmd`), not a server's
 answer. The server is the environment's (`GONGGA_HOME` / `GONGGA_SERVER` /
@@ -103,11 +105,15 @@ def main(argv):
     if not isinstance(args, dict):
         print('gongga-cli: "args" must be an object', file=sys.stderr)
         return 2
+    skill = cmd.get("skill")
+    if skill is not None and not isinstance(skill, str):
+        print('gongga-cli: "skill" is a skill\'s name, a string', file=sys.stderr)
+        return 2
     client = dial()
     if client is None:
         return 3
     try:
-        reply = client.call(name, **args)
+        reply = client.call(name, skill=skill, **args)
     except gongga.Unreachable as unreachable:
         print(f"gongga-cli: {unreachable}", file=sys.stderr)
         return 3

@@ -68,11 +68,11 @@ model_pool 的 `pick_config` 用 `null` 表示"默认"，可以照发。
 
 ```bash
 CONFIG='{"model_config":{"model":{"provider":"<provider>","model":"<model>"}}}'
-gongga-cli '{"name":"run_skill","args":{"id":"harness/subagent","cmd":{"name":"self_config","args":{}}}}'
-gongga-cli "{\"name\":\"run_skill\",\"args\":{\"id\":\"harness/subagent\",\"cmd\":{\"name\":\"new_subagent\",\"args\":{\"config\":$CONFIG,\"role\":\"impl\"}}}}"
+gongga-cli '{"name":"self_config","skill":"subagent","args":{}}'
+gongga-cli "{\"name\":\"new_subagent\",\"skill\":\"subagent\",\"args\":{\"config\":$CONFIG,\"role\":\"impl\"}}"
 ```
 
-`run_skill` 的拼法是 `@skill(skill)` 的事；这里只写本 skill 的函数名与参数。
+skill 调用的拼法是 `@skill(skill)` 的事；这里只写本 skill 的函数名与参数。
 
 stdout 只有一行名字（给 `$(…)` 用）；哪个名字被占了、订阅了几号，都走 stderr。
 
@@ -224,8 +224,8 @@ EOF
 另一种印法，输出 `<provider>/<model id>`：
 
 ```bash
-gongga-cli '{"name": "run_skill", "args": {"id": "general/model_pool", "cmd": {"name": "pick_config", "args": {"tier": "flash"}}, "session": "$GONGGA_SESSION"}}'
-gongga-cli '{"name": "run_skill", "args": {"id": "general/model_pool", "cmd": {"name": "pick", "args": {"tier": "flash"}}, "session": "$GONGGA_SESSION"}}'   # deepseek-official/deepseek-flash
+gongga-cli '{"name":"pick_config","skill":"model_pool","args":{"tier":"flash"}}'
+gongga-cli '{"name":"pick","skill":"model_pool","args":{"tier":"flash"}}'   # deepseek-official/deepseek-flash
 ```
 
 ```python
@@ -236,7 +236,7 @@ cfg["model_config"] = model_pool.pick_config("sota")    # 一次错就全错：�
 
 **档是派的活决定的，不是抽出来的**；`flash` 是价格档不是能力档。档内抽到哪个由额度决定，
 所以两条并行的子 agent 一般落在两个不同的 provider 上，正好不互相抢配额。它死在额度上时
-（transcript 里一行 403/429）：`run_skill` 到 `general/model_pool` 的 `mark <provider>/<model>` 挡一会儿
+（transcript 里一行 403/429）：`skill: model_pool` 的 `mark <provider>/<model>` 挡一会儿
 再抽，不要自己编一个模型名。
 
 不动 `model_config` 时它跑**你**的模型，不是服务端的默认模型。服务端的默认模型

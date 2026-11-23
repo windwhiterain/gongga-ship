@@ -6,8 +6,8 @@
 # a wheel than a home.
 #
 # `gongga` is the client: every command a server publishes is a function on a
-# connection, and `ls_skill`, `run_skill`, `get_trajectory` and `clone_session` are
-# commands like any other. `gongga_skill` is the contract a package skill is run
+# connection, and `ls_skill`, `get_trajectory` and `clone_session` are
+# commands like any other; a skill's function is a call with `skill` set. `gongga_skill` is the contract a package skill is run
 # through: one JSON request on stdin, the function it names called with the arguments
 # it names. `gongga_cli` is the same client as a process -- one command per run -- and
 # it is the file a home's `bin/gongga-cli` starts. None of the three knows the others'

@@ -42,7 +42,7 @@ handoff  # 存进 mentor、校验、剪空、把笔记发给自己
 ```bash
 # 一次调用怎么拼、退出码什么意思，是 `@skill(skill)` 的事；这里只写两个函数自己的参数。
 # 会话里更短：`skill` 工具的 `cmd` 就是同一个对象，`session` 由工具填。
-H() { gongga-cli "{\"name\":\"run_skill\",\"args\":{\"id\":\"handoff\",\"cmd\":{\"name\":\"$1\",\"args\":$2},\"session\":\"$GONGGA_SESSION\"}}"; }
+H() { gongga-cli "{\"name\":\"$1\",\"skill\":\"handoff\",\"args\":$2}"; }
 
 # 可选：需要回顾对话时才读
 H read '{}'
@@ -80,7 +80,7 @@ mentor 不存在就用当前的 model 和 cwd 建一个；它是普通会话（�
 # 读 mentor 的整份原文：不走模型、不花额度
 gongga-cli '{"name":"get_messages","args":{"session":"<你的会话名>/mentor","range":"1:"}}'
 # 问它一句（`self-control` 的 `ask`）：问题发出去、答复的 ping 替你订阅上，返回的是去读哪几行
-A() { gongga-cli "{\"name\":\"run_skill\",\"args\":{\"id\":\"self-control\",\"cmd\":{\"name\":\"ask\",\"args\":{\"session\":\"<你的会话名>/mentor\",\"question\":\"$1\"}},\"session\":\"$GONGGA_SESSION\"}}"; }
+A() { gongga-cli "{\"name\":\"ask\",\"skill\":\"self-control\",\"args\":{\"session\":\"<你的会话名>/mentor\",\"question\":\"$1\"}}"; }
 A '<你的问题>'
 ```
 

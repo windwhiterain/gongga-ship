@@ -112,15 +112,15 @@ harness 传给脚本的是**模型 key**（`providers.rs` 的 `QuotaAccess.key`�
 **取 cookie 的四步**（2026-11-11 对 `qwen-token-plan` 实测；日常那个浏览器里登录着就够了）：
 
 ```bash
-$ gongga-cli '{"name":"run_skill","args":{"id":"general/browser","cmd":{"name":"attach","args":{}},"session":"$GONGGA_SESSION"}}'          # 接用户在用的 Edge，不重启、不拷 profile
-$ gongga-cli '{"name":"run_skill","args":{"id":"general/browser","cmd":{"name":"cookies","args":{"domain":"qianwenai"}},"session":"$GONGGA_SESSION"}}' > /项目内的临时文件
+$ gongga-cli '{"name":"attach","skill":"browser","args":{}}'          # 接用户在用的 Edge，不重启、不拷 profile
+$ gongga-cli '{"name":"cookies","skill":"browser","args":{"domain":"qianwenai"}}' > /项目内的临时文件
 #   ↑ 每行 `域 名 = 值`，含 HttpOnly 的 login_qianwenai_ticket
 # 拼成 name=value; name=value，写成 keys.toml 的 qwen-console
-$ gongga-cli '{"name":"run_skill","args":{"id":"general/browser","cmd":{"name":"stop","args":{}},"session":"$GONGGA_SESSION"}}'            # 只释放连接，那个浏览器照常跑
+$ gongga-cli '{"name":"stop","skill":"browser","args":{}}'            # 只释放连接，那个浏览器照常跑
 ```
 
 写进去之后两步都要过：`python ~/.agents/gongga-agents/providers/qwen.py --timeout 15` 出读数，
-`gongga-cli '{"name":"run_skill","args":{"id":"general/model_pool","cmd":{"name":"status","args":{"provider":"<id>"}},"session":"$GONGGA_SESSION"}}'` 复核。
+`gongga-cli '{"name":"status","skill":"model_pool","args":{"provider":"<id>"}}'` 复核。
 
 四个坑，都是踩过的：
 
@@ -167,7 +167,7 @@ for this browser instance」——这一步 agent 不代办；勾过之后这台
 python ~/.agents/gongga-agents/providers/<script>.py --timeout 10     # 直接跑，看最后一行
 
 # 2) 池子怎么看它（真的会跑脚本，不是读缓存）
-gongga-cli '{"name":"run_skill","args":{"id":"general/model_pool","cmd":{"name":"status","args":{"provider":"<id>"}},"session":"$GONGGA_SESSION"}}'
+gongga-cli '{"name":"status","skill":"model_pool","args":{"provider":"<id>"}}'
 
 # 3) 一次真请求（不是探针）：用报告里那个模型，一句话
 ```

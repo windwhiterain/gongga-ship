@@ -1,7 +1,7 @@
 """Write what each package skill's functions take, as one JSON Schema document.
 
 The artifact is generated here, by the publisher, and every reader trusts it: the
-harness completes `run_skill`'s arguments from it and hands its bytes to a model
+harness completes a skill call's arguments from it and hands its bytes to a model
 beside the skill's own prose, and a reader outside this harness reads the same file.
 Asking a package again at request time would be a second opinion about one API, so
 `inspect.signature` is read here and nowhere else.

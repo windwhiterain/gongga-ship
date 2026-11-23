@@ -76,7 +76,7 @@ API**: whatever it defines at global scope that is callable and does not begin w
 consulted). A call names one of them and hands it its arguments as one JSON object:
 
 ```
-run_skill(id="handoff", cmd={"name": "read", "args": {"preview": true}})
+{"name": "read", "skill": "handoff", "args": {"preview": true}}
 ```
 
 Nothing is a command line: no `metadata.entry`, no `--name value`, no argv. An argument

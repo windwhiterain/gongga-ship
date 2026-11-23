@@ -70,7 +70,7 @@ all-or-nothing batch are the same code on either machine.
 ## Calling it
 
 ```bash
-gongga-cli '{"name":"run_skill","args":{"id":"file","cmd":{"name":"edit","args":{"path":"src/main.rs","edits":[{"old":["fn big() {\n","}\n"],"new":"fn big() {\n    todo!()\n}\n"}]}}}}'
+gongga-cli '{"name":"edit","skill":"file","args":{"path":"src/main.rs","edits":[{"old":["fn big() {\n","}\n"],"new":"fn big() {\n    todo!()\n}\n"}]}}'
 ```
 
 Line endings and the BOM are the file's, not the caller's: CRLF stays CRLF, and a

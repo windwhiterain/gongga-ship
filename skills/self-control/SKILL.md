@@ -15,7 +15,7 @@ publishes (`crates/server/src/commands.rs`, `server_catalog`), and each one has 
 It is not a second copy of SPEC: naming, `config` shapes and the last word on meaning
 are SPEC's (`## Server Cmd`). It is also not about when to use the harness versus
 changing it: two sessions working in parallel is `@skill(subagent)`, replacing the
-server itself is `@skill(evolve)`. And `ls_skill` / `run_skill` are the `@skill(skill)`
+server itself is `@skill(evolve)`. And `ls_skill` and a skill call's `skill` field are the `@skill(skill)`
 skill's business, so they are not repeated here.
 
 ## The commands, by subject
@@ -606,7 +606,7 @@ JSON
 In a window, or in any shell the server started, the shorter form is one command:
 
 ```bash
-A() { gongga-cli "{\"name\":\"run_skill\",\"args\":{\"id\":\"self-control\",\"cmd\":{\"name\":\"ask\",\"args\":{\"session\":\"$1\",\"question\":\"$2\"}},\"session\":\"$GONGGA_SESSION\"}}"; }
+A() { gongga-cli "{\"name\":\"ask\",\"skill\":\"self-control\",\"args\":{\"session\":\"$1\",\"question\":\"$2\"}}"; }
 A mentor "how did I write the snapshot step?"
 ```
 

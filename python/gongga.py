@@ -24,15 +24,17 @@ an argument the schema types as a list, and an argument the server requires must
 be present, or the server says so. The one convenience is `session`: a command
 that acts on a session takes it by name like any other argument.
 
-The four commands SPEC's `## Python Cmd` names are commands like the rest, so a
+The commands SPEC's `## Python Cmd` names are commands like the rest, so a
 package skill calls them the same way:
 
-    server.ls_skill(path="harness", session="main")        # -> its id, bucket, SKILL.md
-    server.run_skill(id="harness/prefix-cache",            # one function of a package
-                     cmd={"name": "look", "args": {"path": "/tmp"}},
-                     session="main")
+    server.ls_skill(path="harness", session="main")        # -> its name, bucket, SKILL.md
     server.get_messages(session="main", range="-20:-1")    # a range of the transcript
     server.clone_session(id="main", new_id="main-copy")    # a copy that runs its own turns
+
+A skill's function is a call with `skill` set -- SPEC's `Cmd := {name, args, skill}`:
+
+    server.call("show", skill="image", paths=["shot.png"])  # one function of a package
+    server.read(path="SPEC.md")                             # the row carries its skill
 """
 
 import json
@@ -190,23 +192,34 @@ class Client:
 
     # -- commands -----------------------------------------------------------
 
-    def call(self, command, /, **arguments):
+    def call(self, command, /, skill=None, **arguments):
         """Ask for one command and answer with its `Reply`, refused or not.
 
         The name is positional only, so a command that has an argument called `name`
-        -- `set_session` does -- spells it like any other. An argument is sent as the
-        value it is: a `cmd` object arrives as a table, and `None` as `null`, which is
-        a statement of its own and never the word `null`.
+        -- `set_session` does -- spells it like any other. `skill` is SPEC's `Cmd.skill`:
+        the skill whose function `command` is, and `arguments` are that function's own.
+        A name the greeting published as a skill's function carries its skill already,
+        so `server.read(path=...)` needs none stated. An argument is sent as the value
+        it is: a `cmd` object arrives as a table, and `None` as `null`, which is a
+        statement of its own and never the word `null`.
         """
         self.connect()
+        if skill is None:
+            skill = next(
+                (row.get("skill") for row in self.catalog if row["name"] == command),
+                None,
+            )
         wanted = self._next_id
         self._next_id += 1
-        self._send({
+        message = {
             "t": "command",
             "id": wanted,
             "name": command,
             "args": dict(arguments),
-        })
+        }
+        if skill is not None:
+            message["skill"] = skill
+        self._send(message)
 
         def answered(message):
             inner, _ = _event(message)

@@ -170,7 +170,7 @@ Name in that note whatever the continuation will need to read, as `@file(<path>)
 
 The `handoff` skill is one call: run
 
-`gongga-cli '{"name":"run_skill","args":{"id":"handoff","cmd":{"name":"handoff","args":{"note":"<objective, tried, worked, failed, current state, next action>"}}}}'`
+`gongga-cli '{"name":"handoff","skill":"handoff","args":{"note":"<objective, tried, worked, failed, current state, next action>"}}'`
 
 in a shell, or the `skill` tool with the same `cmd`. It answers with the continuation's next instructions.
 
@@ -192,7 +192,7 @@ interrupted_call = '''tool call interrupted'''
 size_hint = '''
 {{message}}
 
-The transcript no longer fits this model. Hand off with the `handoff` skill's `handoff` function (`gongga-cli '{"name":"run_skill","args":{"id":"handoff","cmd":{"name":"handoff","args":{"note":"<note>"}}}}'`): first put the handoff materials in order, then run it. Failing tests and unfinished work are valid state; no green suite is required first.'''
+The transcript no longer fits this model. Hand off with the `handoff` skill's `handoff` function (`gongga-cli '{"name":"handoff","skill":"handoff","args":{"note":"<note>"}}'`): first put the handoff materials in order, then run it. Failing tests and unfinished work are valid state; no green suite is required first.'''
 
 # What every call may carry besides the arguments its own row lists, one message,
 # before the card. The tool schemas state the four names and no sentence, so this
@@ -574,7 +574,7 @@ sentence = '''Memory ids returned by memorize. A recalled block moves to the tai
 [tool.gongga_cli]
 cmd = "gongga_cli"
 offered = true
-summary = '''Run one server command, named by the call: SPEC's `Cmd`, `{"name": "<command>", "args": {...}}`. Its schema is the `self-control` skill's; the session it acts on is this call's own unless its `args` name another. The answer is the command's, shaped like `exec`'s `Result`: `output`, `time`, `exit`.'''
+summary = '''Run one server command, named by the call: SPEC's `Cmd`, `{"name": "<command>", "args": {...}, "skill": "<skill>"}`. `skill` omitted is a command this server answers itself, whose schema is the `self-control` skill's; `skill` set runs that skill's function `name`, with `args` as its keyword arguments, spelled by the `skill` skill. The session it acts on is this call's own unless its `args` name another. The answer is the command's, shaped like `exec`'s `Result`: `output`, `time`, `exit`.'''
 
 [[tool.gongga_cli.parameters]]
 name = "cmd"
@@ -582,7 +582,7 @@ type = "Cmd"
 required = true
 positional = 1
 hint = "json"
-sentence = '''The command and its arguments: `{"name": "ls_channel", "args": {"path": "/"}}`. `args` is that command's own, its names and which are required taught by the `self-control` skill; omitted, the command takes none.'''
+sentence = '''The command and its arguments: `{"name": "ls_channel", "args": {"path": "/"}}`. `args` is that command's own, its names and which are required taught by the `self-control` skill; omitted, the command takes none. `skill` names a skill whose function `name` is -- `{"name": "show", "skill": "image", "args": {"paths": ["shot.png"]}}` -- and is omitted for a command the server answers itself.'''
 
 # SPEC's channel commands, offered as tools: the model lists and ends channels by
 # name. The session is the call's own; the command layer fills it.
