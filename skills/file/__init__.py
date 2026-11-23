@@ -40,9 +40,11 @@ def _space(cwd, path=None):
 
     # Invariant
 
-    One rule with every other skill that takes a path (`gongga_space.space_for`): a stated
-    name is read from this machine's remotes whatever machine the session stands on, and an
-    omitted one is the session's own. See `docs/notes/server-remote.md`.
+    One rule with every other skill that takes a path (`gongga_space.space_for`): the
+    machine is the path's when it carries `remote://`, else the `cwd`'s when that carries
+    one, else the session's own -- so a `cwd` on a peer puts a relative path on that peer.
+    A `remote://` spelling is a machine and a whole path. See
+    `docs/notes/server-space.md`.
     """
     try:
         return gongga_space.space_for(cwd=cwd, path=path)

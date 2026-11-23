@@ -89,9 +89,11 @@ def show(paths: list, check: bool = False, cwd: typing.Optional[str] = None):
 
     # Invariant
 
-    One path rule with `read`/`write`/`edit` (`gongga_space.space_for`): `remote` names the
-    machine the bytes are on, `cwd` the directory a relative name is joined against, and an
-    omitted `remote` is the session's own. A picture a peer holds travels as
+    One path rule with `read`/`write`/`edit` (`gongga_space.space_for`): a name that
+    carries `remote://` names the machine the bytes are on, else a `cwd` that carries one
+    does, else the session's own. `cwd` is also the directory a relative name is joined
+    against, so a `cwd` on a peer reads a relative name there. A picture a peer holds
+    travels as
     `@image(remote://<name>/<path>)`, which the harness fetches there; one this machine
     holds, in a session standing here, as `@image(<path>)`. A session standing on a peer
     states the machine even for a picture here (`remote://local/`), because a bare path is

@@ -57,12 +57,16 @@ and writes there with no extra argument. Any peer `~/.agents/remotes.toml` confi
 reachable from any session, so one call may look at another machine without the session
 moving there; a name no table configures is refused, never a quiet fall back to here.
 
-A **relative** path is resolved by the machine that holds it, against `cwd`, which
-defaults to the session's directory -- and that directory is on the session's own
-machine. So a relative path naming *another* machine is refused: it would be looked for
-under a directory that does not exist there. Write it in that machine's spelling (an
-absolute path, with `/`: `C:/Users/...` or `/home/...`), or pass `cwd` as a directory on
-that machine.
+A **relative** path stands in `cwd`, which defaults to the session's directory, and the
+machine that holds that directory resolves it -- so `cwd: "remote://whiting_main//home/whting/x"`
+with `path: "a.txt"` means `/home/whting/x/a.txt` on that peer. A `cwd` and a `path`
+that name two different machines are refused: one call runs on one machine. A `cwd` that
+names a machine names a whole directory too, so `remote://<name>/` alone is refused.
+
+A `remote://` spelling is always a **whole** path: `remote://<name>/<absolute>`, never a
+relative tail -- it would be looked for under a directory on this machine and then sent
+there -- and never the bare machine. Spell it the way that machine does: `/home/you/x`,
+or `C:/Users/you/x`, which for a peer means the two slashes.
 
 The bytes travel through the peer's runner; the matching, the BOM and the
 all-or-nothing batch are the same code on either machine.

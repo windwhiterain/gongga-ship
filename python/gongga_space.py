@@ -245,76 +245,150 @@ def machine_of(path):
     return (name, tail)
 
 
-def space_for(remote=None, cwd=None, path=None):
+def _whole(tail):
+    """Whether a tail is a path some machine's spelling calls whole: a root, or a drive.
+
+    # Invariant
+
+    One reader of "whole", the shape `crates/server/src/space.rs::is_whole` accepts, so
+    the two mirrors refuse the same spellings: a peer's platform is the peer's fact, and
+    only the machine that holds a path can say more than this. See
+    `docs/notes/server-space.md`.
+    """
+    norm = str(tail).replace("\\", "/")
+    return norm.startswith("/") or re.match(r"^[A-Za-z]:", norm) is not None
+
+
+def _stated(text, what):
+    """One spelled path as (machine, tail); the machine is `None` for a bare spelling.
+
+    # Invariant
+
+    A `remote://` spelling is a machine *and* a whole path, never a machine alone and
+    never a relative tail: the first names no path at all, and the second would be looked
+    for under a directory on this machine and then sent to another one. Both are refused
+    here, so no caller resolves a tail it cannot place. See `docs/notes/server-space.md`.
+    """
+    name, tail = machine_of(text)
+    if name is None and not str(text).startswith("remote://"):
+        return None, str(text)
+    if not _whole(tail):
+        raise SpaceError(
+            f"{what} {text!r} is not a whole path on {_machine_label(name)}: a "
+            f"`remote://` spelling is a machine and a whole path, so spell it the way "
+            f"that machine does (`/home/you/x`, `C:/Users/you/x`), or leave the prefix "
+            f"off and let `cwd` say which machine's directory it stands in."
+        )
+    return name, tail
+
+
+def space_for(cwd=None, path=None):
     """The machine a call's path lives on, and the directory a relative one resolves in.
 
     # Invariant
 
-    One rule for every skill that takes a path: a stated name is read from this machine's
-    remotes, whatever machine the session stands on -- a call may look at another machine
-    without the session moving there. Omitted is the session's own (`GONGGA_REMOTE`);
-    `local`, `none` or an empty name is this machine. A directory is the caller's: `cwd`
-    when given, else the session's own, else this process's.
+    One rule for every skill that takes a path: the machine is named by the `path` when
+    it carries the prefix, else by a `cwd` that carries one, else it is the session's own
+    (`GONGGA_REMOTE`). So a call may look at another machine without the session moving
+    there, and a `cwd` on a peer puts a relative path on that peer. A stated name is read
+    from this machine's remotes; `local`, `none` or an empty name is this machine. A
+    `path` and a `cwd` naming different machines are refused: one call runs on one
+    machine, and honouring one while dropping the other is how a path ends up joined with
+    a directory from the wrong machine.
 
     # Invariant
 
-    A path that names a machine names a *whole* path: `remote://<name>/<absolute>` has no
-    directory to fall back on, because the only one this call knows is on this machine, and
-    joining the two reaches the right machine with a path from the wrong one. So a relative
-    tail is refused whoever it names, this machine included -- a relative path is spelled
-    bare, where the caller's own directory stands. An absolute path needs no directory, and
-    `cwd` is the caller's own statement, so neither is refused. See
-    `docs/notes/server-space.md`.
+    A `remote://` spelling is a machine and a whole path ([`_stated`]), so a relative path
+    is spelled bare and stands in the directory this call states: `cwd` when given, else
+    the session's own -- read as a spelling too, because a session placed on a peer stores
+    `remote://<name>/<whole>` there. A stated directory that names no directory leaves a
+    relative path nowhere to stand, and is refused. See `docs/notes/server-space.md`.
     """
-    stated = "" if remote is None else str(remote).strip()
-    if remote is None:
-        name = (os.environ.get("GONGGA_REMOTE") or "").strip() or None
-    elif stated.lower() in ("", "local", "none"):
-        name = None
-    else:
-        name = stated
-    tail = None
-    named = False
-    # The path itself may name a machine, and then nothing else decides it.
-    if path is not None:
-        named_in_path, rest = machine_of(path)
-        if named_in_path is not None or str(path).startswith("remote://"):
-            named = True
-            name = named_in_path if named_in_path is not None else name
-            tail = rest
-        else:
-            tail = str(path)
-    space = Space.named(name)
     given = None if cwd is None else (str(cwd).strip() or None)
-    directory = given if given is not None else (session_cwd() or os.getcwd())
-    # A name and nothing after it states no directory: the machine's own stands.
-    if named and tail == "":
-        return space, directory
-    if named and tail is not None and not space.is_absolute(tail):
+    directory_name, directory = (None, None)
+    if given is not None:
+        directory_name, directory = _stated(given, "`cwd`")
+    path_name, tail = (None, None)
+    if path is not None:
+        path_name, tail = _stated(str(path), "`path`")
+    if path_name is not None and directory_name is not None and path_name != directory_name:
         raise SpaceError(
-            f"{tail!r} is relative, and a `remote://` path names a machine and a whole path: "
-            f"it would be looked for under {directory!r}, a directory on this machine, and "
-            f"then sent to {_machine_label(space.name)}. Spell it in that machine's own "
-            f"absolute spelling, or write a bare relative path -- that is this call's own "
-            f"directory."
+            f"`path` names {_machine_label(path_name)} and `cwd` names "
+            f"{_machine_label(directory_name)}: one call runs on one machine, so these "
+            f"cannot both be meant. Name the machine once, in the path or in the "
+            f"directory a relative path stands in."
         )
-    if tail is not None and given is None and not space.is_absolute(tail):
-        here = (os.environ.get("GONGGA_REMOTE") or "").strip() or None
-        if space.name != here:
-            raise SpaceError(
-                f"{tail!r} is relative and no `cwd` says where it is, so this call would "
-                f"look for it under {directory!r}, the session's own directory, which is "
-                f"on {_machine_label(here)}. A relative path is resolved by the machine "
-                f"that holds it, so a path on {_machine_label(space.name)} has to be "
-                f"absolute in that machine's spelling, or `cwd` has to be a directory "
-                f"there."
-            )
+    name = path_name if path_name is not None else directory_name
+    session = ("", None, None)
+    if name is None or directory is None:
+        session = _session_statement()
+        if name is None:
+            name = session[1]
+    if name is None:
+        name = (os.environ.get("GONGGA_REMOTE") or "").strip() or None
+    space = Space.named(name)
+    if tail is not None and space.is_absolute(tail):
+        # A whole path stands on its own: no directory is involved, and none is defaulted.
+        return space, "" if directory is None else directory
+    if directory is None:
+        directory = _session_placed(space, session)
     return space, directory
+
+
+def _session_statement():
+    """The session's own directory as one spelling: (stated, machine, tail).
+
+    # Invariant
+
+    The session's row states its directory the way a call does -- `remote://<name>/<whole>`
+    for a session placed on a peer -- and it is the one statement left when neither the
+    path nor `cwd` names a machine, so it is read here and not only used as a directory.
+    See `docs/notes/server-space.md`.
+    """
+    stated = (session_cwd() or "").strip()
+    if not stated:
+        return ("", None, None)
+    name, tail = machine_of(stated)
+    return (stated, None, stated) if name is None else (stated, name, tail)
+
+
+def _session_placed(space, session):
+    """The session's directory on `space`'s machine, for a relative path to stand in.
+
+    # Invariant
+
+    A stated directory that names a machine and no directory, or one on a machine other
+    than this path's, gives a relative path nowhere to stand, and is refused rather than
+    guessed at here: the guess would be a directory on the wrong machine, which is the
+    whole thing this module exists to prevent. See `docs/notes/server-space.md`.
+    """
+    stated, name, tail = session
+    if tail is None:
+        if space.is_local:
+            return os.getcwd()
+        raise SpaceError(
+            f"this call's machine is {_machine_label(space.name)} and no directory was "
+            f"stated, so a relative path has nowhere to stand there: state `cwd` as a "
+            f"directory on that machine, or spell the path whole."
+        )
+    if name is not None and not _whole(tail):
+        raise SpaceError(
+            f"the session's directory {stated!r} names {_machine_label(name)} and no "
+            f"directory of it, so a relative path has nowhere to stand there: state "
+            f"`cwd` as a directory on that machine, or spell the path whole."
+        )
+    if name is not None and name != (space.name or ""):
+        raise SpaceError(
+            f"the session's directory {stated!r} is on {_machine_label(name)}, and this "
+            f"path is on {_machine_label(space.name)}: a relative path is resolved by "
+            f"the machine that holds it, so state `cwd` as a directory there."
+        )
+    return tail
 
 
 def _machine_label(name):
     """How a refusal names a machine: this one, or the operator's name for a peer."""
-    return "this machine" if name is None else f"remote {name!r}"
+    return "this machine" if not name else f"remote {name!r}"
 
 
 def session_cwd():
