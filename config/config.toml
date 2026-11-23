@@ -428,11 +428,11 @@ The server stopped while these notices were owed to you and took them with it. T
 
 # What asks a session to fold its context: the live compaction interval.
 live_compact_notice = '''
-The live-compaction interval has elapsed. Call `live_compact` with two parts. `settled`: the closed record of what a later turn cannot recover from the transcript -- the decisions taken, the paths and identifiers the next step needs, and the facts it depends on. Write only what is decided: it accumulates across checkpoints, so an open question left here is reopened every later turn. `next`: the tasks still to do -- placed after the checkpoint and cut at the next one, so put the open work here, not in `settled`. The server keeps the latest complete tool-call round and every earlier `settled` verbatim, so do not restate them. `settled` may cite a file as `@file(<path>)`: the citation embeds that file whole, so a later turn reads it without opening it again -- at the cost of carrying it in every later request. Keep both short. Do not use handoff and do not delete transcript rows.'''
+The live-compaction interval has elapsed. Write the checkpoint with the `live_compact` server command, invoked through the `gongga_cli` tool: `cmd = {"name": "live_compact", "args": {"settled": "...", "next": "..."}}`. It is a server command, not a tool in your tool set. Two parts. `settled`: the closed record of what a later turn cannot recover from the transcript -- the decisions taken, the paths and identifiers the next step needs, and the facts it depends on. Write only what is decided: it accumulates across checkpoints, so an open question left here is reopened every later turn. `next`: the tasks still to do -- placed after the checkpoint and cut at the next one, so put the open work here, not in `settled`. The server keeps the latest complete tool-call round and every earlier `settled` verbatim, so do not restate them. `settled` may cite a file as `@file(<path>)`: the citation embeds that file whole, so a later turn reads it without opening it again -- at the cost of carrying it in every later request. Keep both short. Do not use handoff and do not delete transcript rows.'''
 
 # The same interval in mask mode: summarize without cutting the canonical tape.
 memory_mask_notice = '''
-The memory-checkpoint interval has elapsed. Call `memorize` with a short `summary` of the segment since the previous checkpoint: decisions taken, paths and identifiers the next step needs, and facts it depends on. The server keeps the latest complete tool-call round and every earlier memory summary visible, so do not restate them. The original segment stays on the canonical tape but becomes masked after the commit. Use `recall` with a memory id when its original span is needed again; the harness limits the unmasked set and reports every automatic displacement. Do not use handoff and do not delete transcript rows.'''
+The memory-checkpoint interval has elapsed. Write the checkpoint with the `memorize` server command, invoked through the `gongga_cli` tool: `cmd = {"name": "memorize", "args": {"summary": "..."}}`. It is a server command, not a tool in your tool set. Use a short `summary` of the segment since the previous checkpoint: decisions taken, paths and identifiers the next step needs, and facts it depends on. The server keeps the latest complete tool-call round and every earlier memory summary visible, so do not restate them. The original segment stays on the canonical tape but becomes masked after the commit. Use the `recall` command through `gongga_cli` (`cmd = {"name": "recall", "args": {"ids": ["..."]}}`) with a memory id when its original span is needed again; the harness limits the unmasked set and reports every automatic displacement. Do not use handoff and do not delete transcript rows.'''
 
 # The text a turn boundary is written with when the provider refused the transcript.
 thinking_mark = '''
@@ -529,6 +529,7 @@ sentence = '''Give up after this many milliseconds. This is a limit on waiting, 
 
 [tool.live_compact]
 cmd = "live_compact"
+offered = false
 summary = '''Write the checkpoint requested by the server, in two parts. `settled` is the closed record of the segment since the previous checkpoint: the decisions taken, the paths and identifiers the next step needs, and the facts it depends on. It accumulates across checkpoints, so write only what is decided, never what is still open. `next` is the open part: the tasks still to do, and it is stored as a user turn -- the request after the checkpoint answers it rather than the model's own words, so nothing re-orients as if restarted. It is cut at the next checkpoint, so it never accumulates. The server retains the latest complete tool-call round separately. `settled` may cite a file as `@file(<path>)`: the citation embeds that file whole into the summary, so a later turn reads the content without opening it again -- at the cost of carrying it in every later request. Keep both short.'''
 # SPEC's live_compact is a summary call: it takes no tunnel arguments.
 
@@ -548,6 +549,7 @@ sentence = '''Whether the turn goes on after this step. Omitted is `true`: the c
 
 [tool.memorize]
 cmd = "memorize"
+offered = false
 summary = '''Commit a memory checkpoint in mask mode. Summarize the segment since the previous checkpoint through the latest complete ordinary round. The server returns a stable memory id, keeps this summary call and its result visible, and masks the original source span without deleting or moving it.'''
 
 [[tool.memorize.parameters]]
@@ -557,6 +559,7 @@ sentence = '''The closed record of this memory segment: decisions taken, paths a
 
 [tool.recall]
 cmd = "recall"
+offered = false
 summary = '''Unmask the original spans of memory blocks in mask mode. Ids take effect in argument order for the next request, and every recalled block moves to the tail of the unmasked queue. The harness masks the earliest entries while the visible tokens exceed this session's share of the provider's unmasked context; the result names both recalled and automatically masked ids.'''
 
 [[tool.recall.parameters]]
