@@ -104,10 +104,12 @@ cache_invalid_rate = 0.0
 cache_ttl_secs = 0
 
 # Checkpoints default to `live_compact_mode = "cut"`. Mask mode keeps the canonical
-# tape and needs `memory_max_unmasked_blocks` set to a positive count: recall is the
-# only way original spans become visible, and the harness masks the oldest unmasked
-# entries when the count is exceeded. The endpoint must declare
-# `api = "openai-responses-memory-mask"`; an ordinary provider stays in cut mode.
+# tape: recall is the only way original spans become visible, and the harness masks
+# the oldest unmasked entries while the visible tokens exceed the session's share of
+# the provider's `unmasked_context` -- that share is the session's `ctx_limit` of the
+# ceiling, and a provider that states no ceiling leaves nothing to evict against. The
+# endpoint must declare `api = "openai-responses-memory-mask"`; an ordinary provider
+# stays in cut mode.
 
 [transport]
 mtu = 1200
@@ -555,13 +557,13 @@ sentence = '''The closed record of this memory segment: decisions taken, paths a
 
 [tool.recall]
 cmd = "recall"
-summary = '''Unmask the original spans of memory blocks in mask mode. Ids take effect in argument order for the next request. The harness enforces its configured unmasked-block count by masking the earliest entries in the current unmasked set; the result names both recalled and automatically masked ids.'''
+summary = '''Unmask the original spans of memory blocks in mask mode. Ids take effect in argument order for the next request, and every recalled block moves to the tail of the unmasked queue. The harness masks the earliest entries while the visible tokens exceed this session's share of the provider's unmasked context; the result names both recalled and automatically masked ids.'''
 
 [[tool.recall.parameters]]
 name = "ids"
 type = "list[str]"
 required = true
-sentence = '''Memory ids returned by memorize. Every recalled block moves to the tail of the unmasked queue, so a block read again is evicted after blocks whose last use is older.'''
+sentence = '''Memory ids returned by memorize. A recalled block moves to the tail of the unmasked queue, so one just recalled outlives one recalled earlier; a duplicate id still moves it only once.'''
 
 # SPEC's `fn gongga_cli(cmd: Cmd)`: one tool that routes a call to a server command, so a
 # command this build has no row of its own for is reached the same way. The command's
