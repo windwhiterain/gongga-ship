@@ -483,7 +483,7 @@ summary = '''Run a program as a channel, or read the one already running. `bin` 
 name = "bin"
 positional = 1
 hint = "path"
-sentence = '''The program to run: a name on this machine's PATH, or a path to it. Try these first: `bash` for a shell command, `python` for a script, `powershell` on Windows; `python3` only after `python`, because on Windows `python3` is often a stub that prints an install advert and fails. `bash` and `python` are the two this server frames a reply for (`[channel.<name>]`); any other program is started raw, and the call's own `until` ends the reply. A name this machine does not have starts nothing and answers `program not found`: try the next spelling rather than concluding the work cannot be done. A path works too: `C:/Program Files/Git/bin/bash.exe`. Omitted, this call speaks to the channel `id` names, as the program it was started as.'''
+sentence = '''The program to run: a name on this machine's PATH, or a path to it. `bash`, `python`, `python3` and `powershell` are the names worth trying first. Omitted, this call speaks to the channel `id` names, as the program it was started as.'''
 
 [[tool.exec.parameters]]
 name = "args"
