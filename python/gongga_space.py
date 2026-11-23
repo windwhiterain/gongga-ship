@@ -318,17 +318,17 @@ def space_for(cwd=None, path=None):
             f"cannot both be meant. Name the machine once, in the path or in the "
             f"directory a relative path stands in."
         )
-    name = path_name if path_name is not None else directory_name
+    if path_name is not None:
+        # A whole path stands on its own: no directory is involved, and none is defaulted.
+        return Space.named(path_name), "" if directory is None else directory
     session = ("", None, None)
-    if name is None or directory is None:
+    if directory is None:
         session = _session_statement()
-        if name is None:
-            name = session[1]
+    name = directory_name if directory_name is not None else session[1]
     if name is None:
         name = (os.environ.get("GONGGA_REMOTE") or "").strip() or None
     space = Space.named(name)
     if tail is not None and space.is_absolute(tail):
-        # A whole path stands on its own: no directory is involved, and none is defaulted.
         return space, "" if directory is None else directory
     if directory is None:
         directory = _session_placed(space, session)
