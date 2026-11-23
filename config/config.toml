@@ -432,7 +432,7 @@ The live-compaction interval has elapsed. Write the checkpoint with the `live_co
 
 # The same interval in mask mode: summarize without cutting the canonical tape.
 memory_mask_notice = '''
-The memory-checkpoint interval has elapsed. Write the checkpoint with the `memorize` server command, invoked through the `gongga_cli` tool: `cmd = {"name": "memorize", "args": {"summary": "..."}}`. It is a server command, not a tool in your tool set. Use a short `summary` of the segment since the previous checkpoint: decisions taken, paths and identifiers the next step needs, and facts it depends on. The server keeps the latest complete tool-call round and every earlier memory summary visible, so do not restate them. The original segment stays on the canonical tape but becomes masked after the commit. Use the `recall` command through `gongga_cli` (`cmd = {"name": "recall", "args": {"ids": ["..."]}}`) with a memory id when its original span is needed again; the harness limits the unmasked set and reports every automatic displacement. Do not use handoff and do not delete transcript rows.'''
+The memory-checkpoint interval has elapsed. Write the checkpoint summary via `gongga_cli` tool: with `cmd = {"name": "memorize", "args": {"summary": "..."}}`. Recall this memory via `gongga_cli` tool with `cmd = {"name": "recall", "args": {"ids": ["..."]}}`).'''
 
 # The text a turn boundary is written with when the provider refused the transcript.
 thinking_mark = '''
