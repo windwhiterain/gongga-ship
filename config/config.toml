@@ -517,6 +517,19 @@ type = "optional[path]"
 hint = "path"
 sentence = '''Where the program starts, and which machine it runs on: a `remote://<machine>/<absolute path>` runs it there, a bare one here -- or on the session's own machine when it has a remote, in the session's directory. Omitted is the session's own directory and machine. A channel keeps the machine it was started on; this decides it once.'''
 
+# A shell without the assembling: `exec` with `bin` already `bash` and the line already
+# `-lc`. One string in, one command run. See docs/notes/server-tools-spec.md.
+[tool.bash]
+cmd = "exec"
+preset = { bin = "bash", args = ["-lc", "{{command}}"] }
+summary = '''Run one shell command and read what it says. `command` is the whole line as one string -- the shell parses it, so pipes, quotes and redirection work as written. It runs as `bash -lc <command>` in the session's directory. There is no `bin`, `args` or `id` to state: use this instead of `exec` whenever the work is a shell line.'''
+
+[[tool.bash.parameters]]
+name = "command"
+positional = 1
+required = true
+sentence = '''The shell line to run, as one string: `grep -n "_eval_evalf" sympy/core/function.py`.'''
+
 [tool.wait]
 cmd = "wait"
 # Waiting is this tool's whole work: a call's own `time` is the answer to "how long".
