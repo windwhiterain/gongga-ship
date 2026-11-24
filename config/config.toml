@@ -200,9 +200,9 @@ The transcript no longer fits this model. Hand off with the `handoff` skill's `h
 # the same paragraph in every tool's schema of every request. Constant text, stamped
 # with the card. See `docs/notes/server-prompts.md`.
 general_parameters = '''
-Besides the arguments its own row lists, a tool call may carry these, and every tool takes them:
+Besides the arguments its own row lists, a tool call carries these, and every tool takes them:
 
-- `description`: one sentence saying what this call is for, in your own words. It is read on the call's own row -- a folded call shows it after its name -- and it names the file a capped answer was written to. Write it on every call: a call whose purpose nobody can read is a call nobody can review.
+- `description`: **required**, one sentence saying what this call is for, in your own words. A call without it is refused and does not run. It is read on the call's own row -- a folded call shows it after its name -- and it names the file a capped answer was written to. The row is the act's summary: when a call's payload is masked, this is what still says what it did.
 - `max_output`: the longest answer this call returns. Past it the middle is cut and the whole of it goes to a file the answer names.
 
 A **path** may name the machine that holds it, and that is the only way a call names one: `remote://<machine>/<path in that machine's own spelling>`. On a peer whose paths start with `/` the name and the path give two slashes in a row -- `remote://build//home/build/x`. `remote://local/<path>` is this machine stated, and a bare path is wherever the call already stands (the session's own machine, or the one its `cwd` names). A prefixed path has to be absolute: a relative one would be looked for on this machine and then sent to another. Any machine `[remotes]` configures is reachable from any call, so one call may look at a peer without the session moving there; a name no table configures is refused, never quietly this machine.
