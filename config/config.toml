@@ -581,6 +581,14 @@ type = "list[str]"
 required = true
 sentence = '''Memory ids returned by memorize. A recalled block moves to the tail of the unmasked queue, so one just recalled outlives one recalled earlier; a duplicate id still moves it only once.'''
 
+[tool.progress]
+cmd = "progress"
+summary = '''Open the step with its running summary. The FIRST tool call of every step must be `progress`: any other call that comes before it is refused and told to call `progress` first. The note is stored as a durable row that is never masked -- it stays visible while reasoning and call bodies evict -- so a compacted transcript still says what each step was about. Notes accumulate visible and are never folded away: write ONE short line saying what this step is about, never a paragraph, and never restate earlier notes. `description` is still required on this call as on every other.'''
+
+[[tool.progress.parameters]]
+name = "note"
+sentence = '''One short line saying what this step is about: the act it opens and the fact it rests on. Kept visible and never masked; notes accumulate, so keep it short. Omitted opens the step without a note.'''
+
 # SPEC's `fn gongga_cli(cmd: Cmd)`: one tool that routes a call to a server command, so a
 # command this build has no row of its own for is reached the same way. The command's
 # schema is the `self-control` skill's, not this table's.
