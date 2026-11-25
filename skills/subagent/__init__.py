@@ -43,7 +43,6 @@ know -- which name was skipped, which subscription was armed -- goes to stderr.
 import json
 import os
 import re
-import sqlite3
 import sys
 import typing
 
@@ -56,18 +55,7 @@ ATTEMPTS = 1000
 # What the server says when it refuses a name that exists. Its answer is the only
 # signal that separates "name taken" from a real failure, so it is named once, here.
 TAKEN = "--must_create refuses"
-#: The caller's settings, in the `sessions` table's own spelling. SPEC puts the same
-#: facts in three nested groups; `_nested` is that reshaping, and this tuple is the
-#: whole of the read.
-COLUMNS = (
-    "model",
-    "thinking_effort",
-    "context_limit",
-    "cache_tier",
-    "cache_keepalive",
-    "remote",
-    "cwd",
-)
+
 
 
 def _die(message):
@@ -88,7 +76,10 @@ def _library():
     """
     for directory in (
         os.environ.get("GONGGA_SKILL_LIB"),
-        os.path.join(os.environ.get("GONGGA_HOME") or "", "lib"),
+        # The content's Python surface is the checkout's, in place: protocol 12 moved it
+        # out of a home's `lib`, which an older build used to copy. Same lookup as
+        # `self-control/_client.py`, the one other reader of this directory.
+        os.path.join(os.environ.get("GONGGA_HOME") or "", "ship", "python"),
     ):
         if directory and os.path.isfile(os.path.join(directory, "gongga.py")):
             return directory
@@ -171,104 +162,46 @@ def _caller():
     return name
 
 
-def _row(name):
-    """One row of `sessions`, by name, read-only.
+def _published(name):
+    """One session row as the server publishes it.
 
     # Invariant
 
-    Read-only and outside the server: SPEC gives no command that answers a
-    session's configuration, and a connection that could write would be a second
-    writer of the row the server owns. A server is running on this home, so the
-    database is opened `mode=ro` and not held.
+    The server's own statement, not a `select` of this skill's own: what a session's
+    configuration is, is a question the harness answers once (`gongga_types`), and a
+    field list retyped here drifted from SPEC as soon as SPEC moved one -- the
+    `workspace.remote` this skill used to write is refused by the server now.
     """
-    home = (os.environ.get("GONGGA_HOME") or "").strip()
-    if not home:
-        _die("GONGGA_HOME is not set: it names the home whose gongga.db holds the row")
-    database = os.path.join(os.path.expanduser(home), "gongga.db")
-    if not os.path.isfile(database):
-        _die(f"no {database}: that home has never run a server")
+    gongga = _module()
+    server = _connection(gongga)
     try:
-        connection = sqlite3.connect(
-            "file:" + database.replace("\\", "/") + "?mode=ro", uri=True
-        )
-    except sqlite3.Error as refused:
-        _die(f"could not open {database} read-only: {refused}")
-    try:
-        found = connection.execute(
-            f"select {', '.join(COLUMNS)} from sessions where name = ?", (name,)
-        ).fetchone()
-    except sqlite3.Error as refused:
-        _die(f"could not read {name} from {database}: {refused}")
-    finally:
-        connection.close()
-    if found is None:
-        _die(f"no session named {name} in {database}")
-    return dict(zip(COLUMNS, found))
+        server.pump(0)
+    except Exception:
+        pass
+    for row in server.sessions:
+        if row.get("name") == name:
+            return row
+    # Not in the last published list: ask, once, rather than read the database.
+    reply = _command({"name": "ls_session", "args": {"path": name}})
+    if not reply[0]:
+        _die(f"could not read {name}: {reply[1]}")
+    for row in server.sessions:
+        if row.get("name") == name:
+            return row
+    _die(f"the server publishes no session named {name}")
 
 
-def _percent(value):
-    """SPEC's `ctx_limit` from the row's stored limit: `"70%"`, or None when unset."""
-    if value is None:
-        return None
-    if isinstance(value, str):
-        return value.strip() or None
-    try:
-        return f"{int(value)}%"
-    except (TypeError, ValueError):
-        return None
-
-
-def _nested(row):
-    """SPEC's `SessionConfig` (`## Server Cmd`) from one `sessions` row.
-
-    # Invariant
-
-    An unset setting is an absent key, never `null`: an absent key is what "the
-    model's default" means to the server, and its `config` reading refuses some
-    nulls outright. `model` is stored spelled `<provider>/<model>`, the way the
-    roster names it, so it is split back into SPEC's `Model`.
-    """
-    model_config = {}
-    workspace = {}
-    spelled = (row.get("model") or "").strip()
-    if spelled:
-        provider, slash, model = spelled.partition("/")
-        model_config["model"] = (
-            {"provider": provider, "model": model} if slash and model else {"model": spelled}
-        )
-    thinking = (row.get("thinking_effort") or "").strip()
-    if thinking:
-        model_config["thinking"] = thinking
-    percent = _percent(row.get("context_limit"))
-    if percent:
-        model_config["ctx_limit"] = percent
-    tier = (row.get("cache_tier") or "").strip()
-    if tier:
-        model_config["cache_tier"] = tier
-    # SPEC's Workspace.remote is optional, default none -- Python None. The key
-    # is present with value None for a local session: not dropped, not a string.
-    workspace["remote"] = row.get("remote")
-    cwd = (row.get("cwd") or "").strip()
-    if cwd:
-        workspace["cwd"] = cwd
-    # The column is an integer flag; false is also the configured default.
-    return {
-        "model_config": model_config,
-        "workspace": workspace,
-        "keep_alive": bool(row.get("cache_keepalive")),
-    }
-
-
-def self_config(session: typing.Optional[str] = None):
-    """The caller's own settings as SPEC's nested `SessionConfig`, ready to change.
+def self_config(session: typing.Optional[str] = None) -> "gongga.SessionConfig":
+    """The caller's own settings as SPEC's `SessionConfig`, ready to change.
 
     `session` is for a caller reading somebody else's row; the default is this
-    shell's own session, `GONGGA_SESSION`. A setting the row does not carry is left
-    out of the dict rather than written as `None`, so "unchanged" and "the model's
-    default" are one thing to the caller and to the server.
+    shell's own session, `GONGGA_SESSION`. A setting the session does not state is
+    left out of the dict rather than written as `None`, so "unchanged" and "the
+    model's default" stay one thing to the caller and to the server.
     """
+    gongga = _module()
     name = (session or "").strip() or _caller()
-    return _nested(_row(name))
+    return gongga.config_of_session(_published(name))
 
 
 #: The shell the callback runs in. Its own: the same name is the same queue, and a

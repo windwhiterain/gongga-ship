@@ -43,6 +43,24 @@ import socket
 import struct
 import time
 
+# SPEC's declared shapes, beside the commands that take them. A skill sends
+# `gongga.SessionConfig`'s shape instead of retyping SPEC's field list, which is what
+# `workspace.remote` was until protocol 16 removed it.
+from gongga_types import (  # noqa: F401  (re-exported: one import for a skill's own Python)
+    Channel,
+    LiveCompact,
+    Model,
+    ModelConfig,
+    Range,
+    Session,
+    SessionConfig,
+    Skill,
+    Thinking,
+    Workspace,
+    config_of_session,
+    spelled,
+)
+
 #: The channel's frame: magic, version, flags, connection, sequence, ack, message,
 #: fragment index, fragment count, window. See `docs/notes/protocol-frame.md`.
 MAGIC = 0x4747

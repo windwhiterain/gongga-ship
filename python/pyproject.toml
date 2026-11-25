@@ -30,4 +30,4 @@ build-backend = "hatchling.build"
 # Three modules, no package directory: the files are the contract, and the install
 # carries the same three, so a copy that moved into `src/` would be a second source.
 [tool.hatch.build.targets.wheel]
-only-include = ["gongga.py", "gongga_skill.py", "gongga_cli.py"]
+only-include = ["gongga.py", "gongga_skill.py", "gongga_cli.py", "gongga_types.py"]

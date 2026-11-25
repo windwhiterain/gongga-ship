@@ -1,7 +1,7 @@
 ---
 name: subagent
 description: 把一块独立的工作交给另一个会话并行做——子 agent 不是一个工具，而是一个普通会话：自己的 transcript、自己的上下文与阈值、自己的 turn。本 skill 的 `new_subagent(config, role)` 一次做完两件必须做的事：在调用者名下起一个撞不上、也不会选中别人的名字（`<父会话>/<角色>`，`new_session` 撞名就拒绝），并替调用者订阅它的 `turn_end`，所以父会话不必轮询。子会话的配置就是调用者自己那一行（`self_config()` 读回来）改几个键——想换模型就换 `model_config`——而不是重打一遍设置。派活用 `send_message`，等它用 `wait {time: …}`（工具，不是一个睡着的 shell）。当你要并行推进两条互不相干的实现、把大块验证/探查丢出去而不涨自己的上下文、或者要一个只读的侦察兵时读这个。
-compatibility: 需要 Python 3、本 home 的 Python 客户端 `gongga.py`（`$GONGGA_SKILL_LIB` 或 `$GONGGA_HOME/lib`，服务端自己写的那个模块）、能只读打开的 `$GONGGA_HOME/gongga.db`（`self_config` 读它），以及一个读得懂 SPEC 嵌套 `SessionConfig` 的服务端
+compatibility: 需要 Python 3、本 home 的 Python 客户端（`$GONGGA_SKILL_LIB` 或 `$GONGGA_HOME/ship/python` 里的 `gongga.py`，发行包自带 `gongga_types.py` 里的 SPEC 类型），以及一个读得懂 SPEC 嵌套 `SessionConfig` 的服务端
 ---
 
 # 子 agent
@@ -15,7 +15,7 @@ SPEC 把这个 skill 的事写成四步。动手的只有 `new_subagent`：它�
 
 | 步骤 | 谁做 | 为什么不是随手一条命令 |
 | --- | --- | --- |
-| 拿到自己的配置 | `self_config()` | 服务端没有"把我的 SessionConfig 给我"这条命令；只读自己那一行比抄一张字段表可靠 |
+| 拿到自己的配置 | `self_config()` | 服务端没有"把我的 SessionConfig 给我"这条命令；用发布包的 `gongga.config_of_session` 读服务端发布的行，比抄一张字段表可靠 |
 | 在调用者名下建一个会话 | `new_subagent(cfg, role)` | 名字会撞，而 `set_session` 撞名**不报错** |
 | 订阅它的 `turn_end` | `new_subagent` 顺手做 | 父会话要的是"它停了叫我"，不是"我每十秒问一次" |
 | 派活：`send_message` | 你 | 命令行本来就够 |
@@ -24,39 +24,34 @@ SPEC 把这个 skill 的事写成四步。动手的只有 `new_subagent`：它�
 ## 起一个：`self_config()` → 改几个键 → `new_subagent`
 
 ```python
+import gongga
 import model_pool, subagent
 
-cfg = subagent.self_config()                            # 我这一行，SPEC 的 SessionConfig
+cfg: gongga.SessionConfig = subagent.self_config()      # 我这一行，SPEC 的 SessionConfig
 cfg["model_config"] = model_pool.pick_config("flash")   # 便宜活：只换模型那三件
 name = subagent.new_subagent(cfg, role="impl")          # -> main/impl
 ```
 
-**配置是一份 dict，不是一串开关。** 这是 SPEC 的 `SessionConfig`：
+**配置是一份 dict，不是一串开关。** 形状由发布包里的 `gongga.SessionConfig` 定义
+（`ship/python/gongga_types.py`，SPEC `## Server Cmd` 的 `SessionConfig`）：
 
 ```
 {"model_config": {"model": {"provider": ..., "model": ...},
-                  "thinking": ..., "ctx_limit": "70%", "cache_tier": ...},
- "workspace": {"remote": ..., "cwd": ...},
+                  "thinking": ..., "ctx_limit": "70%", "cache_tier": ...,
+                  "live_compact": {...}, "prefix_cache_plan": true},
+ "workspace": {"cwd": ...},   # 一台机器就写在 cwd 里：remote://<name>/<abs path>
  "keep_alive": false}
 ```
 
-`self_config` 把你自己那一行**读**成这个形状：`$GONGGA_HOME` 的 `gongga.db`，
-名字取 `$GONGGA_SESSION`，`mode=ro` 打开、不持有（服务端正在同一个 home 上跑）。字段对得上：
+**别自己抄字段表。** 用 `gongga.SessionConfig` / `gongga.ModelConfig` / `gongga.Workspace`
+（`self_config()` 的返回就是这样读出来的），或者用 `self_config()` 再改几个键。
+这张表以前在 skill 里手写过一遍，SPEC 删掉 `workspace.remote` 之后它还在写，于是
+服务端（`deny_unknown_fields`）直接拒绝了 `new_subagent` 的 config：
+`unknown field 'remote', expected 'cwd' or 'worktree'`。
 
-| 行里的列 | SessionConfig 里的键 |
-| --- | --- |
-| `model`（`<provider>/<model>`） | `model_config.model` = `{provider, model}` |
-| `thinking_effort` | `model_config.thinking` |
-| `context_limit`（整数百分比） | `model_config.ctx_limit` = `"N%"` |
-| `cache_tier` | `model_config.cache_tier` |
-| `cache_keepalive` | `keep_alive` |
-| `remote` / `cwd` | `workspace.remote` / `workspace.cwd` |
-
-**`remote` 键总在，本地会话的值是 `None`**：SPEC `Workspace.remote` 是 `optional[Remote] = none`，
-`none` 就是 Python 的 `None`——不是字符串 `"none"`，也不是缺键。其余没设的项（`thinking`/
-`ctx_limit`/`cache_tier`）不出现在 dict 里：缺一个键就是"用 provider 给这个模型的默认值"。
-`new_subagent` 把整份 config 原样发出，不做删减——服务端把 `null` 字段读成默认值，所以
-model_pool 的 `pick_config` 用 `null` 表示"默认"，可以照发。
+`self_config()` 读的是**服务端发布的 session 行**（`server.sessions`），不是 sqlite 列：
+行的形状是服务端的承诺，列名是表自己的事。一个会话没声明的项不出现在 dict 里——
+缺键就是"用 model 的默认值"，这也是 `model_pool.pick_config` 用 `null` 表示默认的原因。
 
 **`new_subagent(config, role="worker")` 只做两件事**：建会话，然后订阅。名字是
 `<父会话>/<role>`，撞了就 `/2`、`/3`……；建会话走服务端的 `new_session`（`id` 加一整份
