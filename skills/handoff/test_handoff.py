@@ -280,7 +280,11 @@ def test_handoff_moves_every_row_then_empties():
         # The note went out as the message an operator would send, to this
         # session, and the measurement of a transcript that no longer exists is
         # zeroed so the next step does not remind about it.
-        assert [json.loads(e[0]) for e in h.sent()] == [{"name": "send_message", "args": {"session": "main", "message": note, "continue": True}}], h.sent()
+        sent = [json.loads(e[0]) for e in h.sent()]
+        assert [s["name"] for s in sent] == ["send_message"], sent
+        assert sent[0]["args"]["session"] == "main" and sent[0]["args"]["continue"] is True, sent
+        assert sent[0]["args"]["message"].endswith(note), sent
+        assert "You are continuing `main`" in sent[0]["args"]["message"], sent
         s = h.c.execute("select context_tokens from sessions where id=?", (sid,)).fetchone()
         assert s["context_tokens"] == 0, dict(s)
         h.add(sid, "text", {"role": "user", "text": "醒来第一句"})
@@ -300,11 +304,11 @@ def test_handoff_moves_every_row_then_empties():
         # Two rows this time: what the emptied session woke up to, and what came
         # after it. No call was in flight, so the archive takes both and the
         # session starts from seq 1 again.
-        assert second["rows_copied"] == 2 and second["kept_call"] is None, second
+        assert second["rows_copied"] == 2 and second["call_in_flight"] is None, second
         assert second["mentor"] == "main/mentor-main/2", second
         assert second["mentor_created"] is True, second
         assert [json.loads(e[0])["name"] for e in h.sent()] == ["send_message"] * 2, h.sent()
-        assert json.loads(h.sent()[-1][0])["args"]["message"] == "第二份", h.sent()
+        assert json.loads(h.sent()[-1][0])["args"]["message"].endswith("第二份"), h.sent()
         # The first archive is exactly as it was left: not one row gained, and its
         # own row is still there.
         assert len(h.rows(mid)) == before, (before, len(h.rows(mid)))
@@ -319,8 +323,13 @@ def test_handoff_moves_every_row_then_empties():
 
 
 
-def test_handoff_keeps_the_call_in_flight():
-    """The command that runs the handover is still open, so its pair survives."""
+def test_handoff_keeps_nothing_but_the_note():
+    """The call this handover runs goes with the transcript it emptied.
+
+    The server refuses an answer whose call is no longer in the transcript, so the
+    learner wakes up to the note alone: one message, once. The archive keeps the call
+    and answers it there, because a mentor reads its own transcript back as a request.
+    """
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         h = Home(tmp)
         sid = h.session("main")
@@ -330,22 +339,20 @@ def test_handoff_keeps_the_call_in_flight():
         p = run(h, "handoff", mentor="main/archive", note="要做 X；Y 失败因为 Z")
         assert p.returncode == 0, p.stderr
         report = json.loads(p.stdout)
-        assert report["kept_call"] == "c-live", report
-        assert report["rows_copied"] == 2 and report["deleted"] == 1, report
-        assert report["through_seq"] == 1 and report["mentor_rows"] == 4, report
+        assert report["call_in_flight"] == "c-live", report
+        assert report["rows_copied"] == 2 and report["deleted"] == 2, report
+        assert report["through_seq"] == 2 and report["mentor_rows"] == 4, report
         assert "archive" in report["you"] and "get_messages" in report["you"], report
         assert "continue the current work" in report["you"], report
         assert "no clean state is required" in report["you"], report
 
-        # The session keeps exactly the call whose result the server has yet to write.
-        # A cut only takes the tail, so the call is cut with the history and appended
-        # back. It sits past the head slots: those five seqs are what the server
-        # stamps the prompt and the tool set on, and an ordinary row at 1 would take
-        # the slot the head needs.
-        mine = h.rows(sid)
-        assert [r["kind"] for r in mine] == ["tool_call"], [dict(r) for r in mine]
-        assert mine[0]["seq"] == 6, [dict(r) for r in mine]
-        assert [json.loads(e[0]) for e in h.sent()] == [{"name": "send_message", "args": {"session": "main", "message": "要做 X；Y 失败因为 Z", "continue": True}}], h.sent()
+        # Not one row survives: the note the command layer delivers is the whole of
+        # the continuation's new context, and the opening instructions travel inside
+        # that same message because the call they used to answer was cut.
+        assert h.rows(sid) == [], [dict(r) for r in h.rows(sid)]
+        sent = [json.loads(e[0]) for e in h.sent()]
+        assert len(sent) == 1 and sent[0]["name"] == "send_message", sent
+        assert sent[0]["args"]["message"] == f"{report['you']}\n\n要做 X；Y 失败因为 Z", sent
 
         # The archive holds the whole exchange, and the copied call is answered
         # there: a mentor reads its own transcript back as a valid request.
@@ -356,11 +363,6 @@ def test_handoff_keeps_the_call_in_flight():
         assert closing["call_id"] == "c-live", closing
         assert "mentor of `main`" in closing["output"], closing
 
-        # The result the server appends when the command returns closes the pair.
-        h.add(sid, "tool_result", {"call_id": "c-live", "output": p.stdout, "images": []})
-        left = h.rows(sid)
-        assert [r["kind"] for r in left] == ["tool_call", "tool_result"], [dict(r) for r in left]
-        assert [r["seq"] for r in left] == [6, 7], [dict(r) for r in left]
         h.close()
 
 def test_a_bad_copy_rolls_everything_back():
@@ -398,7 +400,9 @@ def test_a_bad_copy_rolls_everything_back():
         assert len(h.rows(sid)) == mine_before, "the learner kept every row"
         assert len(h.rows(mid)) == mentor_before, "the mentor gained nothing"
         # Only the first, successful handover reached the command layer.
-        assert [json.loads(e[0]) for e in h.sent()] == [{"name": "send_message", "args": {"session": "main", "message": "第一轮", "continue": True}}], h.sent()
+        sent = [json.loads(e[0]) for e in h.sent()]
+        assert [s["name"] for s in sent] == ["send_message"], sent
+        assert sent[0]["args"]["message"].endswith("第一轮"), sent
         h.close()
 
 

@@ -13,10 +13,11 @@ any session is a caller that can empty someone else's transcript, and no check o
 the name is as strong as not having the parameter.
 
 `handoff` empties the current session so it continues with a fresh context: it
-copies the whole transcript into a mentor session, verifies the copy, cuts the
-original rows from the tail (context only has append/cut), and answers the call
-in flight with the continuation's next instructions. The work continues from the
-handoff note; no clean state is needed.
+copies the whole transcript into a mentor session, verifies the copy, and cuts
+every row of the original (context only has append/cut). Nothing is kept, not
+even the call this handover runs: its answer is cut with it, so the note is the
+whole of the continuation's new context. The work continues from the note; no
+clean state is needed.
 
 The note is a message: it goes to the session with `send_message`, exactly as an
 operator's would, so the server reads it as a first user message -- its references
@@ -329,8 +330,8 @@ def _send_note(session, note, continue_turn=True):
     )
 
 
-def _continuation_message(session, mentor, kept, continue_turn=True):
-    """What the continuation reads as the answer to the call that started it."""
+def _continuation_message(session, mentor, continue_turn=True):
+    """What the continuation reads before its own note, in the same message."""
     if not continue_turn:
         return (
             f"You archived `{session}` into `{mentor}` and wrote the handoff note into this "
@@ -339,9 +340,9 @@ def _continuation_message(session, mentor, kept, continue_turn=True):
         )
     return (
         f"You are continuing `{session}` with a fresh context, and `{mentor}` holds the complete transcript. "
-        f"This session is empty {'down to the call you are reading this from' if kept else 'for your next request'}. "
-        "Your handoff note is the message that follows this one: it carries the current objective, "
-        "state, failed attempts, and next action. Everything else remains readable in the mentor.\n"
+        "This session is empty: everything below this paragraph is the handoff note the session "
+        "you continue wrote for you, and it carries the current objective, state, failed attempts, "
+        "and next action. Everything before it remains readable in the mentor.\n"
         f"  read it:  gongga-cli '{_json.dumps({'name': 'get_messages', 'args': {'session': mentor, 'range': '1:'}})}'\n"
         f"  ask it:   gongga-cli '{_json.dumps({'name': 'ask', 'skill': 'self-control', 'args': {'session': mentor, 'question': '<your question>'}})}'\n"
         "Ask before you redo. The mentor holds the earlier attempts, the failures and why they "
@@ -486,18 +487,20 @@ def handoff(note: str, mentor: _typing.Optional[str] = None, continue_: bool = T
         conn.close()
         _die(f"{session} has no transcript to hand off; nothing was written")
 
-    # The server runs a call the moment it streams, so the last row is this
-    # call and its result does not exist yet. That pair stays -- a
-    # result without its call is a request no provider accepts -- and everything
-    # before it is the past, which goes to the mentor.
-    kept = rows[-1] if rows[-1]["kind"] == "tool_call" else None
-    kept_call_id = _json.loads(kept["content"])["call_id"] if kept is not None else None
-    moved = rows[:-1] if kept is not None else rows
-    through = moved[-1]["seq"] if moved else 0
+    # The server runs a call the moment it streams, so the last row is this call and its
+    # answer does not exist yet. The archive gets the call and, after the copied rows, the
+    # answer that closes it -- an archive whose last call has no answer is one nobody can
+    # ask. The learner keeps nothing: the server refuses the answer to a call its
+    # transcript no longer holds, which is what leaves the note as its whole context.
+    in_flight = rows[-1] if rows[-1]["kind"] == "tool_call" else None
+    call_in_flight = (
+        _json.loads(in_flight["content"])["call_id"] if in_flight is not None else None
+    )
+    through = rows[-1]["seq"]
     marker = (
-        f"[handoff] `{session}` handed off through seq {through} "
-        f"({len(moved)} rows), keeping the call in flight. The continuation may read this mentor "
-        "with get_messages and ask it with send_message."
+        f"[handoff] `{session}` handed off through seq {through} ({len(rows)} rows). "
+        "The continuation may read this mentor with get_messages and ask it with "
+        "send_message."
     )
 
     with conn:
@@ -562,8 +565,8 @@ def handoff(note: str, mentor: _typing.Optional[str] = None, continue_: bool = T
         # The copied call is a question with no answer, in a session that will now
         # be read back as a transcript. Give it its result, and tell the mentor
         # what it has become: this is the row that says so.
-        if kept is not None:
-            call_id = _json.loads(kept["display"])["call_id"]
+        if in_flight is not None:
+            call_id = _json.loads(in_flight["display"])["call_id"]
             output = _mentor_message(session)
             conn.execute(
                 """insert into messages (session_id, seq, kind, content, display, call_id, created_at)
@@ -586,31 +589,14 @@ def handoff(note: str, mentor: _typing.Optional[str] = None, continue_: bool = T
 
         # Context only has append/cut, and a cut may only take the tail: the
         # `context_cut_tail_only` trigger aborts deleting any row below the
-        # session's newest. So the transcript is cut one row at a time, newest
-        # first. The call in flight is itself the tail, so it is cut with the rest
-        # and appended back verbatim: its `call_id` is what the result the server
-        # is about to write pairs with, and a result without its call is a request
-        # no provider accepts.
+        # session's newest. So the transcript is cut one row at a time, newest first,
+        # and every row goes -- the call this handover runs included. Its answer is
+        # the one the server refuses to append, which is what leaves the note as the
+        # only row the continuation reads.
         for row in reversed(rows):
             conn.execute(
                 "delete from messages where session_id = ? and seq = ?",
                 (sid, row["seq"]),
-            )
-        if kept is not None:
-            conn.execute(
-                """insert into messages (session_id, seq, kind, content, display, call_id, created_at)
-                    values (?, (select max(coalesce(max(seq), 0), ?) + 1 from messages where session_id = ?),
-                            ?, ?, ?, ?, ?)""",
-                (
-                    sid,
-                    HEAD_SLOTS,
-                    sid,
-                    kept["kind"],
-                    kept["content"],
-                    kept["display"],
-                    kept["call_id"],
-                    kept["created_at"],
-                ),
             )
         # context_tokens counted a transcript that no longer exists: leaving it
         # would have the server measure this session as still full and remind on
@@ -647,9 +633,8 @@ def handoff(note: str, mentor: _typing.Optional[str] = None, continue_: bool = T
                             "mentor": mentor,
                             "mentor_created": created,
                             "rows": len(rows),
-                            "rows_moved": len(moved),
                             "through_seq": through,
-                            "kept_call": kept_call_id,
+                            "call_in_flight": call_in_flight,
                             "note_chars": len(note),
                             "context_tokens": source["context_tokens"],
                             "context_limit": source["context_limit"],
@@ -669,11 +654,14 @@ def handoff(note: str, mentor: _typing.Optional[str] = None, continue_: bool = T
 
     conn.close()
 
-    # The session is empty now, so this is the first user message it will carry.
-    # Sent from here rather than written into the database: a row inserted between
-    # the call in flight and its result is a transcript no provider accepts, and
-    # `send_message` is what puts a note where an operator's message would go.
-    delivery = _send_note(session, note, continue_turn)
+    # The session is empty now, so this is the first user message it will carry. Sent
+    # from here rather than written into the database: `send_message` expands the
+    # note's references and is what the server knows as a first prompt, and a session
+    # emptied under a running turn takes it as one -- written now, not queued behind
+    # what the cut transcript left waiting. The opening instructions travel inside it,
+    # because the call they used to answer went with the transcript.
+    opening = _continuation_message(session, mentor, continue_turn)
+    delivery = _send_note(session, f"{opening}\n\n{note}", continue_turn)
 
     return _json.dumps(
         {
@@ -682,12 +670,12 @@ def handoff(note: str, mentor: _typing.Optional[str] = None, continue_: bool = T
             "mentor_created": created,
             "rows_copied": len(rows),
             "through_seq": through,
-            "kept_call": _json.loads(kept["content"])["call_id"] if kept is not None else None,
-            "mentor_rows": len(copied) + 1 + (1 if kept is not None else 0),
-            "deleted": len(moved),
+            "call_in_flight": call_in_flight,
+            "mentor_rows": len(copied) + 1 + (1 if in_flight is not None else 0),
+            "deleted": len(rows),
             "note_chars": len(note),
             "note_delivery": delivery,
-            "you": _continuation_message(session, mentor, kept is not None, continue_turn),
+            "you": opening,
         },
         ensure_ascii=False,
         indent=2,
