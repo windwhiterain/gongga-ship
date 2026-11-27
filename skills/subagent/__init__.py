@@ -270,8 +270,8 @@ def new_subagent(config: dict, role: str = "worker"):
     parent = _caller()
     # Sent as the object it is: SPEC's `Cmd.args` is `dict[str, any]` end to end, so the
     # server reads `config` as the table it was given. Serialised here it would arrive as
-    # a string and be refused. SPEC keeps a None-valued key (remote: none is None); the
-    # server reads a null field as its default, so the config is sent verbatim.
+    # a string and be refused. Nothing is dropped or nulled on the way: an absent key is
+    # what "the default" means, and a stated `null` is a statement of its own.
     try:
         json.dumps(config)
     except (TypeError, ValueError) as unusable:
