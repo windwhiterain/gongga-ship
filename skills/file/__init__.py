@@ -174,6 +174,10 @@ def read(
 ):
     """Lines `offset` to `offset + limit` of a file, and how many there are in all.
 
+    A directory answers with its entries instead of failing: the same call that reads a
+    file lists a directory, because a reader that has to choose a different verb for
+    "what is here" gets the choice wrong.
+
     The path names its machine -- `remote://<peer>/…` for a peer, bare or
     `remote://local/…` for this one; `cwd` is the directory a relative path resolves
     in, and a relative path naming another machine has to state one.
@@ -182,6 +186,17 @@ def read(
     path = gongga_space.machine_of(path)[1]
     try:
         path = space.resolve(path, directory)
+        info = space.stat(path)
+        if info.get("is_dir"):
+            entries = space.list_dir(path)
+            page = entries[: int(limit)] if int(limit) > 0 else entries
+            return {
+                "path": path,
+                "is_directory": True,
+                "total_entries": len(entries),
+                "returned": len(page),
+                "entries": page,
+            }
         text, _ = _load(space, path)
         lines = _lines(text)
         first = max(0, min(int(offset), len(lines)))

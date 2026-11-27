@@ -473,6 +473,10 @@ until = ">>> "
 # every later call speaks to it -- there is no second verb for reading.
 [tool.exec]
 cmd = "exec"
+# The channel is the operator's instrument: a program with a name a later call can
+# speak to again. A model call is one act, so what it gets is `bash` -- one shell
+# line, run to its end, its whole output. See `docs/notes/server-tools-spec.md`.
+offered = false
 # A call that states no `wait` waits `config::DEFAULT_EXEC_WAIT` (four seconds:
 # enough for a program to say its first line) and returns whatever the program has said
 # by then. A read gives up only at the program's end or at the text
@@ -522,6 +526,10 @@ sentence = '''Where the program starts, and which machine it runs on: a `remote:
 [tool.bash]
 cmd = "exec"
 preset = { bin = "bash", args = ["-lc", "{{command}}"] }
+# One stateless act: the row's own argument is the whole call, the program is read
+# to its end, and no channel outlives the answer -- so there is no `input`, no `id`,
+# no `wait` and no `until` for a call to state. See `docs/notes/server-tools-spec.md`.
+stateless = true
 summary = '''Run one shell command and read what it says. `command` is the whole line as one string -- the shell parses it, so pipes, quotes and redirection work as written. It runs as `bash -lc <command>` in the session's directory. There is no `bin`, `args` or `id` to state: use this instead of `exec` whenever the work is a shell line.'''
 
 [[tool.bash.parameters]]
@@ -583,6 +591,7 @@ sentence = '''Memory ids returned by memorize. A recalled block moves to the tai
 
 [tool.progress]
 cmd = "progress"
+offered = false
 summary = '''Open the step with its running summary. The FIRST tool call of every step must be `progress`: any other call that comes before it is refused and told to call `progress` first. The note is stored as a durable row that is never masked -- it stays visible while reasoning and call bodies evict -- so a compacted transcript still says what each step was about. Notes accumulate visible and are never folded away: write ONE short line saying what this step is about, never a paragraph, and never restate earlier notes. `description` is still required on this call as on every other.'''
 
 [[tool.progress.parameters]]
@@ -610,7 +619,7 @@ sentence = '''The command and its arguments: `{"name": "ls_channel", "args": {"p
 [tool.ls_channel]
 cmd = "ls_channel"
 # A server cmd the model calls by name: the command layer runs it (SPEC fn <tool>).
-offered = true
+offered = false
 summary = """List a session's channels: the name each one is called, what it runs, and how much of what it said nobody has read."""
 
 [[tool.ls_channel.parameters]]
@@ -622,7 +631,7 @@ sentence = """The channels whose name starts this way. Omitted is every channel 
 [tool.del_channel]
 cmd = "del_channel"
 # A server cmd the model calls by name: the command layer runs it (SPEC fn <tool>).
-offered = true
+offered = false
 summary = """End a channel's program and forget the name, and do the same for every channel under that path. A channel that had already ended is only forgotten."""
 
 [[tool.del_channel.parameters]]
@@ -643,7 +652,7 @@ sentence = """Channel to end, or the path whose channels all go."""
 cmd = "read"
 # A server cmd the model calls by name: the command layer runs it (SPEC fn <tool>).
 offered = true
-summary = '''Read a file as JSON: a page of it, the count of every line, and whether that page is the whole file. Says how much was not shown, so a reader never mistakes a first page for a whole file.'''
+summary = '''Read a file as JSON: a page of it, the count of every line, and whether that page is the whole file. Says how much was not shown, so a reader never mistakes a first page for a whole file. A directory answers with its entries instead -- each name, and whether it is a directory -- so listing is the same call as reading.'''
 
 [[tool.read.parameters]]
 name = "path"

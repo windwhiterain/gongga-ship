@@ -799,6 +799,40 @@ class Space:
         except SpaceError:
             pass
 
+    def list_dir(self, path):
+        """One directory's entries, in name order: `name`, `dir`, `file`.
+
+        # Invariant
+
+        The same shape on both doors -- this machine reads its own directory, a peer
+        asks its runner for the same rows -- and both sort by name, so two calls about
+        one directory say the same thing in the same order. A path that is not a
+        directory is the caller's mistake, and says so instead of answering nothing.
+        """
+        if self.is_local:
+            try:
+                rows = [
+                    {
+                        "name": entry.name,
+                        "dir": entry.is_dir(follow_symlinks=True),
+                        "file": entry.is_file(follow_symlinks=True),
+                    }
+                    for entry in os.scandir(path)
+                ]
+            except OSError as bad:
+                raise SpaceError(f"could not list {path}: {bad.strerror or bad}") from None
+        else:
+            answer = self._connection().request({"op": "list", "path": path})
+            rows = [
+                {
+                    "name": entry.get("name", ""),
+                    "dir": bool(entry.get("is_dir")),
+                    "file": bool(entry.get("is_file")),
+                }
+                for entry in answer.get("entries", [])
+            ]
+        return sorted(rows, key=lambda row: row["name"])
+
     def stat(self, path):
         """What this machine says about one path; `exists: False` is an answer."""
         if self.is_local:
