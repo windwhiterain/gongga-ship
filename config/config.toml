@@ -684,7 +684,7 @@ sentence = '''The file to write. One that does not exist is created.'''
 [[tool.write.parameters]]
 name = "content"
 positional = 2
-sentence = '''The whole of the new file, as the bytes they are: nothing here parses this word by word, so a script may go here unchanged.'''
+sentence = '''The file's whole text, as the bytes they are: a program as its lines, a sentence as itself, and a one-line file is that one line. Nothing parses this word by word, so a script goes in unchanged.'''
 
 [tool.edit]
 cmd = "edit"
