@@ -50,7 +50,12 @@
 # `run_skill` is no longer a command. The python contract here sends the field, and the
 # prose teaches a call shape a protocol-16 server refuses as an unknown command; a
 # protocol-16 server keeps installing the newest commit that speaks 16.
-protocol = 17
+# 18: a tool row may pin its own arguments -- `preset = { bin = "bash", args = ["-lc",
+# "{{command}}"] }` -- so `bash` is `exec` with the line already assembled. A key a row
+# does not know is refused, not ignored, so a protocol-17 server does not run this config
+# at all: it exits while starting. The harness that reads the key ships first, and this
+# number is raised in the commit before the row that needs it.
+protocol = 18
 
 # Which path in this repository is the home's config.
 config = "config/config.toml"
