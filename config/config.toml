@@ -526,10 +526,6 @@ sentence = '''Where the program starts, and which machine it runs on: a `remote:
 [tool.bash]
 cmd = "exec"
 preset = { bin = "bash", args = ["-lc", "{{command}}"] }
-# One stateless act: the row's own argument is the whole call, the program is read
-# to its end, and no channel outlives the answer -- so there is no `input`, no `id`,
-# no `wait` and no `until` for a call to state. See `docs/notes/server-tools-spec.md`.
-stateless = true
 summary = '''Run one shell command and read what it says. `command` is the whole line as one string -- the shell parses it, so pipes, quotes and redirection work as written. It runs as `bash -lc <command>` in the session's directory. There is no `bin`, `args` or `id` to state: use this instead of `exec` whenever the work is a shell line.'''
 
 [[tool.bash.parameters]]
