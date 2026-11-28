@@ -434,6 +434,16 @@ The live-compaction interval has elapsed. Write the checkpoint with the `live_co
 memory_mask_notice = '''
 The memory-checkpoint interval has elapsed. Write the checkpoint summary via `gongga_cli` tool: with `cmd = {"name": "memorize", "args": {"summary": "..."}}`. Recall this memory via `gongga_cli` tool with `cmd = {"name": "recall", "args": {"ids": ["..."]}}`).'''
 
+# What a goal turn opens with: the standing instruction, and the one way the chain ends
+# before the goal is done. `{{prompt}}` is the goal as its setter stated it; a server that
+# reads this protocol refuses to start without this template.
+goal_notice = '''
+Continue working on your standing goal.
+
+{{prompt}}
+
+This turn is one round of that goal: it repeats until the goal is paused or deleted. When the goal is done, or when you are blocked and cannot make progress on it, pause it yourself through the `gongga_cli` tool: `cmd = {"name": "set_goal", "args": {"paused": true}}`. Say in your answer what you finished, or what blocks it. A turn that ends without pausing the goal starts another one.'''
+
 # The text a turn boundary is written with when the provider refused the transcript.
 thinking_mark = '''
 The provider refused the previous request because a step was written without thinking. This mark records that refusal at the turn boundary; continue with thinking.'''

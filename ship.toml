@@ -55,7 +55,10 @@
 # does not know is refused, not ignored, so a protocol-17 server does not run this config
 # at all: it exits while starting. The harness that reads the key ships first, and this
 # number is raised in the commit before the row that needs it.
-protocol = 18
+# 19: `goal_notice` is required. A server that reads this protocol refuses to start on
+# content without it, because a goal turn with no words is a chain that spends a request
+# saying nothing; a protocol-18 server reads the same file and never asks for the name.
+protocol = 19
 
 # Which path in this repository is the home's config.
 config = "config/config.toml"

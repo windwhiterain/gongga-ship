@@ -1,6 +1,6 @@
 ---
 name: self-control
-description: The server's command schemas as this build publishes them -- the twenty-two commands a session drives itself with (send_message, new_session, set_session, del_session, ls_session, clone_session, interrupt_session, cancel, subscribe, ls_subscription, del_subscription, trigger_event, new_channel, new_channel_id, input_channel, ls_channel, rename_channel, del_channel, get_messages, events, list_paths, sync_session), each with its exact arguments and a callable example, plus the one convenience this skill publishes, `ask`, which puts a question to another session and arms a subscription that brings its answer back. Read it when you are about to call one of these and need its argument names, which ones are required, and what the answer carries.
+description: The server's command schemas as this build publishes them -- the twenty-five commands a session drives itself with (send_message, new_session, set_session, del_session, ls_session, clone_session, interrupt_session, cancel, subscribe, ls_subscription, del_subscription, trigger_event, set_goal, ls_goal, del_goal, new_channel, new_channel_id, input_channel, ls_channel, rename_channel, del_channel, get_messages, events, list_paths, sync_session), each with its exact arguments and a callable example, plus the one convenience this skill publishes, `ask`, which puts a question to another session and arms a subscription that brings its answer back. Read it when you are about to call one of these and need its argument names, which ones are required, and what the answer carries.
 compatibility: the command schemas need nothing but the server; `ask` needs Python 3, the client the server writes at <home>/ship/python/gongga.py, and the session it runs in (`$GONGGA_SESSION`, which a skill runner exports)
 ---
 
@@ -27,6 +27,7 @@ skill's business, so they are not repeated here.
 | channels | `new_channel`, `input_channel`, `ls_channel`, `rename_channel`, `del_channel` |
 | reading | `get_messages`, `events` |
 | subscriptions | `subscribe`, `ls_subscription`, `del_subscription`, `trigger_event` |
+| goals | `set_goal`, `ls_goal`, `del_goal` |
 | paths | `list_paths` |
 
 ## How a command is called, and how its arguments are written
@@ -296,6 +297,67 @@ transcript (a `send_message` to yourself) or in a file it will read.
 
 ```bash
 gongga-cli '{"name":"cancel","args":{"keep_alive":true}}'
+```
+
+## Goals
+
+A goal is a standing instruction one session keeps answering until somebody stops it:
+SPEC's `## Goal`. The server starts the next turn for you every time one ends, so a goal
+you never pause is a loop.
+
+### `set_goal` -- give a session a standing instruction, or change its state
+
+| argument | spelling | required | meaning |
+|---|---|---|---|
+| `prompt` | named (`--prompt`) | no | the standing instruction; omitted re-states only the state of the goal already there |
+| `session` | named (`--session`), kind `session` | no | whose goal; omitted is the caller's own |
+| `paused` | named (`--paused`) | no | `true` keeps the prompt and starts no turn; `false` continues a paused goal at once |
+
+A goal has two states, `running` and `paused`, and one of each per session. `paused` is
+the switch; there is no token count and no look at how long it has run.
+
+**Pause it when the goal is done, or when you are blocked.** Those are the two answers the
+goal notice asks for, and a turn that ends without pausing the goal starts another one.
+
+Three things pause a goal, and you can only cause the third:
+
+1. the goal's turn failed -- a provider refusal, a dead endpoint;
+2. `interrupt_session` on that session;
+3. your own `set_goal --paused true`.
+
+`cancel` does not pause: it continues the turn it cut on the next start, so the goal that
+turn serves stays running.
+
+```bash
+gongga-cli '{"name":"set_goal","args":{"session":"work/impl","prompt":"port the mask tests to the new store"}}'
+gongga-cli '{"name":"set_goal","args":{"session":"work/impl","paused":true}}'
+gongga-cli '{"name":"set_goal","args":{"session":"work/impl","paused":false}}'
+```
+
+### `ls_goal` -- list goals under a path
+
+| argument | spelling | required | meaning |
+|---|---|---|---|
+| `path` | positional | no | only goals of sessions under this path; omitted lists them all |
+
+One row per goal in the `message`, so a session with no goal is not a row:
+
+```json
+[{"session": "work/impl", "prompt": "port the mask tests to the new store",
+  "state": "running", "updated_at": 1795886015923}]
+```
+
+### `del_goal` -- drop a session's goal
+
+| argument | spelling | required | meaning |
+|---|---|---|---|
+| `session` | named (`--session`), kind `session` | no | whose goal; omitted is the caller's own |
+
+The turns it already answered stay in the transcript. Deleting the session deletes its
+goal too.
+
+```bash
+gongga-cli '{"name":"del_goal","args":{"session":"work/impl"}}'
 ```
 
 ## Channels
